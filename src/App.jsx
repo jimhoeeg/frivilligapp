@@ -568,6 +568,307 @@ const ScoreboardScreen = () => {
   );
 };
 
+// ============ KALENDER ============
+
+const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
+  const [viewMode, setViewMode] = useState("month");
+  const [current, setCurrent] = useState(new Date(2026, 3)); // April 2026
+
+  const monthNames = ["januar","februar","marts","april","maj","juni","juli","august","september","oktober","november","december"];
+  const dayNames = ["Man","Tir","Ons","Tor","Fre","Lør","Søn"];
+
+  const year = current.getFullYear();
+  const month = current.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startPad = (firstDay.getDay() + 6) % 7;
+
+  const days = [];
+  for (let i = startPad - 1; i >= 0; i--) days.push({ d: new Date(year, month, -i), cur: false });
+  for (let i = 1; i <= lastDay.getDate(); i++) days.push({ d: new Date(year, month, i), cur: true });
+  const rem = 7 - (days.length % 7);
+  if (rem < 7) for (let i = 1; i <= rem; i++) days.push({ d: new Date(year, month + 1, i), cur: false });
+
+  // Map tasks to day-of-month within current month
+  const tasksByDay = {};
+  tasks.forEach((t) => {
+    const m = t.date.match(/(\d+)\.\s*(\w+)/);
+    if (!m) return;
+    const day = parseInt(m[1]);
+    const mo = { apr: 3, maj: 4, jun: 5, jul: 6, aug: 7, sep: 8 }[m[2]];
+    if (mo === month) {
+      if (!tasksByDay[day]) tasksByDay[day] = [];
+      tasksByDay[day].push(t);
+    }
+  });
+
+  const allByDate = [...tasks, ...claimedTasks];
+
+  return (
+    <div className="pb-24 bg-stone-50 min-h-screen">
+      <div className="px-5 pt-12 pb-5 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+        <div className="absolute inset-0 opacity-20 pointer-events-none"><div className="absolute -top-16 -right-8 w-48 h-48 rounded-full blur-3xl" style={{ background: theme.pink }} /></div>
+        <div className="relative">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-white/90 text-[12px] mb-3"><ArrowLeft className="w-4 h-4" />Tilbage</button>
+          <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">Opgave-kalender</div>
+          <div className="flex items-center justify-between mt-1 mb-3">
+            <h1 className="text-2xl font-bold capitalize">{monthNames[month]} {year}</h1>
+            <div className="flex gap-1">
+              <button onClick={() => setCurrent(new Date(year, month - 1))} className="p-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20"><ChevronLeft className="w-4 h-4" /></button>
+              <button onClick={() => setCurrent(new Date(year, month + 1))} className="p-2 rounded-lg bg-white/10 border border-white/20 hover:bg-white/20"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+          <div className="bg-white/10 rounded-xl p-1 flex border border-white/10">
+            <button onClick={() => setViewMode("month")} className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center justify-center gap-1.5 ${viewMode === "month" ? "bg-white text-emerald-900 shadow-sm" : "text-white/80"}`}><Grid3x3 className="w-3.5 h-3.5" />Måned</button>
+            <button onClick={() => setViewMode("list")} className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center justify-center gap-1.5 ${viewMode === "list" ? "bg-white text-emerald-900 shadow-sm" : "text-white/80"}`}><List className="w-3.5 h-3.5" />Liste</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 mt-4">
+        {viewMode === "month" ? (
+          <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+            <div className="grid grid-cols-7 bg-stone-50 border-b border-stone-100">
+              {dayNames.map((d) => <div key={d} className="text-center py-2 text-[11px] font-bold text-stone-500 uppercase">{d}</div>)}
+            </div>
+            <div className="grid grid-cols-7">
+              {days.map(({ d, cur }, i) => {
+                const dayTasks = cur ? (tasksByDay[d.getDate()] || []) : [];
+                const hasClaimed = dayTasks.some((t) => claimedTasks.some((ct) => ct.id === t.id));
+                const today = d.toDateString() === new Date().toDateString();
+                return (
+                  <button key={i} onClick={() => dayTasks.length > 0 && onTaskClick(dayTasks[0])} disabled={!dayTasks.length} className={`aspect-square border-b border-r border-stone-100 p-1 flex flex-col items-center hover:bg-emerald-50 transition-colors ${!cur ? "bg-stone-50/50" : ""} ${!dayTasks.length ? "cursor-default" : ""}`}>
+                    <div className={`text-[11px] font-semibold w-5 h-5 flex items-center justify-center rounded-full ${today ? "text-white" : cur ? "text-stone-800" : "text-stone-300"}`} style={today ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{d.getDate()}</div>
+                    {dayTasks.length > 0 && (
+                      <div className="flex gap-0.5 mt-0.5 flex-wrap justify-center">
+                        {dayTasks.slice(0, 3).map((_, idx) => <div key={idx} className="w-1.5 h-1.5 rounded-full" style={{ background: hasClaimed ? theme.greenMid : theme.purple }} />)}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {tasks.sort((a, b) => {
+              const ad = parseInt((a.date.match(/(\d+)/) || [])[1] || 0);
+              const bd = parseInt((b.date.match(/(\d+)/) || [])[1] || 0);
+              return ad - bd;
+            }).map((t) => (
+              <button key={t.id} onClick={() => onTaskClick(t)} className="w-full text-left bg-white rounded-xl p-3.5 border border-stone-100 shadow-sm hover:border-emerald-300 flex items-center gap-3 active:scale-[0.99] transition-all">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-5 h-5" /></div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-bold text-[14px] text-stone-900 truncate">{t.title}</div>
+                  <div className="text-[11px] text-stone-500 mt-0.5 flex items-center gap-1.5"><Calendar className="w-3 h-3" />{t.date}<span>·</span><Clock className="w-3 h-3" />{t.time}</div>
+                </div>
+                <div className="px-2 py-1 rounded-full text-white text-[11px] font-black shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</div>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="mt-4 bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+          <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-violet-900 leading-relaxed">Prikker under datoer viser opgaver. Klik på en dato for at se detaljer om opgaven.</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============ BYTTE-MARKED ============
+
+const SwapScreen = ({ onBack, claimedTasks }) => {
+  const [tab, setTab] = useState("available");
+  const [offers, setOffers] = useState(mockSwapOffers);
+  const [showNewOffer, setShowNewOffer] = useState(false);
+  const [selected, setSelected] = useState(null);
+
+  const incoming  = offers.filter((o) => o.status === "incoming");
+  const available = offers.filter((o) => o.status === "available");
+  const outgoing  = offers.filter((o) => o.status === "outgoing");
+
+  const remove = (id) => setOffers((prev) => prev.filter((o) => o.id !== id));
+
+  return (
+    <div className="pb-24 bg-stone-50 min-h-screen">
+      <div className="px-5 pt-12 pb-5 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 60%, ${theme.purple} 100%)` }}>
+        <div className="absolute inset-0 opacity-20 pointer-events-none"><div className="absolute -top-16 -right-8 w-48 h-48 rounded-full blur-3xl" style={{ background: theme.pink }} /></div>
+        <div className="relative">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-white/90 text-[12px] mb-3"><ArrowLeft className="w-4 h-4" />Tilbage</button>
+          <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">Bytte-markedet</div>
+          <h1 className="text-2xl font-bold mt-0.5 mb-4 flex items-center gap-2"><ArrowLeftRight className="w-6 h-6" />Byt tjanser</h1>
+          <div className="bg-white/10 rounded-xl p-1 flex border border-white/10">
+            {[
+              { id: "available", label: `Tilgængelige (${available.length})` },
+              { id: "incoming",  label: `Til mig`, badge: incoming.length },
+              { id: "outgoing",  label: `Mine (${outgoing.length})` },
+            ].map((t) => (
+              <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center justify-center gap-1 ${tab === t.id ? "bg-white text-emerald-900 shadow-sm" : "text-white/80"}`}>
+                {t.label}
+                {t.badge > 0 && <span className="w-4 h-4 rounded-full text-[9px] font-black text-white flex items-center justify-center" style={{ background: theme.pink }}>{t.badge}</span>}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 mt-4 space-y-3">
+        {tab === "available" && (
+          <>
+            <button onClick={() => setShowNewOffer(true)} className="w-full rounded-2xl p-3.5 text-white flex items-center gap-3 shadow-lg active:scale-[0.99] transition-transform" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><Plus className="w-5 h-5" /></div>
+              <div className="flex-1 text-left"><div className="font-bold text-[14px]">Tilbyd en af dine tjanser</div><div className="text-[11px] text-white/80 mt-0.5">Find en der kan overtage</div></div>
+              <ChevronRight className="w-4 h-4 opacity-70" />
+            </button>
+            {available.length === 0
+              ? <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Ingen tilgængelige bytter</p></div>
+              : available.map((o) => <SwapCard key={o.id} offer={o} onClick={() => setSelected(o)} />)
+            }
+          </>
+        )}
+
+        {tab === "incoming" && (
+          <>
+            <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5"><Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" /><p className="text-[11px] text-violet-900">Accepter eller afslå bytte-tilbud herunder.</p></div>
+            {incoming.length === 0
+              ? <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Ingen indkommende tilbud</p></div>
+              : incoming.map((o) => (
+                  <IncomingSwapCard key={o.id} offer={o}
+                    onAccept={() => remove(o.id)}
+                    onDecline={() => remove(o.id)}
+                  />
+                ))
+            }
+          </>
+        )}
+
+        {tab === "outgoing" && (
+          outgoing.length === 0
+            ? <><div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Du har ingen aktive tilbud</p></div>
+                <button onClick={() => setShowNewOffer(true)} className="w-full py-3 rounded-xl text-white font-bold mt-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Tilbyd en tjans</button></>
+            : outgoing.map((o) => <SwapCard key={o.id} offer={o} onClick={() => setSelected(o)} />)
+        )}
+      </div>
+
+      {showNewOffer && (
+        <NewSwapModal claimedTasks={claimedTasks} onClose={() => setShowNewOffer(false)} />
+      )}
+
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setSelected(null)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-5 pb-8 animate-slideup" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-1 bg-stone-200 rounded-full mx-auto mb-4" />
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={selected.offering.icon} className="w-6 h-6" /></div>
+              <div><h3 className="text-lg font-bold text-stone-900">{selected.offering.title}</h3><div className="text-[12px] text-stone-500 mt-0.5 flex items-center gap-1.5"><Calendar className="w-3 h-3" />{selected.offering.date} · {selected.offering.time}</div></div>
+            </div>
+            <div className="bg-stone-50 rounded-xl p-3 mb-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[11px]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{selected.from.initials}</div>
+              <div><div className="text-[13px] font-semibold">{selected.from.name}</div><div className="text-[11px] text-stone-500">{selected.from.team}</div></div>
+              <div className="ml-auto px-2 py-1 rounded-full text-white text-[11px] font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{selected.offering.points}</div>
+            </div>
+            {selected.message && <div className="mb-4 bg-violet-50 border border-violet-200 rounded-xl p-3"><p className="text-[13px] text-stone-700 italic">"{selected.message}"</p></div>}
+            <div className="flex gap-2">
+              <button onClick={() => setSelected(null)} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Luk</button>
+              <button onClick={() => setSelected(null)} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Overtag tjansen (+{selected.offering.points} pt)</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SwapCard = ({ offer, onClick }) => (
+  <button onClick={onClick} className="w-full text-left bg-white rounded-2xl p-3.5 border border-stone-100 shadow-sm hover:border-emerald-200 active:scale-[0.99] transition-all relative overflow-hidden">
+    {offer.urgent && <div className="absolute top-0 right-0 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-bl-xl flex items-center gap-1" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}><Flame className="w-2.5 h-2.5" />HASTER</div>}
+    <div className="flex items-start gap-3">
+      <div className="w-11 h-11 rounded-xl flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={offer.offering.icon} className="w-5 h-5" /></div>
+      <div className="flex-1 min-w-0">
+        <div className="font-bold text-[14px] text-stone-900 truncate">{offer.offering.title}</div>
+        <div className="text-[11px] text-stone-500 mt-0.5 flex items-center gap-1.5 flex-wrap"><Calendar className="w-3 h-3" />{offer.offering.date}<span>·</span><Clock className="w-3 h-3" />{offer.offering.time}</div>
+        <div className="flex items-center gap-2 mt-2">
+          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{offer.from.initials}</div>
+          <span className="text-[11px] text-stone-600">Tilbudt af <strong>{offer.from.name}</strong></span>
+        </div>
+      </div>
+      <div className="px-2 py-1 rounded-full text-white text-[11px] font-black shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{offer.offering.points}</div>
+    </div>
+  </button>
+);
+
+const IncomingSwapCard = ({ offer, onAccept, onDecline }) => (
+  <div className="bg-white rounded-2xl border border-violet-200 shadow-md overflow-hidden">
+    <div className="px-4 py-2.5 text-white flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+      <ArrowLeftRight className="w-4 h-4" />
+      <span className="text-[12px] font-bold">Bytte-tilbud fra {offer.from.name}</span>
+    </div>
+    <div className="p-4">
+      <div className="flex items-stretch gap-2 mb-3">
+        <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <div className="text-[9px] uppercase tracking-wider font-bold text-emerald-700 mb-1.5 flex items-center gap-1"><ArrowRight className="w-2.5 h-2.5" />De tager</div>
+          <div className="font-bold text-[12px] text-stone-900 leading-tight">{offer.offering.title}</div>
+          <div className="text-[10px] text-stone-600 mt-1">{offer.offering.date}</div>
+        </div>
+        <div className="flex items-center">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}><ArrowLeftRight className="w-4 h-4" /></div>
+        </div>
+        <div className="flex-1 bg-pink-50 border border-pink-200 rounded-xl p-3">
+          <div className="text-[9px] uppercase tracking-wider font-bold text-pink-700 mb-1.5 flex items-center gap-1"><ArrowLeft className="w-2.5 h-2.5" />Du giver</div>
+          <div className="font-bold text-[12px] text-stone-900 leading-tight">{offer.wants.title}</div>
+          <div className="text-[10px] text-stone-600 mt-1">{offer.wants.date}</div>
+        </div>
+      </div>
+      {offer.message && <div className="mb-3 bg-stone-50 rounded-xl p-2.5 border border-stone-100"><p className="text-[12px] text-stone-700 italic">"{offer.message}"</p></div>}
+      <div className="flex gap-2">
+        <button onClick={onDecline} className="flex-1 py-2.5 rounded-xl bg-white border border-stone-200 text-[12px] font-semibold text-stone-700">Afslå</button>
+        <button onClick={onAccept} className="flex-[2] py-2.5 rounded-xl text-white text-[12px] font-bold shadow-md flex items-center justify-center gap-1.5" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><Check className="w-3.5 h-3.5" />Accepter bytte</button>
+      </div>
+    </div>
+  </div>
+);
+
+const NewSwapModal = ({ claimedTasks, onClose }) => {
+  const [selected, setSelected] = useState(null);
+  const [message, setMessage] = useState("");
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[85vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between">
+          <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+          <h3 className="text-lg font-bold mt-2">Tilbyd tjans til bytte</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Vælg hvilken tjans du vil give væk</label>
+          {claimedTasks.length === 0
+            ? <div className="bg-stone-50 border border-dashed border-stone-200 rounded-xl p-5 text-center"><ListChecks className="w-8 h-8 mx-auto mb-1.5 text-stone-300" /><p className="text-[12px] text-stone-500">Du har ingen tjanser. Tag en opgave først.</p></div>
+            : <div className="space-y-2">
+                {claimedTasks.map((t) => (
+                  <button key={t.id} onClick={() => setSelected(t.id)} className={`w-full text-left flex items-center gap-3 p-3 rounded-xl border transition-all ${selected === t.id ? "border-violet-400 bg-violet-50" : "border-stone-200 bg-white"}`}>
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0"><div className="font-semibold text-[13px] text-stone-900 truncate">{t.title}</div><div className="text-[11px] text-stone-500 mt-0.5">{t.date} · {t.time}</div></div>
+                    {selected === t.id && <div className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}><Check className="w-3 h-3" strokeWidth={3} /></div>}
+                  </button>
+                ))}
+              </div>
+          }
+          <div>
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Besked (valgfri)</label>
+            <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="F.eks. Jeg er blevet syg..." className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none resize-none" />
+          </div>
+          <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5"><Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" /><p className="text-[11px] text-violet-900">Tjansen vises på bytte-markedet til alle klubbens medlemmer.</p></div>
+        </div>
+        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
+          <button onClick={onClose} disabled={!selected} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Tilbyd til bytte</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const BottomNav = ({ active, onChange }) => {
   const items = [
     { id: "tasks", label: "Opgaver", icon: ListChecks },
@@ -601,6 +902,9 @@ export default function App() {
   const [claimedIds, setClaimedIds] = useState(new Set());
   const [toast, setToast] = useState(null);
   const [welcomeToast, setWelcomeToast] = useState(null);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showSwaps, setShowSwaps] = useState(false);
+  const [selectedTask, setSelectedTask] = useState(null);
 
   const claimedTasks = useMemo(
     () => mockTasks.filter((t) => claimedIds.has(t.id)),
@@ -627,6 +931,9 @@ export default function App() {
     setIsAuthenticated(false);
     setTab("tasks");
     setClaimedIds(new Set());
+    setShowCalendar(false);
+    setShowSwaps(false);
+    setSelectedTask(null);
   };
 
   const handleClaim = (taskId) => {
@@ -655,14 +962,68 @@ export default function App() {
       <div className="max-w-md mx-auto bg-white min-h-screen relative shadow-xl">
         {welcomeToast && <div className="fixed top-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50 animate-slideup" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{welcomeToast}</div>}
 
-        {tab === "tasks" && <TasksScreen tasks={mockTasks} onTaskClick={(task) => { const next = new Set(claimedIds); next.add(task.id); setClaimedIds(next); handleClaim(task.id); }} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => {}} onOpenCalendar={() => {}} unreadCount={0} />}
-        {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
-        {tab === "scoreboard" && <ScoreboardScreen />}
-        {tab === "profile" && <div className="pb-24"><div className="px-5 pt-12 pb-6 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}><h1 className="text-2xl font-bold mb-5">Min profil</h1><div className="relative flex flex-col items-center mb-6"><div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{currentUser.initials}</div></div><div className="text-xl font-bold">{currentUser.name}</div></div><div className="px-5 mt-6"><button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 inline-flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button></div></div>}
+        {showCalendar ? (
+          <CalendarScreen tasks={mockTasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
+        ) : showSwaps ? (
+          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} />
+        ) : selectedTask ? (
+          <div className="pb-24">
+            <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+              <button onClick={() => setSelectedTask(null)} className="inline-flex items-center gap-1.5 text-white/90 text-sm mb-5"><ArrowLeft className="w-4 h-4" />Tilbage til opgaver</button>
+              <div className="flex items-center gap-2 mb-2"><span className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">{selectedTask.category}</span>{selectedTask.urgent && <span className="inline-flex items-center gap-1 bg-pink-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><Flame className="w-3 h-3" />HASTER</span>}</div>
+              <h1 className="text-2xl font-bold mb-4">{selectedTask.title}</h1>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Dato</div><div className="text-sm font-semibold">{selectedTask.dateFull}</div></div>
+                <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Tidsrum</div><div className="text-sm font-semibold">{selectedTask.time}</div></div>
+                <div className="bg-white/10 rounded-xl p-3 border border-white/10 col-span-2"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Lokation</div><div className="text-sm font-semibold flex items-center gap-1.5"><MapPin className="w-4 h-4" />{selectedTask.location}</div></div>
+              </div>
+            </div>
+            <div className="px-5 -mt-5 relative z-10 mb-4">
+              <div className="rounded-2xl p-4 flex items-center justify-between text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
+                <div><div className="text-[11px] uppercase tracking-widest font-bold text-white/80">Du optjener</div><div className="text-2xl font-black flex items-center gap-1"><Zap className="w-6 h-6" fill="white" />{selectedTask.points} point</div></div>
+                <DifficultyPill level={selectedTask.difficulty} />
+              </div>
+            </div>
+            <div className="px-5">
+              <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Sådan løser du opgaven</h2>
+              <ol className="space-y-3">{selectedTask.description.map((step, i) => <li key={i} className="flex gap-3"><div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{i + 1}</div><p className="text-[14px] text-stone-700 leading-relaxed pt-0.5">{step}</p></li>)}</ol>
+            </div>
+            <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/80 border-t border-stone-100 max-w-md mx-auto">
+              {claimedIds.has(selectedTask.id)
+                ? <div className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.greenMid}, ${theme.greenDark})` }}><Check className="w-5 h-5" />Du har taget tjansen!</div>
+                : <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
+              }
+            </div>
+          </div>
+        ) : (
+          <>
+            {tab === "tasks" && <TasksScreen tasks={mockTasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
+            {tab === "scoreboard" && <ScoreboardScreen />}
+            {tab === "profile" && (
+              <div className="pb-24">
+                <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+                  <h1 className="text-2xl font-bold mb-6">Min profil</h1>
+                  <div className="flex flex-col items-center"><div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{currentUser.initials}</div><div className="text-xl font-bold mt-3">{currentUser.name}</div><div className="text-[11px] text-emerald-200 mt-1">{currentUser.team}</div></div>
+                </div>
+                <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.pointsEarned}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.tasksCompleted}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">#{mockUser.seasonRank}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
+                </div>
+                <div className="px-5 mt-6 space-y-2">
+                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>
+                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>
+                  <button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
         {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{toast}</div>}
 
-        {!false && <BottomNav active={tab} onChange={setTab} />}
+        {!showCalendar && !showSwaps && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
       </div>
     </div>
   );
