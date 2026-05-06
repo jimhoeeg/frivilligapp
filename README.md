@@ -1,16 +1,83 @@
-# React + Vite
+# RVK Frivillig - Task Coordinator App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Volunteer task coordination web app for Randers Volleyballklub (RVK).
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 🔐 **Authentication** — Login/signup with team selection
+- 📋 **Task Management** — Browse, search, and claim volunteer tasks
+- 📊 **Points System** — Track seasonal contribution points
+- 🏆 **Leaderboard** — See member rankings and team standings
+- 💬 **Task Comments** — Communicate about tasks with admin notes
+- 🔄 **Task Swaps** — Exchange shifts with other volunteers
+- 📱 **Mobile-First** — Fully responsive design
+- 🎨 **RVK Branding** — Green, purple, and pink theme
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **React 18** — UI framework
+- **Vite** — Build tool & dev server
+- **Tailwind CSS v3** — Styling
+- **Lucide React** — Icons
+- **Mock Data** — Ready for API integration
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+### Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+App runs on `http://localhost:5173/`
+
+### Build for Production
+
+```bash
+npm run build
+npm run preview
+```
+
+## Deployment
+
+Deployed on **Vercel** — auto-deploys on push to `main` branch.
+
+Live: `https://frivilligapp.vercel.app`
+
+### Deploy Manually
+
+1. Go to [vercel.com](https://vercel.com)
+2. Import GitHub repo: `jimhoeeg/frivilligapp`
+3. Vercel auto-detects Vite config
+4. Deploy! ✨
+
+## Project Structure
+
+```
+src/
+├── App.jsx          # Main app component & screens
+├── index.css        # Global styles (Tailwind)
+└── main.jsx         # Entry point
+```
+
+## Features Roadmap
+
+- [ ] Backend API integration (tasks, users, points)
+- [ ] Real authentication
+- [ ] Database (PostgreSQL/MongoDB)
+- [ ] Email notifications
+- [ ] Admin dashboard (roles, audit log)
+- [ ] PWA support (offline mode)
+- [ ] Dark mode
+
+## Testing Accounts (Mock)
+
+| Mode    | Email              | Password |
+|---------|-------------------|----------|
+| Login   | any@email.dk      | anypass  |
+| Signup  | Create new user   | 6+ chars |
+
+## License
+
+MIT
