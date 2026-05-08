@@ -199,13 +199,15 @@ const TaskCard = ({ task, onClick }) => {
   );
 };
 
-const AuthField = ({ icon, label, type = "text", value, onChange, placeholder, error, rightIcon }) => (
+const AuthField = ({ icon, label, type = "text", name, autoComplete, value, onChange, placeholder, error, rightIcon }) => (
   <div>
     <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">{label}</label>
     <div className="relative">
       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none">{icon}</div>
       <input
         type={type}
+        name={name}
+        autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -340,26 +342,27 @@ const AuthScreen = ({ onAuthenticated }) => {
     setResetSent(true);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
     if (!validate()) return;
     setLoading(true);
     try {
       if (mode === "login") {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) { setErrors({ email: error.message }); setLoading(false); return; }
-        onAuthenticated({ email: data.user.email, isNew: false });
+        onAuthenticated({ email: data.user.email, userId: data.user.id, isNew: false });
       } else {
         const { data, error } = await supabase.auth.signUp({
           email, password,
           options: { data: { name, team } },
         });
         if (error) { setErrors({ email: error.message }); setLoading(false); return; }
-        onAuthenticated({ email: data.user?.email || email, name, team, phone, isNew: true });
+        onAuthenticated({ email: data.user?.email || email, userId: data.user?.id, name, team, phone, isNew: true });
       }
     } catch (err) {
       setErrors({ email: "Noget gik galt – prøv igen" });
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -408,10 +411,10 @@ const AuthScreen = ({ onAuthenticated }) => {
               </button>
             </div>
           ) : (
-          <div className="space-y-3">
-            {mode === "signup" && <AuthField icon={<User className="w-4 h-4" />} label="Fulde navn" value={name} onChange={setName} placeholder="F.eks. Mette Sørensen" error={errors.name} />}
-            <AuthField icon={<AtSign className="w-4 h-4" />} label="E-mail" type="email" value={email} onChange={setEmail} placeholder="din@email.dk" error={errors.email} />
-            {mode !== "forgot" && <AuthField icon={<Lock className="w-4 h-4" />} label="Adgangskode" type={showPassword ? "text" : "password"} value={password} onChange={setPassword} placeholder={mode === "signup" ? "Mindst 6 tegn" : "••••••••"} error={errors.password} rightIcon={<button type="button" onClick={() => setShowPassword(!showPassword)} className="text-stone-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>} />}
+          <form className="space-y-3" onSubmit={mode === "forgot" ? (e) => { e.preventDefault(); handleForgot(); } : handleSubmit} autoComplete="on">
+            {mode === "signup" && <AuthField icon={<User className="w-4 h-4" />} label="Fulde navn" name="name" autoComplete="name" value={name} onChange={setName} placeholder="F.eks. Mette Sørensen" error={errors.name} />}
+            <AuthField icon={<AtSign className="w-4 h-4" />} label="E-mail" type="email" name="email" autoComplete="email" value={email} onChange={setEmail} placeholder="din@email.dk" error={errors.email} />
+            {mode !== "forgot" && <AuthField icon={<Lock className="w-4 h-4" />} label="Adgangskode" type={showPassword ? "text" : "password"} name="password" autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password} onChange={setPassword} placeholder={mode === "signup" ? "Mindst 6 tegn" : "••••••••"} error={errors.password} rightIcon={<button type="button" onClick={() => setShowPassword(!showPassword)} className="text-stone-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>} />}
             {mode === "login" && (
               <div className="text-right">
                 <button type="button" onClick={() => { setMode("forgot"); setErrors({}); }} className="text-[12px] text-emerald-700 font-semibold hover:underline">
@@ -421,7 +424,7 @@ const AuthScreen = ({ onAuthenticated }) => {
             )}
 
             {mode === "signup" && <>
-              <AuthField icon={<Phone className="w-4 h-4" />} label="Telefon (valgfri)" type="tel" value={phone} onChange={setPhone} placeholder="+45 ..." />
+              <AuthField icon={<Phone className="w-4 h-4" />} label="Telefon (valgfri)" type="tel" name="tel" autoComplete="tel" value={phone} onChange={setPhone} placeholder="+45 ..." />
               <div>
                 <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Hold</label>
                 <div className="relative">
@@ -441,7 +444,7 @@ const AuthScreen = ({ onAuthenticated }) => {
               {errors.terms && <p className="text-[11px] text-pink-600 -mt-2">{errors.terms}</p>}
             </>}
 
-            <button onClick={mode === "forgot" ? handleForgot : handleSubmit} disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2 mt-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)`, boxShadow: "0 8px 24px -8px rgba(236, 72, 153, 0.5)" }}>
+            <button type="submit" disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2 mt-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)`, boxShadow: "0 8px 24px -8px rgba(236, 72, 153, 0.5)" }}>
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -459,7 +462,7 @@ const AuthScreen = ({ onAuthenticated }) => {
                 ← Tilbage til login
               </button>
             )}
-          </div>
+          </form>
           )}
         </div>
 
@@ -2103,11 +2106,14 @@ export default function App() {
     loadTasks();
   }, []);
 
-  const handleAuth = (authData) => {
-    // Supabase auth is done — onAuthStateChange will set the user profile.
-    // Just show the welcome toast here.
+  const handleAuth = async (authData) => {
+    // Load profile immediately with the userId we got from signIn/signUp
+    if (authData.userId) {
+      setAuthLoading(true);
+      await loadProfile(authData.userId);
+    }
     const first = authData.name ? authData.name.split(" ")[0] : "";
-    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage, ${first}!`);
+    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage!`);
     setTimeout(() => setWelcomeToast(null), 3000);
     setTab("tasks");
   };
