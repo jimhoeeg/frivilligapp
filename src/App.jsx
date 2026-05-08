@@ -2029,11 +2029,20 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
-    // Detect password recovery from URL hash
+    // Detect password recovery from URL hash — show reset screen immediately
     const hash = window.location.hash;
     if (hash.includes("type=recovery")) {
       setRecoveryMode(true);
+      setAuthLoading(false);
     }
+
+    // Safety net: never stay on loading screen for more than 6 seconds
+    const safety = setTimeout(() => {
+      if (mounted) {
+        console.warn("Auth loading timeout — forcing render");
+        setAuthLoading(false);
+      }
+    }, 6000);
 
     // Check current session immediately on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -2064,7 +2073,7 @@ export default function App() {
       }
     });
 
-    return () => { mounted = false; subscription.unsubscribe(); };
+    return () => { mounted = false; clearTimeout(safety); subscription.unsubscribe(); };
   }, []);
 
   // Load tasks from Supabase (with steps)
