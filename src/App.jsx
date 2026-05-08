@@ -1426,29 +1426,37 @@ const AdminMembers = ({ currentUserRole }) => {
 const AdminRoles = () => {
   const [members, setMembers] = useState([]);
 
-  useEffect(() => {
-    supabase.from("profiles").select("id,name,initials,team,role").order("points", { ascending: false }).then(({ data }) => {
+  const reload = () => {
+    supabase.from("profiles").select("id,name,initials,team,role,admin_requested,admin_requested_at,email").order("points", { ascending: false }).then(({ data }) => {
       if (data && data.length > 0) {
         setMembers(data.map((p) => ({
           id: p.id, name: p.name,
           initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
-          team: p.team || "", role: p.role,
+          team: p.team || "", role: p.role, email: p.email,
+          adminRequested: p.admin_requested, adminRequestedAt: p.admin_requested_at,
         })));
       }
     });
-  }, []);
+  };
+
+  useEffect(() => { reload(); }, []);
 
   const superAdmins = members.filter((m) => m.role === "super_admin");
   const admins      = members.filter((m) => m.role === "admin");
-  const users       = members.filter((m) => m.role === "user");
+  const users       = members.filter((m) => m.role === "user" && !m.adminRequested);
+  const pending     = members.filter((m) => m.role === "user" && m.adminRequested);
 
   const promote = async (id, role) => {
-    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
-    await supabase.from("profiles").update({ role }).eq("id", id);
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role, adminRequested: false } : m));
+    await supabase.from("profiles").update({ role, admin_requested: false }).eq("id", id);
   };
   const demote = async (id) => {
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
     await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+  };
+  const rejectRequest = async (id) => {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, adminRequested: false } : m));
+    await supabase.from("profiles").update({ admin_requested: false }).eq("id", id);
   };
 
   return (
@@ -1459,6 +1467,37 @@ const AdminRoles = () => {
           <div><div className="font-bold text-[14px]">Du er Super Admin</div><p className="text-[12px] text-white/90 mt-0.5 leading-relaxed">Udnæv og fjern Admins. Alle ændringer logges permanent i audit-loggen.</p></div>
         </div>
       </div>
+
+      {/* Pending admin requests */}
+      {pending.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-bold text-pink-600 mb-2 flex items-center gap-1.5">
+            <BellRing className="w-3.5 h-3.5" />
+            Anmodninger om admin ({pending.length})
+          </div>
+          <div className="bg-white rounded-2xl border-2 border-pink-200 divide-y divide-stone-100 shadow-sm overflow-hidden">
+            {pending.map((m) => (
+              <div key={m.id} className="px-4 py-3">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{m.initials}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[14px] text-stone-900">{m.name}</div>
+                    <div className="text-[11px] text-stone-500">{m.team} · {m.email}</div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => promote(m.id, "admin")} className="flex-1 text-[12px] font-bold text-white py-2 rounded-lg" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                    ✓ Godkend
+                  </button>
+                  <button onClick={() => rejectRequest(m.id)} className="flex-1 text-[12px] font-bold text-pink-600 bg-pink-50 border border-pink-200 py-2 rounded-lg">
+                    ✗ Afvis
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Super Admins */}
       <div>
@@ -1492,11 +1531,27 @@ const AdminRoles = () => {
         </div>
       </div>
 
-      {/* Promover bruger */}
+      {/* Promover admin til super admin */}
+      {admins.length > 0 && (
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Gør Admin til Super Admin</div>
+          <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+            {admins.map((m) => (
+              <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
+                <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><div className="text-[11px] text-stone-500">{m.team}</div></div>
+                <button onClick={() => promote(m.id, "super_admin")} className="text-[11px] font-bold text-white px-3 py-1.5 rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>👑 Gør til Super Admin</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Promover bruger direkte */}
       <div>
-        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Promover til Admin</div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Direkte promovering</div>
         <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
-          {users.slice(0, 5).map((m) => (
+          {users.slice(0, 10).map((m) => (
             <div key={m.id} className="flex items-center gap-3 px-4 py-3">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
               <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><div className="text-[11px] text-stone-500">{m.team}</div></div>
@@ -1587,6 +1642,47 @@ const AdminAuditLog = () => {
     </div>
     )}
   </div>
+  );
+};
+
+const RequestAdminButton = ({ currentUser, setToast }) => {
+  const [requested, setRequested] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    supabase.from("profiles").select("admin_requested").eq("id", currentUser.id).single().then(({ data }) => {
+      if (data?.admin_requested) setRequested(true);
+    });
+  }, [currentUser.id]);
+
+  const handleRequest = async () => {
+    setLoading(true);
+    const { error } = await supabase.from("profiles").update({
+      admin_requested: true,
+      admin_requested_at: new Date().toISOString(),
+    }).eq("id", currentUser.id);
+    setLoading(false);
+    if (!error) {
+      setRequested(true);
+      setToast("📨 Din anmodning er sendt til Super Admin");
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
+
+  if (requested) {
+    return (
+      <div className="w-full bg-violet-50 border border-violet-200 rounded-xl py-3 px-4 text-[12px] text-violet-800 flex items-center justify-center gap-2">
+        <Clock className="w-4 h-4" />
+        Din anmodning om admin-rettigheder afventer godkendelse
+      </div>
+    );
+  }
+
+  return (
+    <button onClick={handleRequest} disabled={loading} className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50 disabled:opacity-60">
+      <ShieldCheck className="w-4 h-4" />
+      {loading ? "Sender..." : "Anmod om admin-rettigheder"}
+    </button>
   );
 };
 
@@ -1824,6 +1920,7 @@ export default function App() {
                       </div>
                     </button>
                   )}
+                  {currentUser?.role === "user" && <RequestAdminButton currentUser={currentUser} setToast={setToast} />}
                   <button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button>
                 </div>
               </div>
