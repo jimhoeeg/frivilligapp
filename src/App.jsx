@@ -513,7 +513,7 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
 
 const ScoreboardScreen = ({ currentUserId }) => {
   const [filter, setFilter] = useState("Alle hold");
-  const [members, setMembers] = useState(mockMembers);
+  const [members, setMembers] = useState([]);
 
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
@@ -709,7 +709,7 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
 
 const SwapScreen = ({ onBack, claimedTasks }) => {
   const [tab, setTab] = useState("available");
-  const [offers, setOffers] = useState(mockSwapOffers);
+  const [offers, setOffers] = useState([]);
   const [showNewOffer, setShowNewOffer] = useState(false);
   const [selected, setSelected] = useState(null);
 
@@ -929,7 +929,7 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
 
   const sections = [
     { id: "overview",  label: "Oversigt",      icon: Activity,    superOnly: false },
-    { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: mockPendingMembers.length },
+    { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: 0 },
     { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
     { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
     { id: "roles",     label: "Roller",         icon: ShieldCheck, superOnly: true  },
@@ -1358,7 +1358,7 @@ const AdminMembers = ({ currentUserRole }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
-  const [allMembers, setAllMembers] = useState(mockMembers);
+  const [allMembers, setAllMembers] = useState([]);
   const isSuperAdmin = currentUserRole === "super_admin";
 
   useEffect(() => {
@@ -1424,7 +1424,7 @@ const AdminMembers = ({ currentUserRole }) => {
 
 // ---- ROLLER (kun Super Admin) ----
 const AdminRoles = () => {
-  const [members, setMembers] = useState(mockMembers);
+  const [members, setMembers] = useState([]);
 
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,role").order("points", { ascending: false }).then(({ data }) => {
