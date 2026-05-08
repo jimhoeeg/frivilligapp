@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
   Check, X, Filter, Search, Flame, Shield, Coffee, AlertCircle, ArrowLeft,
@@ -265,19 +266,26 @@ const AuthScreen = ({ onAuthenticated }) => {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onAuthenticated({
-        email,
-        name: name || "Mette Sørensen",
-        team: team || "Damer 2",
-        phone,
-        isNew: mode === "signup",
-      });
-    }, 800);
+    try {
+      if (mode === "login") {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) { setErrors({ email: error.message }); setLoading(false); return; }
+        onAuthenticated({ email: data.user.email, isNew: false });
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { name, team } },
+        });
+        if (error) { setErrors({ email: error.message }); setLoading(false); return; }
+        onAuthenticated({ email: data.user?.email || email, name, team, phone, isNew: true });
+      }
+    } catch (err) {
+      setErrors({ email: "Noget gik galt – prøv igen" });
+    }
+    setLoading(false);
   };
 
   return (
@@ -434,9 +442,9 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   );
 };
 
-const Dashboard = ({ claimedTasks }) => {
-  const earned = mockUser.pointsEarned + claimedTasks.reduce((s, t) => s + t.points, 0);
-  const goal = mockUser.pointsGoal;
+const Dashboard = ({ claimedTasks, currentUser }) => {
+  const earned = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+  const goal = 75;
   const pct = Math.min(100, Math.round((earned / goal) * 100));
   const remaining = Math.max(0, goal - earned);
 
@@ -445,7 +453,7 @@ const Dashboard = ({ claimedTasks }) => {
       <div className="px-5 pt-12 pb-6 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
         <div className="relative">
           <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200 mb-1">Mit Dashboard</div>
-          <h1 className="text-2xl font-bold mb-5">Hej, {mockUser.name.split(" ")[0]} 👋</h1>
+          <h1 className="text-2xl font-bold mb-5">Hej, {currentUser?.name?.split(" ")[0] || "frivillig"} 👋</h1>
 
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
             <div className="flex items-baseline justify-between mb-2">
@@ -471,7 +479,7 @@ const Dashboard = ({ claimedTasks }) => {
       </div>
 
       <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
-        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length + mockUser.upcomingTasks}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
+        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>3</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">#12</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
       </div>
@@ -503,10 +511,31 @@ const Dashboard = ({ claimedTasks }) => {
   );
 };
 
-const ScoreboardScreen = () => {
+const ScoreboardScreen = ({ currentUserId }) => {
   const [filter, setFilter] = useState("Alle hold");
-  const teams = ["Alle hold", ...Array.from(new Set(mockMembers.map((m) => m.team))).sort()];
-  const filteredMembers = filter === "Alle hold" ? [...mockMembers] : mockMembers.filter((m) => m.team === filter);
+  const [members, setMembers] = useState(mockMembers);
+
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setMembers(data.map((p) => ({
+          id: p.id,
+          name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "",
+          points: p.points || 0,
+          tasksDone: p.tasks_done || 0,
+          badges: 0,
+          streak: 0,
+          isCurrentUser: p.id === currentUserId,
+          role: p.role,
+        })));
+      }
+    });
+  }, [currentUserId]);
+
+  const teams = ["Alle hold", ...Array.from(new Set(members.map((m) => m.team).filter(Boolean))).sort()];
+  const filteredMembers = filter === "Alle hold" ? [...members] : members.filter((m) => m.team === filter);
   filteredMembers.sort((a, b) => b.points - a.points);
   const currentUserRank = filteredMembers.findIndex((m) => m.isCurrentUser) + 1;
 
@@ -960,31 +989,31 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
 
 // ---- OVERSIGT ----
 const AdminOverview = ({ onNavigate, tasks }) => {
-  const totalMembers  = mockMembers.length;
-  const goalReached   = mockMembers.filter((m) => m.points >= 75).length;
-  const behindCount   = mockMembers.filter((m) => m.points < 30).length;
-  const openSpots     = tasks.reduce((s, t) => s + t.spotsLeft, 0);
-  const avgPoints     = Math.round(mockMembers.reduce((s, m) => s + m.points, 0) / totalMembers);
+  const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
+
+  useEffect(() => {
+    supabase.from("profiles").select("points").then(({ data }) => {
+      if (data && data.length > 0) {
+        const total = data.length;
+        const goalReached = data.filter((m) => m.points >= 75).length;
+        const behind = data.filter((m) => m.points < 30).length;
+        const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
+        setStats({ total, goalReached, behind, avg });
+      }
+    });
+  }, []);
+
+  const openSpots = tasks.reduce((s, t) => s + t.spotsLeft, 0);
 
   return (
     <div className="space-y-5">
-      {/* Pending alert */}
-      {mockPendingMembers.length > 0 && (
-        <button onClick={() => onNavigate("approvals")} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><UserCheck className="w-5 h-5" /></div>
-            <div className="flex-1"><div className="font-bold text-[15px]">{mockPendingMembers.length} {mockPendingMembers.length === 1 ? "medlem venter" : "medlemmer venter"} på godkendelse</div><div className="text-[11px] text-white/80 mt-0.5">Tryk for at gennemgå ansøgninger</div></div>
-            <ChevronRight className="w-5 h-5 opacity-70" />
-          </div>
-        </button>
-      )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Aktive medlemmer", value: totalMembers,          icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
-          { label: "Nået sæsonmål",    value: `${goalReached}/${totalMembers}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
-          { label: "Gns. point",       value: `${avgPoints} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
+          { label: "Nået sæsonmål",    value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
+          { label: "Gns. point",       value: `${stats.avg} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
           { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
@@ -1002,11 +1031,11 @@ const AdminOverview = ({ onNavigate, tasks }) => {
           <AlertTriangle className="w-5 h-5 text-pink-500" />
         </div>
         {[
-          { label: "🎉 Har nået målet", count: goalReached,                                  color: theme.greenMid },
-          { label: "🟣 På vej (30–74 pt)", count: totalMembers - goalReached - behindCount,  color: theme.purple },
-          { label: "⚠️ Bagud (under 30 pt)", count: behindCount,                             color: theme.pink },
+          { label: "🎉 Har nået målet", count: stats.goalReached,                                         color: theme.greenMid },
+          { label: "🟣 På vej (30–74 pt)", count: stats.total - stats.goalReached - stats.behind,       color: theme.purple },
+          { label: "⚠️ Bagud (under 30 pt)", count: stats.behind,                                       color: theme.pink },
         ].map((row, i) => {
-          const pct = Math.round((row.count / totalMembers) * 100);
+          const pct = stats.total > 0 ? Math.round((row.count / stats.total) * 100) : 0;
           return (
             <div key={i} className="mb-2.5">
               <div className="flex justify-between text-[12px] mb-1"><span className="text-stone-700">{row.label}</span><span className="font-bold">{row.count}</span></div>
@@ -1020,16 +1049,29 @@ const AdminOverview = ({ onNavigate, tasks }) => {
       </div>
 
       {/* Seneste audit */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
-        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Seneste aktivitet</div>
-        <div className="space-y-2.5">
-          {mockAuditLog.slice(0, 3).map((log) => (
-            <div key={log.id} className="flex gap-3 items-start">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}><Activity className="w-4 h-4" /></div>
-              <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
-            </div>
-          ))}
-        </div>
+      <AuditPreview />
+    </div>
+  );
+};
+
+const AuditPreview = () => {
+  const [logs, setLogs] = useState([]);
+  useEffect(() => {
+    supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(3).then(({ data }) => {
+      if (data) setLogs(data);
+    });
+  }, []);
+  if (logs.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+      <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Seneste aktivitet</div>
+      <div className="space-y-2.5">
+        {logs.map((log) => (
+          <div key={log.id} className="flex gap-3 items-start">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}><Activity className="w-4 h-4" /></div>
+            <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor_name} · {new Date(log.created_at).toLocaleDateString("da-DK")}</div></div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1037,7 +1079,7 @@ const AdminOverview = ({ onNavigate, tasks }) => {
 
 // ---- GODKENDELSER ----
 const AdminApprovals = () => {
-  const [pending, setPending] = useState(mockPendingMembers);
+  const [pending, setPending] = useState([]);
   const [done, setDone]       = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [rejecting, setRejecting] = useState(null);
@@ -1120,11 +1162,55 @@ const AdminTasks = ({ tasks, setTasks }) => {
   const [editTask, setEditTask]   = useState(null);
   const [menuOpen, setMenuOpen]   = useState(null);
 
-  const deleteTask = (id) => { setTasks((prev) => prev.filter((t) => t.id !== id)); setMenuOpen(null); };
-  const duplicateTask = (t) => {
-    const copy = { ...t, id: `t_${Date.now()}`, title: `${t.title} (kopi)`, spotsLeft: t.spotsTotal };
-    setTasks((prev) => [...prev, copy]);
+  const deleteTask = async (id) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
     setMenuOpen(null);
+    await supabase.from("tasks").delete().eq("id", id);
+  };
+
+  const duplicateTask = async (t) => {
+    const copy = { ...t, id: undefined, title: `${t.title} (kopi)`, spotsLeft: t.spotsTotal };
+    setMenuOpen(null);
+    const { data } = await supabase.from("tasks").insert({
+      title: copy.title, category: copy.category, icon: copy.icon, date: copy.date,
+      date_full: copy.dateFull, time: copy.time, location: copy.location,
+      points: copy.points, difficulty: copy.difficulty, urgent: copy.urgent,
+      spots_total: copy.spotsTotal, spots_left: copy.spotsTotal,
+    }).select().single();
+    if (data) {
+      setTasks((prev) => [...prev, { ...copy, id: data.id }]);
+    }
+  };
+
+  const saveTask = async (data) => {
+    const steps = data.description.split("\n").filter(Boolean);
+    if (editTask) {
+      await supabase.from("tasks").update({
+        title: data.title, category: data.category, icon: data.icon, date: data.date,
+        date_full: data.dateFull, time: data.time, location: data.location,
+        points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
+        spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
+      }).eq("id", editTask.id);
+      await supabase.from("task_steps").delete().eq("task_id", editTask.id);
+      if (steps.length > 0) {
+        await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: editTask.id, step_order: i + 1, text })));
+      }
+      setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) } : t));
+    } else {
+      const { data: row } = await supabase.from("tasks").insert({
+        title: data.title, category: data.category, icon: data.icon, date: data.date,
+        date_full: data.dateFull, time: data.time, location: data.location,
+        points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
+        spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
+      }).select().single();
+      if (row && steps.length > 0) {
+        await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: row.id, step_order: i + 1, text })));
+      }
+      if (row) {
+        setTasks((prev) => [...prev, { id: row.id, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) }]);
+      }
+    }
+    setShowNew(false); setEditTask(null);
   };
 
   return (
@@ -1168,14 +1254,7 @@ const AdminTasks = ({ tasks, setTasks }) => {
         })}
       </div>
 
-      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={(data) => {
-        if (editTask) {
-          setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data } : t));
-        } else {
-          setTasks((prev) => [...prev, { id: `t_${Date.now()}`, spotsLeft: parseInt(data.spots) || 2, spotsTotal: parseInt(data.spots) || 2, description: data.description.split("\n").filter(Boolean), icon: data.icon, ...data }]);
-        }
-        setShowNew(false); setEditTask(null);
-      }} />}
+      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} />}
     </div>
   );
 };
@@ -1279,9 +1358,22 @@ const AdminMembers = ({ currentUserRole }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
+  const [allMembers, setAllMembers] = useState(mockMembers);
   const isSuperAdmin = currentUserRole === "super_admin";
 
-  const filtered = mockMembers.filter((m) => {
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setAllMembers(data.map((p) => ({
+          id: p.id, name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "", points: p.points || 0, tasksDone: p.tasks_done || 0, role: p.role,
+        })));
+      }
+    });
+  }, []);
+
+  const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
     if (filter === "behind"  && m.points >= 30)  return false;
     if (filter === "reached" && m.points < 75)   return false;
@@ -1333,12 +1425,31 @@ const AdminMembers = ({ currentUserRole }) => {
 // ---- ROLLER (kun Super Admin) ----
 const AdminRoles = () => {
   const [members, setMembers] = useState(mockMembers);
+
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setMembers(data.map((p) => ({
+          id: p.id, name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "", role: p.role,
+        })));
+      }
+    });
+  }, []);
+
   const superAdmins = members.filter((m) => m.role === "super_admin");
   const admins      = members.filter((m) => m.role === "admin");
   const users       = members.filter((m) => m.role === "user");
 
-  const promote = (id, role) => setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
-  const demote  = (id) =>       setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
+  const promote = async (id, role) => {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
+    await supabase.from("profiles").update({ role }).eq("id", id);
+  };
+  const demote = async (id) => {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
+    await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+  };
 
   return (
     <div className="space-y-4">
@@ -1444,27 +1555,40 @@ const AdminSettings = () => {
 };
 
 // ---- AUDIT LOG (kun Super Admin) ----
-const AdminAuditLog = () => (
+const AdminAuditLog = () => {
+  const [logs, setLogs] = useState([]);
+  useEffect(() => {
+    supabase.from("audit_log").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+      if (data) setLogs(data);
+    });
+  }, []);
+  return (
   <div className="space-y-3">
     <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
       <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
       <p className="text-[11px] text-violet-900">Alle ændringer foretaget af Admins logges her. Loggen kan ikke slettes og opbevares i 5 år.</p>
     </div>
+    {logs.length === 0 ? (
+      <div className="text-center py-8 text-stone-400 text-sm">Ingen aktivitet endnu</div>
+    ) : (
     <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
-      {mockAuditLog.map((log) => (
+      {logs.map((log) => (
         <div key={log.id} className="flex gap-3 items-start px-4 py-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}>
             {log.type === "role_change" && <ShieldCheck className="w-4 h-4" />}
             {log.type === "task"        && <ListChecks className="w-4 h-4" />}
             {log.type === "member"      && <UserPlus className="w-4 h-4" />}
             {log.type === "settings"    && <DollarSign className="w-4 h-4" />}
+            {!["role_change","task","member","settings"].includes(log.type) && <Activity className="w-4 h-4" />}
           </div>
-          <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
+          <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor_name} · {new Date(log.created_at).toLocaleDateString("da-DK")}</div></div>
         </div>
       ))}
     </div>
+    )}
   </div>
-);
+  );
+};
 
 const BottomNav = ({ active, onChange }) => {
   const items = [
@@ -1494,7 +1618,8 @@ const BottomNav = ({ active, onChange }) => {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState({ ...mockUser, role: "user" });
+  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab] = useState("tasks");
   const [claimedIds, setClaimedIds] = useState(new Set());
   const [toast, setToast] = useState(null);
@@ -1503,32 +1628,84 @@ export default function App() {
   const [showSwaps, setShowSwaps] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState([]);
 
   const claimedTasks = useMemo(
-    () => mockTasks.filter((t) => claimedIds.has(t.id)),
-    [claimedIds]
+    () => tasks.filter((t) => claimedIds.has(t.id)),
+    [claimedIds, tasks]
   );
 
-  const handleAuth = (authData) => {
-    const initials = authData.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-    const autoRole = SUPER_ADMIN_EMAILS.includes(authData.email) ? "super_admin" : "user";
-    setCurrentUser({
-      ...mockUser,
-      name: authData.name,
-      email: authData.email,
-      phone: authData.phone || mockUser.phone,
-      team: authData.team,
-      initials,
-      role: autoRole,
-    });
+  // Load profile from Supabase and update currentUser
+  const loadProfile = async (userId) => {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (data) {
+      setCurrentUser({
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        phone: data.phone || "",
+        team: data.team || "",
+        initials: data.initials || data.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+        role: data.role || "user",
+        pointsEarned: data.points || 0,
+        tasksCompleted: data.tasks_done || 0,
+      });
+    }
     setIsAuthenticated(true);
-    setTab("tasks");
-    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${authData.name.split(" ")[0]}! 🎉` : `Velkommen tilbage, ${authData.name.split(" ")[0]}!`);
-    setTimeout(() => setWelcomeToast(null), 3000);
+    setAuthLoading(false);
   };
 
-  const handleLogout = () => {
+  // Listen for Supabase auth state changes (handles page reload, token refresh)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        await loadProfile(session.user.id);
+      } else {
+        setIsAuthenticated(false);
+        setAuthLoading(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load tasks from Supabase (with steps)
+  useEffect(() => {
+    const loadTasks = async () => {
+      const { data: taskRows } = await supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true });
+      if (taskRows && taskRows.length > 0) {
+        const mapped = taskRows.map((t) => ({
+          id: t.id,
+          title: t.title,
+          category: t.category,
+          icon: t.icon || "setup",
+          date: t.date,
+          dateFull: t.date_full || t.date,
+          time: t.time,
+          location: t.location,
+          points: t.points,
+          difficulty: t.difficulty,
+          urgent: t.urgent,
+          spotsLeft: t.spots_left,
+          spotsTotal: t.spots_total,
+          description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
+        }));
+        setTasks(mapped);
+      }
+    };
+    loadTasks();
+  }, []);
+
+  const handleAuth = (authData) => {
+    // Supabase auth is done — onAuthStateChange will set the user profile.
+    // Just show the welcome toast here.
+    const first = authData.name ? authData.name.split(" ")[0] : "";
+    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage, ${first}!`);
+    setTimeout(() => setWelcomeToast(null), 3000);
+    setTab("tasks");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsAuthenticated(false);
     setTab("tasks");
     setClaimedIds(new Set());
@@ -1538,15 +1715,35 @@ export default function App() {
     setSelectedTask(null);
   };
 
-  const handleClaim = (taskId) => {
+  const handleClaim = async (taskId) => {
     const next = new Set(claimedIds);
     next.add(taskId);
     setClaimedIds(next);
-    const task = mockTasks.find((t) => t.id === taskId);
-    setToast(`🎉 Tjansen er din! +${task.points} point`);
+    const task = tasks.find((t) => t.id === taskId);
+    setToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
     setTimeout(() => setToast(null), 2500);
     setTimeout(() => setTab("dashboard"), 900);
+    // Persist to Supabase (trigger auto-updates points + spots_left)
+    if (currentUser?.id) {
+      await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
+      // Refresh spots on the claimed task
+      const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", taskId).single();
+      if (updated) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
+      }
+    }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+          <div className="text-sm text-stone-500 font-medium">Indlæser...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated) {
     return (
@@ -1602,8 +1799,8 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
-            {tab === "scoreboard" && <ScoreboardScreen />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} />}
+            {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
                 <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
@@ -1611,23 +1808,14 @@ export default function App() {
                   <div className="flex flex-col items-center"><div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{currentUser.initials}</div><div className="text-xl font-bold mt-3">{currentUser.name}</div><div className="text-[11px] text-emerald-200 mt-1">{currentUser.team}</div></div>
                 </div>
                 <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.pointsEarned}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.tasksCompleted}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">#{mockUser.seasonRank}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.pointsEarned ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.tasksCompleted ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.team || "–"}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Hold</div></div>
                 </div>
                 <div className="px-5 mt-6 space-y-2">
-                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>
-                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>
-                  {/* Demo rolle-switcher */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <div className="text-[10px] uppercase tracking-widest font-bold text-amber-800 mb-2 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Demo: skift rolle</div>
-                    <div className="flex gap-1.5">
-                      {[["user","Bruger"],["admin","Admin"],["super_admin","Super Admin"]].map(([r,l]) => (
-                        <button key={r} onClick={() => setCurrentUser((u) => ({ ...u, role: r }))} className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${currentUser.role === r ? "text-white" : "bg-white text-stone-600 border border-stone-200"}`} style={currentUser.role === r ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{l}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {(currentUser.role === "admin" || currentUser.role === "super_admin") && (
+                  {currentUser?.email && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>}
+                  {currentUser?.phone && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>}
+                  {(currentUser?.role === "admin" || currentUser?.role === "super_admin") && (
                     <button onClick={() => setShowAdmin(true)} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.purple} 100%)` }}>
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>{currentUser.role === "super_admin" ? <Crown className="w-5 h-5" fill="white" /> : <ShieldCheck className="w-5 h-5" />}</div>
