@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
   Check, X, Filter, Search, Flame, Shield, Coffee, AlertCircle, ArrowLeft,
@@ -265,19 +266,26 @@ const AuthScreen = ({ onAuthenticated }) => {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validate()) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      onAuthenticated({
-        email,
-        name: name || "Mette Sørensen",
-        team: team || "Damer 2",
-        phone,
-        isNew: mode === "signup",
-      });
-    }, 800);
+    try {
+      if (mode === "login") {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) { setErrors({ email: error.message }); setLoading(false); return; }
+        onAuthenticated({ email: data.user.email, isNew: false });
+      } else {
+        const { data, error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { name, team } },
+        });
+        if (error) { setErrors({ email: error.message }); setLoading(false); return; }
+        onAuthenticated({ email: data.user?.email || email, name, team, phone, isNew: true });
+      }
+    } catch (err) {
+      setErrors({ email: "Noget gik galt – prøv igen" });
+    }
+    setLoading(false);
   };
 
   return (
@@ -503,10 +511,31 @@ const Dashboard = ({ claimedTasks }) => {
   );
 };
 
-const ScoreboardScreen = () => {
+const ScoreboardScreen = ({ currentUserId }) => {
   const [filter, setFilter] = useState("Alle hold");
-  const teams = ["Alle hold", ...Array.from(new Set(mockMembers.map((m) => m.team))).sort()];
-  const filteredMembers = filter === "Alle hold" ? [...mockMembers] : mockMembers.filter((m) => m.team === filter);
+  const [members, setMembers] = useState(mockMembers);
+
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setMembers(data.map((p) => ({
+          id: p.id,
+          name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "",
+          points: p.points || 0,
+          tasksDone: p.tasks_done || 0,
+          badges: 0,
+          streak: 0,
+          isCurrentUser: p.id === currentUserId,
+          role: p.role,
+        })));
+      }
+    });
+  }, [currentUserId]);
+
+  const teams = ["Alle hold", ...Array.from(new Set(members.map((m) => m.team).filter(Boolean))).sort()];
+  const filteredMembers = filter === "Alle hold" ? [...members] : members.filter((m) => m.team === filter);
   filteredMembers.sort((a, b) => b.points - a.points);
   const currentUserRank = filteredMembers.findIndex((m) => m.isCurrentUser) + 1;
 
@@ -1120,11 +1149,55 @@ const AdminTasks = ({ tasks, setTasks }) => {
   const [editTask, setEditTask]   = useState(null);
   const [menuOpen, setMenuOpen]   = useState(null);
 
-  const deleteTask = (id) => { setTasks((prev) => prev.filter((t) => t.id !== id)); setMenuOpen(null); };
-  const duplicateTask = (t) => {
-    const copy = { ...t, id: `t_${Date.now()}`, title: `${t.title} (kopi)`, spotsLeft: t.spotsTotal };
-    setTasks((prev) => [...prev, copy]);
+  const deleteTask = async (id) => {
+    setTasks((prev) => prev.filter((t) => t.id !== id));
     setMenuOpen(null);
+    await supabase.from("tasks").delete().eq("id", id);
+  };
+
+  const duplicateTask = async (t) => {
+    const copy = { ...t, id: undefined, title: `${t.title} (kopi)`, spotsLeft: t.spotsTotal };
+    setMenuOpen(null);
+    const { data } = await supabase.from("tasks").insert({
+      title: copy.title, category: copy.category, icon: copy.icon, date: copy.date,
+      date_full: copy.dateFull, time: copy.time, location: copy.location,
+      points: copy.points, difficulty: copy.difficulty, urgent: copy.urgent,
+      spots_total: copy.spotsTotal, spots_left: copy.spotsTotal,
+    }).select().single();
+    if (data) {
+      setTasks((prev) => [...prev, { ...copy, id: data.id }]);
+    }
+  };
+
+  const saveTask = async (data) => {
+    const steps = data.description.split("\n").filter(Boolean);
+    if (editTask) {
+      await supabase.from("tasks").update({
+        title: data.title, category: data.category, icon: data.icon, date: data.date,
+        date_full: data.dateFull, time: data.time, location: data.location,
+        points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
+        spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
+      }).eq("id", editTask.id);
+      await supabase.from("task_steps").delete().eq("task_id", editTask.id);
+      if (steps.length > 0) {
+        await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: editTask.id, step_order: i + 1, text })));
+      }
+      setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) } : t));
+    } else {
+      const { data: row } = await supabase.from("tasks").insert({
+        title: data.title, category: data.category, icon: data.icon, date: data.date,
+        date_full: data.dateFull, time: data.time, location: data.location,
+        points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
+        spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
+      }).select().single();
+      if (row && steps.length > 0) {
+        await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: row.id, step_order: i + 1, text })));
+      }
+      if (row) {
+        setTasks((prev) => [...prev, { id: row.id, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) }]);
+      }
+    }
+    setShowNew(false); setEditTask(null);
   };
 
   return (
@@ -1168,14 +1241,7 @@ const AdminTasks = ({ tasks, setTasks }) => {
         })}
       </div>
 
-      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={(data) => {
-        if (editTask) {
-          setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data } : t));
-        } else {
-          setTasks((prev) => [...prev, { id: `t_${Date.now()}`, spotsLeft: parseInt(data.spots) || 2, spotsTotal: parseInt(data.spots) || 2, description: data.description.split("\n").filter(Boolean), icon: data.icon, ...data }]);
-        }
-        setShowNew(false); setEditTask(null);
-      }} />}
+      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} />}
     </div>
   );
 };
@@ -1279,9 +1345,22 @@ const AdminMembers = ({ currentUserRole }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
+  const [allMembers, setAllMembers] = useState(mockMembers);
   const isSuperAdmin = currentUserRole === "super_admin";
 
-  const filtered = mockMembers.filter((m) => {
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setAllMembers(data.map((p) => ({
+          id: p.id, name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "", points: p.points || 0, tasksDone: p.tasks_done || 0, role: p.role,
+        })));
+      }
+    });
+  }, []);
+
+  const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
     if (filter === "behind"  && m.points >= 30)  return false;
     if (filter === "reached" && m.points < 75)   return false;
@@ -1333,12 +1412,31 @@ const AdminMembers = ({ currentUserRole }) => {
 // ---- ROLLER (kun Super Admin) ----
 const AdminRoles = () => {
   const [members, setMembers] = useState(mockMembers);
+
+  useEffect(() => {
+    supabase.from("profiles").select("id,name,initials,team,role").order("points", { ascending: false }).then(({ data }) => {
+      if (data && data.length > 0) {
+        setMembers(data.map((p) => ({
+          id: p.id, name: p.name,
+          initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          team: p.team || "", role: p.role,
+        })));
+      }
+    });
+  }, []);
+
   const superAdmins = members.filter((m) => m.role === "super_admin");
   const admins      = members.filter((m) => m.role === "admin");
   const users       = members.filter((m) => m.role === "user");
 
-  const promote = (id, role) => setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
-  const demote  = (id) =>       setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
+  const promote = async (id, role) => {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
+    await supabase.from("profiles").update({ role }).eq("id", id);
+  };
+  const demote = async (id) => {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
+    await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+  };
 
   return (
     <div className="space-y-4">
@@ -1506,29 +1604,85 @@ export default function App() {
   const [tasks, setTasks] = useState(mockTasks);
 
   const claimedTasks = useMemo(
-    () => mockTasks.filter((t) => claimedIds.has(t.id)),
-    [claimedIds]
+    () => tasks.filter((t) => claimedIds.has(t.id)),
+    [claimedIds, tasks]
   );
 
-  const handleAuth = (authData) => {
-    const initials = authData.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
-    const autoRole = SUPER_ADMIN_EMAILS.includes(authData.email) ? "super_admin" : "user";
-    setCurrentUser({
-      ...mockUser,
-      name: authData.name,
-      email: authData.email,
-      phone: authData.phone || mockUser.phone,
-      team: authData.team,
-      initials,
-      role: autoRole,
-    });
+  // Load profile from Supabase and update currentUser
+  const loadProfile = async (userId, isNew = false) => {
+    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
+    if (data) {
+      setCurrentUser({
+        ...mockUser,
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        phone: data.phone || mockUser.phone,
+        team: data.team || mockUser.team,
+        initials: data.initials || data.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+        role: data.role || "user",
+        pointsEarned: data.points || 0,
+        tasksCompleted: data.tasks_done || 0,
+      });
+    }
     setIsAuthenticated(true);
     setTab("tasks");
-    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${authData.name.split(" ")[0]}! 🎉` : `Velkommen tilbage, ${authData.name.split(" ")[0]}!`);
-    setTimeout(() => setWelcomeToast(null), 3000);
+    if (isNew) {
+      setWelcomeToast("Velkommen til RVK Frivillig! 🎉");
+      setTimeout(() => setWelcomeToast(null), 3500);
+    }
   };
 
-  const handleLogout = () => {
+  // Listen for Supabase auth state changes (handles page reload, token refresh)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        await loadProfile(session.user.id);
+      } else {
+        setIsAuthenticated(false);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load tasks from Supabase (with steps)
+  useEffect(() => {
+    const loadTasks = async () => {
+      const { data: taskRows } = await supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true });
+      if (taskRows && taskRows.length > 0) {
+        const mapped = taskRows.map((t) => ({
+          id: t.id,
+          title: t.title,
+          category: t.category,
+          icon: t.icon || "setup",
+          date: t.date,
+          dateFull: t.date_full || t.date,
+          time: t.time,
+          location: t.location,
+          points: t.points,
+          difficulty: t.difficulty,
+          urgent: t.urgent,
+          spotsLeft: t.spots_left,
+          spotsTotal: t.spots_total,
+          description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
+        }));
+        setTasks(mapped);
+      }
+    };
+    loadTasks();
+  }, []);
+
+  const handleAuth = (authData) => {
+    // Supabase auth is done — onAuthStateChange will set the user profile.
+    // Just show the welcome toast here.
+    const first = authData.name ? authData.name.split(" ")[0] : "";
+    setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage, ${first}!`);
+    setTimeout(() => setWelcomeToast(null), 3000);
+    setTab("tasks");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setIsAuthenticated(false);
     setTab("tasks");
     setClaimedIds(new Set());
@@ -1538,14 +1692,23 @@ export default function App() {
     setSelectedTask(null);
   };
 
-  const handleClaim = (taskId) => {
+  const handleClaim = async (taskId) => {
     const next = new Set(claimedIds);
     next.add(taskId);
     setClaimedIds(next);
-    const task = mockTasks.find((t) => t.id === taskId);
-    setToast(`🎉 Tjansen er din! +${task.points} point`);
+    const task = tasks.find((t) => t.id === taskId);
+    setToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
     setTimeout(() => setToast(null), 2500);
     setTimeout(() => setTab("dashboard"), 900);
+    // Persist to Supabase (trigger auto-updates points + spots_left)
+    if (currentUser?.id) {
+      await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
+      // Refresh spots on the claimed task
+      const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", taskId).single();
+      if (updated) {
+        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
+      }
+    }
   };
 
   if (!isAuthenticated) {
@@ -1603,7 +1766,7 @@ export default function App() {
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
             {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
-            {tab === "scoreboard" && <ScoreboardScreen />}
+            {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
                 <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
