@@ -249,7 +249,13 @@ const AuthScreen = ({ onAuthenticated }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const teams = ["Damer Elite", "Damer 2", "Damer 3", "Herrer 1", "Herrer 2", "U17 Piger", "U17 Drenge", "U15 Piger", "U15 Drenge", "Mini-volley"];
+  const [teams, setTeams] = useState([]);
+
+  useEffect(() => {
+    supabase.from("teams").select("name").order("name").then(({ data }) => {
+      if (data) setTeams(data.map((t) => t.name));
+    });
+  }, []);
 
   const validate = () => {
     const e = {};
@@ -932,6 +938,7 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
     { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: 0 },
     { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
     { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
+    { id: "teams",     label: "Hold",           icon: Users,       superOnly: true  },
     { id: "roles",     label: "Roller",         icon: ShieldCheck, superOnly: true  },
     { id: "settings",  label: "Indstillinger",  icon: DollarSign,  superOnly: true  },
     { id: "audit",     label: "Audit log",      icon: FileText,    superOnly: true  },
@@ -979,6 +986,7 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
         {section === "approvals" && <AdminApprovals />}
         {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} />}
         {section === "members"   && <AdminMembers currentUserRole={currentUserRole} />}
+        {section === "teams"     && isSuperAdmin && <AdminTeams />}
         {section === "roles"     && isSuperAdmin && <AdminRoles />}
         {section === "settings"  && isSuperAdmin && <AdminSettings />}
         {section === "audit"     && isSuperAdmin && <AdminAuditLog />}
@@ -1422,6 +1430,115 @@ const AdminMembers = ({ currentUserRole }) => {
   );
 };
 
+// ---- HOLD (kun Super Admin) ----
+const AdminTeams = () => {
+  const [teams, setTeams] = useState([]);
+  const [newName, setNewName] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [editValue, setEditValue] = useState("");
+
+  const reload = () => {
+    supabase.from("teams").select("*").order("name").then(({ data }) => {
+      if (data) setTeams(data);
+    });
+  };
+
+  useEffect(() => { reload(); }, []);
+
+  const addTeam = async () => {
+    const name = newName.trim();
+    if (!name) return;
+    const { error } = await supabase.from("teams").insert({ name });
+    if (!error) { setNewName(""); reload(); }
+  };
+
+  const saveEdit = async (id, oldName) => {
+    const name = editValue.trim();
+    if (!name || name === oldName) { setEditing(null); return; }
+    await supabase.from("teams").update({ name }).eq("id", id);
+    // Opdater også alle profiler der bruger det gamle navn
+    await supabase.from("profiles").update({ team: name }).eq("team", oldName);
+    setEditing(null);
+    reload();
+  };
+
+  const deleteTeam = async (id) => {
+    if (!confirm("Er du sikker? Hold kan ikke gendannes.")) return;
+    await supabase.from("teams").delete().eq("id", id);
+    reload();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl p-4 text-white" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+        <div className="flex items-start gap-3">
+          <Users className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-bold text-[14px]">Administrér hold</div>
+            <p className="text-[12px] text-white/90 mt-0.5 leading-relaxed">Tilføj nye hold eller omdøb eksisterende. Ændringer reflekteres automatisk på alle medlemmer.</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Tilføj nyt hold */}
+      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Tilføj nyt hold</div>
+        <div className="flex gap-2">
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && addTeam()}
+            placeholder="F.eks. Damer 4"
+            className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:bg-white"
+          />
+          <button onClick={addTeam} disabled={!newName.trim()} className="px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            <Plus className="w-4 h-4 inline mr-1" />Tilføj
+          </button>
+        </div>
+      </div>
+
+      {/* Liste over hold */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Alle hold ({teams.length})</div>
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {teams.length === 0 ? (
+            <div className="px-4 py-8 text-center text-stone-400 text-sm">Ingen hold endnu</div>
+          ) : teams.map((t) => (
+            <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                <Users className="w-4 h-4" />
+              </div>
+              {editing === t.id ? (
+                <>
+                  <input
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveEdit(t.id, t.name)}
+                    autoFocus
+                    className="flex-1 bg-stone-50 border border-emerald-300 rounded-lg px-2 py-1 text-sm outline-none"
+                  />
+                  <button onClick={() => saveEdit(t.id, t.name)} className="text-[11px] font-bold text-white px-2.5 py-1 rounded-lg" style={{ background: theme.greenMid }}>Gem</button>
+                  <button onClick={() => setEditing(null)} className="text-[11px] font-bold text-stone-600 px-2 py-1">Fortryd</button>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1 font-semibold text-[14px] text-stone-900">{t.name}</div>
+                  <button onClick={() => { setEditing(t.id); setEditValue(t.name); }} className="p-1.5 hover:bg-stone-100 rounded-lg">
+                    <Pencil className="w-4 h-4 text-stone-500" />
+                  </button>
+                  <button onClick={() => deleteTeam(t.id)} className="p-1.5 hover:bg-pink-50 rounded-lg">
+                    <Trash2 className="w-4 h-4 text-pink-500" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ---- ROLLER (kun Super Admin) ----
 const AdminRoles = () => {
   const [members, setMembers] = useState([]);
@@ -1645,6 +1762,56 @@ const AdminAuditLog = () => {
   );
 };
 
+const ProfileAvatar = ({ currentUser, setCurrentUser, setToast }) => {
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setToast("Billedet er for stort (max 5 MB)");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    setUploading(true);
+    const ext = file.name.split(".").pop();
+    const path = `${currentUser.id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { cacheControl: "3600", upsert: true });
+    if (upErr) {
+      setToast("Upload fejlede: " + upErr.message);
+      setTimeout(() => setToast(null), 3000);
+      setUploading(false);
+      return;
+    }
+    const { data: { publicUrl } } = supabase.storage.from("avatars").getPublicUrl(path);
+    await supabase.from("profiles").update({ avatar_url: publicUrl }).eq("id", currentUser.id);
+    setCurrentUser((u) => ({ ...u, avatarUrl: publicUrl }));
+    setToast("✨ Profilbillede opdateret");
+    setTimeout(() => setToast(null), 2000);
+    setUploading(false);
+  };
+
+  return (
+    <div className="flex flex-col items-center">
+      <label className="relative cursor-pointer group">
+        {currentUser?.avatarUrl ? (
+          <img src={currentUser.avatarUrl} alt={currentUser.name} className="w-24 h-24 rounded-full object-cover border-4 border-white/30 shadow-xl" />
+        ) : (
+          <div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            {currentUser?.initials}
+          </div>
+        )}
+        <div className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-white text-stone-700 flex items-center justify-center shadow-lg border-2 border-white">
+          {uploading ? <div className="w-4 h-4 border-2 border-stone-300 border-t-stone-700 rounded-full animate-spin" /> : <Camera className="w-4 h-4" />}
+        </div>
+        <input type="file" accept="image/*" className="hidden" onChange={handleUpload} disabled={uploading} />
+      </label>
+      <div className="text-xl font-bold mt-3">{currentUser?.name}</div>
+      <div className="text-[11px] text-emerald-200 mt-1">{currentUser?.team}</div>
+    </div>
+  );
+};
+
 const RequestAdminButton = ({ currentUser, setToast }) => {
   const [requested, setRequested] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1745,6 +1912,7 @@ export default function App() {
         role: data.role || "user",
         pointsEarned: data.points || 0,
         tasksCompleted: data.tasks_done || 0,
+        avatarUrl: data.avatar_url || null,
       });
     }
     setIsAuthenticated(true);
@@ -1901,7 +2069,7 @@ export default function App() {
               <div className="pb-24">
                 <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
                   <h1 className="text-2xl font-bold mb-6">Min profil</h1>
-                  <div className="flex flex-col items-center"><div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{currentUser.initials}</div><div className="text-xl font-bold mt-3">{currentUser.name}</div><div className="text-[11px] text-emerald-200 mt-1">{currentUser.team}</div></div>
+                  <ProfileAvatar currentUser={currentUser} setCurrentUser={setCurrentUser} setToast={setToast} />
                 </div>
                 <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.pointsEarned ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
