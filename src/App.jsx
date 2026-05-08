@@ -869,6 +869,603 @@ const NewSwapModal = ({ claimedTasks, onClose }) => {
   );
 };
 
+// ============ ADMIN CENTER ============
+
+// Bootstrap: disse e-mails får automatisk super_admin
+const SUPER_ADMIN_EMAILS = ["formand@randersVK.dk", "admin@randersVK.dk"];
+
+const AdminInput = ({ label, type = "text", placeholder, icon, textarea, value, onChange }) => (
+  <div>
+    {label && <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">{label}</label>}
+    <div className="relative">
+      {icon && <div className="absolute left-3 top-3 text-stone-400 pointer-events-none">{icon}</div>}
+      {textarea
+        ? <textarea rows={3} placeholder={placeholder} value={value} onChange={onChange} className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 focus:bg-white outline-none resize-none" />
+        : <input type={type} placeholder={placeholder} value={value} onChange={onChange} className={`w-full ${icon ? "pl-10" : "pl-3"} pr-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 focus:bg-white outline-none`} />
+      }
+    </div>
+  </div>
+);
+
+const MenuButton = ({ icon, label, danger, onClick }) => (
+  <button onClick={onClick} className={`w-full flex items-center gap-2 px-3 py-2 text-[12px] font-medium hover:bg-stone-50 text-left ${danger ? "text-pink-700" : "text-stone-700"}`}>
+    {icon}{label}
+  </button>
+);
+
+// ---- ADMIN SHELL ----
+const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
+  const [section, setSection] = useState("overview");
+  const isSuperAdmin = currentUserRole === "super_admin";
+
+  const sections = [
+    { id: "overview",  label: "Oversigt",      icon: Activity,    superOnly: false },
+    { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: mockPendingMembers.length },
+    { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
+    { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
+    { id: "roles",     label: "Roller",         icon: ShieldCheck, superOnly: true  },
+    { id: "settings",  label: "Indstillinger",  icon: DollarSign,  superOnly: true  },
+    { id: "audit",     label: "Audit log",      icon: FileText,    superOnly: true  },
+  ];
+
+  return (
+    <div className="pb-24 bg-stone-50 min-h-screen">
+      {/* Header */}
+      <div className="px-5 pt-12 pb-5 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 60%, ${theme.purple} 100%)` }}>
+        <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <div className="absolute -top-16 -right-16 w-56 h-56 rounded-full blur-3xl" style={{ background: theme.pink }} />
+        </div>
+        <div className="relative">
+          <button onClick={onBack} className="inline-flex items-center gap-1.5 text-white/90 text-[12px] mb-3"><ArrowLeft className="w-4 h-4" />Tilbage til appen</button>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">Admin-panel</div>
+              <h1 className="text-2xl font-bold mt-0.5">Kontrolcenter</h1>
+            </div>
+            <RoleBadge role={currentUserRole} large />
+          </div>
+          {/* Section tabs */}
+          <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+            {sections.map((s) => {
+              const Icon = s.icon;
+              const disabled = s.superOnly && !isSuperAdmin;
+              const active = section === s.id;
+              return (
+                <button key={s.id} disabled={disabled} onClick={() => !disabled && setSection(s.id)}
+                  className={`shrink-0 relative inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-all ${active ? "bg-white text-emerald-900 shadow-md" : disabled ? "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed" : "bg-white/10 text-white border border-white/20 hover:bg-white/20"}`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {s.label}
+                  {s.badge > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black text-white" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>{s.badge}</span>}
+                  {disabled && <Lock className="w-3 h-3 opacity-60" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 mt-5">
+        {section === "overview"  && <AdminOverview onNavigate={setSection} tasks={tasks} />}
+        {section === "approvals" && <AdminApprovals />}
+        {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} />}
+        {section === "members"   && <AdminMembers currentUserRole={currentUserRole} />}
+        {section === "roles"     && isSuperAdmin && <AdminRoles />}
+        {section === "settings"  && isSuperAdmin && <AdminSettings />}
+        {section === "audit"     && isSuperAdmin && <AdminAuditLog />}
+      </div>
+    </div>
+  );
+};
+
+// ---- OVERSIGT ----
+const AdminOverview = ({ onNavigate, tasks }) => {
+  const totalMembers  = mockMembers.length;
+  const goalReached   = mockMembers.filter((m) => m.points >= 75).length;
+  const behindCount   = mockMembers.filter((m) => m.points < 30).length;
+  const openSpots     = tasks.reduce((s, t) => s + t.spotsLeft, 0);
+  const avgPoints     = Math.round(mockMembers.reduce((s, m) => s + m.points, 0) / totalMembers);
+
+  return (
+    <div className="space-y-5">
+      {/* Pending alert */}
+      {mockPendingMembers.length > 0 && (
+        <button onClick={() => onNavigate("approvals")} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><UserCheck className="w-5 h-5" /></div>
+            <div className="flex-1"><div className="font-bold text-[15px]">{mockPendingMembers.length} {mockPendingMembers.length === 1 ? "medlem venter" : "medlemmer venter"} på godkendelse</div><div className="text-[11px] text-white/80 mt-0.5">Tryk for at gennemgå ansøgninger</div></div>
+            <ChevronRight className="w-5 h-5 opacity-70" />
+          </div>
+        </button>
+      )}
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 gap-3">
+        {[
+          { label: "Aktive medlemmer", value: totalMembers,          icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
+          { label: "Nået sæsonmål",    value: `${goalReached}/${totalMembers}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
+          { label: "Gns. point",       value: `${avgPoints} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
+          { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
+        ].map((s, i) => (
+          <div key={i} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-2.5" style={{ background: s.accent, color: s.color }}>{s.icon}</div>
+            <div className="text-2xl font-black text-stone-900">{s.value}</div>
+            <div className="text-[11px] text-stone-500 font-medium mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Frivillighedsbidrag */}
+      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+        <div className="flex items-center justify-between mb-3">
+          <div><div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Frivillighedsbidrag</div><div className="font-bold text-stone-900 mt-0.5">Sæsonens status</div></div>
+          <AlertTriangle className="w-5 h-5 text-pink-500" />
+        </div>
+        {[
+          { label: "🎉 Har nået målet", count: goalReached,                                  color: theme.greenMid },
+          { label: "🟣 På vej (30–74 pt)", count: totalMembers - goalReached - behindCount,  color: theme.purple },
+          { label: "⚠️ Bagud (under 30 pt)", count: behindCount,                             color: theme.pink },
+        ].map((row, i) => {
+          const pct = Math.round((row.count / totalMembers) * 100);
+          return (
+            <div key={i} className="mb-2.5">
+              <div className="flex justify-between text-[12px] mb-1"><span className="text-stone-700">{row.label}</span><span className="font-bold">{row.count}</span></div>
+              <div className="h-2 bg-stone-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: row.color }} /></div>
+            </div>
+          );
+        })}
+        <button className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-bold text-white flex items-center justify-center gap-1.5" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+          <Download className="w-3.5 h-3.5" />Eksportér bidragsliste
+        </button>
+      </div>
+
+      {/* Seneste audit */}
+      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Seneste aktivitet</div>
+        <div className="space-y-2.5">
+          {mockAuditLog.slice(0, 3).map((log) => (
+            <div key={log.id} className="flex gap-3 items-start">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}><Activity className="w-4 h-4" /></div>
+              <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---- GODKENDELSER ----
+const AdminApprovals = () => {
+  const [pending, setPending] = useState(mockPendingMembers);
+  const [done, setDone]       = useState([]);
+  const [expanded, setExpanded] = useState(null);
+  const [rejecting, setRejecting] = useState(null);
+  const [reason, setReason]    = useState("");
+
+  const approve = (a) => { setPending((p) => p.filter((x) => x.id !== a.id)); setDone((d) => [{ ...a, action: "approved" }, ...d]); setExpanded(null); };
+  const reject  = (a) => { setPending((p) => p.filter((x) => x.id !== a.id)); setDone((d) => [{ ...a, action: "rejected", reason }, ...d]); setRejecting(null); setReason(""); };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+        <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-violet-900 leading-relaxed">Nye medlemmer får adgang til appen når du godkender dem. De modtager automatisk e-mail med resultatet.</p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Afventer ({pending.length})</div>
+        {pending.length > 1 && <button onClick={() => { pending.forEach(approve); }} className="text-[11px] font-bold text-emerald-700">Godkend alle</button>}
+      </div>
+
+      {pending.length === 0 ? (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center"><CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-500" /><p className="text-[13px] font-semibold text-emerald-900">Alle ansøgninger behandlet!</p></div>
+      ) : (
+        pending.map((a) => (
+          <div key={a.id} className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
+            <button onClick={() => setExpanded(expanded === a.id ? null : a.id)} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
+              <div className="w-11 h-11 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{a.initials}</div>
+              <div className="flex-1 min-w-0"><div className="font-bold text-[14px] text-stone-900">{a.name}</div><div className="text-[11px] text-stone-500">{a.team} · {a.appliedOn}</div></div>
+              <ChevronDown className={`w-4 h-4 text-stone-400 transition-transform ${expanded === a.id ? "rotate-180" : ""}`} />
+            </button>
+            {expanded === a.id && (
+              <div className="px-4 pb-4 border-t border-stone-100 bg-stone-50/50 pt-3 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white border border-stone-200 rounded-xl p-2"><div className="text-[9px] uppercase tracking-wider font-bold text-stone-400 flex items-center gap-1 mb-0.5"><Mail className="w-3 h-3" />E-mail</div><div className="text-[11px] font-semibold text-stone-700 truncate">{a.email}</div></div>
+                  <div className="bg-white border border-stone-200 rounded-xl p-2"><div className="text-[9px] uppercase tracking-wider font-bold text-stone-400 flex items-center gap-1 mb-0.5"><Phone className="w-3 h-3" />Telefon</div><div className="text-[11px] font-semibold text-stone-700">{a.phone}</div></div>
+                </div>
+                <div className="bg-white border border-stone-200 rounded-xl p-2.5 text-[12px] text-stone-700">"{a.motivation}"</div>
+                {a.referredBy && <div className="flex items-center gap-2 text-[12px] text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2"><ThumbsUp className="w-3.5 h-3.5 shrink-0" />Anbefalet af <strong>{a.referredBy}</strong></div>}
+
+                {rejecting === a.id ? (
+                  <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 space-y-2">
+                    <label className="text-[11px] font-bold text-pink-900 uppercase tracking-wider block">Begrundelse</label>
+                    <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} placeholder="Fx: Hold-tilknytning kunne ikke verificeres…" className="w-full bg-white border border-pink-200 rounded-lg px-2.5 py-1.5 text-[12px] outline-none resize-none focus:border-pink-400" />
+                    <div className="flex gap-2">
+                      <button onClick={() => setRejecting(null)} className="flex-1 py-2 rounded-lg bg-white border border-stone-200 text-[12px] font-semibold">Fortryd</button>
+                      <button onClick={() => reject(a)} disabled={!reason.trim()} className="flex-1 py-2 rounded-lg bg-pink-600 text-white text-[12px] font-bold disabled:opacity-50">Bekræft afvisning</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button onClick={() => setRejecting(a.id)} className="flex-1 py-2.5 rounded-xl bg-white border border-stone-200 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-1.5"><UserX className="w-3.5 h-3.5" />Afvis</button>
+                    <button onClick={() => approve(a)} className="flex-[2] py-2.5 rounded-xl text-white text-[13px] font-bold shadow-md flex items-center justify-center gap-1.5 active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><UserCheck className="w-3.5 h-3.5" />Godkend</button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))
+      )}
+
+      {done.length > 0 && (
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {done.map((p) => (
+            <div key={p.id} className="flex items-center gap-3 px-4 py-3">
+              <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${p.action === "approved" ? "bg-emerald-100 text-emerald-700" : "bg-pink-100 text-pink-700"}`}>
+                {p.action === "approved" ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+              </div>
+              <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-stone-900">{p.name}</div><div className="text-[11px] text-stone-500">{p.action === "approved" ? "Godkendt" : "Afvist"} · Lige nu</div></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ---- OPGAVESTYRING ----
+const AdminTasks = ({ tasks, setTasks }) => {
+  const [showNew, setShowNew]     = useState(false);
+  const [editTask, setEditTask]   = useState(null);
+  const [menuOpen, setMenuOpen]   = useState(null);
+
+  const deleteTask = (id) => { setTasks((prev) => prev.filter((t) => t.id !== id)); setMenuOpen(null); };
+  const duplicateTask = (t) => {
+    const copy = { ...t, id: `t_${Date.now()}`, title: `${t.title} (kopi)`, spotsLeft: t.spotsTotal };
+    setTasks((prev) => [...prev, copy]);
+    setMenuOpen(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <button onClick={() => setShowNew(true)} className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+        <Plus className="w-4 h-4" />Opret ny opgave
+      </button>
+
+      <div className="space-y-2.5">
+        {tasks.map((t) => {
+          const filled = t.spotsTotal - t.spotsLeft;
+          const pct    = Math.round((filled / t.spotsTotal) * 100);
+          return (
+            <div key={t.id} className="bg-white rounded-xl p-3.5 border border-stone-100 shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-5 h-5" /></div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div><div className="font-bold text-[14px] text-stone-900">{t.title}</div><div className="text-[11px] text-stone-500 mt-0.5">{t.date} · {t.time}</div></div>
+                    <div className="relative">
+                      <button onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
+                      {menuOpen === t.id && (
+                        <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-44 z-30">
+                          <MenuButton icon={<Pencil className="w-3.5 h-3.5" />} label="Rediger" onClick={() => { setEditTask(t); setMenuOpen(null); }} />
+                          <MenuButton icon={<Copy className="w-3.5 h-3.5" />} label="Duplikér" onClick={() => duplicateTask(t)} />
+                          <div className="h-px bg-stone-100 my-1" />
+                          <MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet opgave" danger onClick={() => deleteTask(t.id)} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? `linear-gradient(90deg, ${theme.greenMid}, ${theme.greenLight})` : `linear-gradient(90deg, ${theme.purple}, ${theme.pink})` }} /></div>
+                    <span className="text-[10px] font-bold text-stone-600">{filled}/{t.spotsTotal}</span>
+                    <span className="px-1.5 py-0.5 rounded-md text-white text-[10px] font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={(data) => {
+        if (editTask) {
+          setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data } : t));
+        } else {
+          setTasks((prev) => [...prev, { id: `t_${Date.now()}`, spotsLeft: parseInt(data.spots) || 2, spotsTotal: parseInt(data.spots) || 2, description: data.description.split("\n").filter(Boolean), icon: data.icon, ...data }]);
+        }
+        setShowNew(false); setEditTask(null);
+      }} />}
+    </div>
+  );
+};
+
+const TaskFormModal = ({ task, onClose, onSave }) => {
+  const [title, setTitle]       = useState(task?.title || "");
+  const [category, setCategory] = useState(task?.category || "Dommerbord");
+  const [icon, setIcon]         = useState(task?.icon || "whistle");
+  const [date, setDate]         = useState(task?.date || "");
+  const [time, setTime]         = useState(task?.time || "");
+  const [location, setLocation] = useState(task?.location || "");
+  const [points, setPoints]     = useState(task?.points || 15);
+  const [spots, setSpots]       = useState(task?.spotsTotal || 2);
+  const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
+  const [urgent, setUrgent]     = useState(task?.urgent || false);
+  const [description, setDesc]  = useState(task?.description?.join("\n") || "");
+
+  const iconOptions = [
+    { id: "whistle", label: "Dommerbord" },
+    { id: "coffee",  label: "Kiosk" },
+    { id: "setup",   label: "Opsætning" },
+    { id: "cake",    label: "Bagning" },
+  ];
+
+  const handleSave = () => {
+    if (!title.trim() || !date.trim()) return;
+    onSave({ title, category, icon, date, dateFull: date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[92vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between z-10">
+          <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+          <h3 className="text-lg font-bold mt-2">{task ? "Rediger opgave" : "Ny opgave"}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-5 space-y-4 pb-28">
+          <AdminInput label="Titel" placeholder="F.eks. Dommerbord – U15 kamp" value={title} onChange={(e) => setTitle(e.target.value)} />
+
+          {/* Kategori + ikon */}
+          <div>
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Kategori</label>
+            <div className="grid grid-cols-4 gap-2">
+              {iconOptions.map((o) => (
+                <button key={o.id} onClick={() => { setIcon(o.id); setCategory(o.label); }}
+                  className={`py-3 rounded-xl border flex flex-col items-center gap-1 text-[10px] font-semibold transition-all ${icon === o.id ? "border-violet-400 bg-violet-50 text-violet-700" : "border-stone-200 text-stone-600 hover:border-stone-300"}`}>
+                  <CategoryIcon type={o.id} className="w-5 h-5" />{o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <AdminInput label="Dato" placeholder="Lør 26. apr" value={date} onChange={(e) => setDate(e.target.value)} />
+            <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />
+          </div>
+
+          <AdminInput label="Lokation" placeholder="Bane 1, Arena Randers" icon={<MapPin className="w-4 h-4" />} value={location} onChange={(e) => setLocation(e.target.value)} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <AdminInput label="Point" type="number" placeholder="15" icon={<Zap className="w-4 h-4" />} value={points} onChange={(e) => setPoints(e.target.value)} />
+            <AdminInput label="Pladser" type="number" placeholder="2" icon={<Users className="w-4 h-4" />} value={spots} onChange={(e) => setSpots(e.target.value)} />
+          </div>
+
+          {/* Sværhedsgrad */}
+          <div>
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sværhedsgrad</label>
+            <div className="flex gap-2">
+              {["Let","Medium","Hård"].map((d) => (
+                <button key={d} onClick={() => setDiff(d)} className={`flex-1 py-2 rounded-lg text-[12px] font-semibold transition-all border ${difficulty === d ? "border-violet-400 bg-violet-50 text-violet-700" : "border-stone-200 text-stone-600 hover:border-stone-300"}`}>{d}</button>
+              ))}
+            </div>
+          </div>
+
+          {/* Haster toggle */}
+          <div className="flex items-center justify-between bg-pink-50 border border-pink-200 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2"><Flame className="w-4 h-4 text-pink-600" /><div><div className="text-[13px] font-bold text-pink-900">Haster-opgave</div><div className="text-[11px] text-pink-700">Vises med rød markering</div></div></div>
+            <button onClick={() => setUrgent(!urgent)} className={`w-11 h-6 rounded-full relative transition-colors ${urgent ? "" : "bg-stone-300"}`} style={urgent ? { background: `linear-gradient(90deg, ${theme.pink}, ${theme.purple})` } : {}}>
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-transform ${urgent ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
+          <AdminInput label="Vejledning (ét trin pr. linje)" placeholder={"Mød op 15 min før...\nTjek udstyr...\nAflever skema..."} textarea value={description} onChange={(e) => setDesc(e.target.value)} />
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
+          <button onClick={handleSave} disabled={!title.trim()} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            <Save className="w-4 h-4" />{task ? "Gem ændringer" : "Opret opgave"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---- MEDLEMMER ----
+const AdminMembers = ({ currentUserRole }) => {
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [menuOpen, setMenuOpen] = useState(null);
+  const isSuperAdmin = currentUserRole === "super_admin";
+
+  const filtered = mockMembers.filter((m) => {
+    if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
+    if (filter === "behind"  && m.points >= 30)  return false;
+    if (filter === "reached" && m.points < 75)   return false;
+    return true;
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 border border-stone-200 shadow-sm">
+        <Search className="w-4 h-4 text-stone-400" />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søg medlem..." className="flex-1 bg-transparent outline-none text-sm" />
+      </div>
+      <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+        {[["all","Alle"],["reached","Nået mål"],["behind","Bagud"]].map(([id,label]) => (
+          <button key={id} onClick={() => setFilter(id)} className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === id ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`} style={filter === id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>{label}</button>
+        ))}
+      </div>
+      <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+        {filtered.map((m) => {
+          const reached = m.points >= 75;
+          const behind  = m.points < 30;
+          return (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3 relative">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><RoleBadge role={m.role} /></div>
+                <div className="text-[11px] text-stone-500 truncate">{m.team} · {m.tasksDone} opgaver</div>
+              </div>
+              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 75</div></div>
+              <div className="relative">
+                <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
+                {menuOpen === m.id && (
+                  <div className="absolute top-full right-0 mt-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-48 z-30">
+                    <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => setMenuOpen(null)} />
+                    <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => setMenuOpen(null)} />
+                    {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => setMenuOpen(null)} /></>}
+                    {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => setMenuOpen(null)} /></>}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ---- ROLLER (kun Super Admin) ----
+const AdminRoles = () => {
+  const [members, setMembers] = useState(mockMembers);
+  const superAdmins = members.filter((m) => m.role === "super_admin");
+  const admins      = members.filter((m) => m.role === "admin");
+  const users       = members.filter((m) => m.role === "user");
+
+  const promote = (id, role) => setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
+  const demote  = (id) =>       setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl p-4 text-white" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+        <div className="flex items-start gap-3">
+          <Crown className="w-5 h-5 shrink-0 mt-0.5" fill="white" />
+          <div><div className="font-bold text-[14px]">Du er Super Admin</div><p className="text-[12px] text-white/90 mt-0.5 leading-relaxed">Udnæv og fjern Admins. Alle ændringer logges permanent i audit-loggen.</p></div>
+        </div>
+      </div>
+
+      {/* Super Admins */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Super Admins ({superAdmins.length})</div>
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {superAdmins.map((m) => (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
+              <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-stone-900">{m.name}</div><div className="text-[11px] text-stone-500">Siden {m.roleSince}</div></div>
+              <RoleBadge role="super_admin" />
+              {superAdmins.length > 1 && !m.isCurrentUser && <button onClick={() => demote(m.id)} className="text-[11px] text-pink-600 font-semibold px-2 py-1 rounded-lg hover:bg-pink-50 ml-1">Fjern</button>}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Admins */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Admins ({admins.length})</div>
+        </div>
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {admins.map((m) => (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
+              <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-stone-900">{m.name}</div><div className="text-[11px] text-stone-500">Siden {m.roleSince || "—"}</div></div>
+              <RoleBadge role="admin" />
+              <button onClick={() => demote(m.id)} className="text-[11px] text-pink-600 font-semibold px-2 py-1 rounded-lg hover:bg-pink-50 ml-1">Fjern</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Promover bruger */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Promover til Admin</div>
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {users.slice(0, 5).map((m) => (
+            <div key={m.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
+              <div className="flex-1 min-w-0"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><div className="text-[11px] text-stone-500">{m.team}</div></div>
+              <button onClick={() => promote(m.id, "admin")} className="text-[11px] font-bold text-white px-3 py-1.5 rounded-lg shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>Gør til Admin</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-stone-100 rounded-xl p-3 text-[11px] text-stone-600 space-y-1 leading-relaxed">
+        <div className="font-bold text-stone-700 flex items-center gap-1 mb-1"><Info className="w-3.5 h-3.5" />Best practices</div>
+        <div>• Minimum 2 Super Admins – forhindrer lockout</div>
+        <div>• Bootstrap-admin tildeles automatisk via e-mail: <code className="bg-white px-1 rounded text-[10px]">formand@randersVK.dk</code></div>
+        <div>• Alle rolle-ændringer gemmes permanent i audit-loggen</div>
+        <div>• Admin-rollen bør fornys hvert år ved generalforsamling</div>
+      </div>
+    </div>
+  );
+};
+
+// ---- INDSTILLINGER (kun Super Admin) ----
+const AdminSettings = () => {
+  const [pointGoal, setPointGoal]     = useState("75");
+  const [contribution, setContrib]    = useState("1500");
+  const [seasonStart, setStart]       = useState("2025-08-01");
+  const [seasonEnd, setEnd]           = useState("2026-06-30");
+  const [saved, setSaved]             = useState(false);
+
+  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+
+  return (
+    <div className="space-y-4">
+      {saved && <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2.5"><CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" /><p className="text-[13px] text-emerald-900 font-semibold">Indstillinger gemt!</p></div>}
+
+      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-4">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Pointsystem</div>
+        <AdminInput label="Sæsonens pointmål" type="number" placeholder="75" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <AdminInput label="Frivillighedsbidrag (kr)" type="number" placeholder="1500" icon={<DollarSign className="w-4 h-4" />} value={contribution} onChange={(e) => setContrib(e.target.value)} />
+        <div>
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sæsonperiode</label>
+          <div className="grid grid-cols-2 gap-2">
+            <AdminInput type="date" value={seasonStart} onChange={(e) => setStart(e.target.value)} />
+            <AdminInput type="date" value={seasonEnd} onChange={(e) => setEnd(e.target.value)} />
+          </div>
+        </div>
+        <button onClick={save} className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}><Save className="w-4 h-4" />Gem indstillinger</button>
+      </div>
+
+      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-3">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Klubdata</div>
+        <button className="w-full flex items-center justify-between px-4 py-3 bg-stone-50 hover:bg-stone-100 rounded-xl text-left"><span className="text-[13px] font-semibold">Eksportér alle klubdata (CSV)</span><Download className="w-4 h-4 text-stone-500" /></button>
+        <button className="w-full flex items-center justify-between px-4 py-3 bg-pink-50 hover:bg-pink-100 rounded-xl text-left"><span className="text-[13px] font-semibold text-pink-700">Nulstil ny sæson (slet alle point)</span><AlertTriangle className="w-4 h-4 text-pink-500" /></button>
+      </div>
+    </div>
+  );
+};
+
+// ---- AUDIT LOG (kun Super Admin) ----
+const AdminAuditLog = () => (
+  <div className="space-y-3">
+    <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+      <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+      <p className="text-[11px] text-violet-900">Alle ændringer foretaget af Admins logges her. Loggen kan ikke slettes og opbevares i 5 år.</p>
+    </div>
+    <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+      {mockAuditLog.map((log) => (
+        <div key={log.id} className="flex gap-3 items-start px-4 py-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}>
+            {log.type === "role_change" && <ShieldCheck className="w-4 h-4" />}
+            {log.type === "task"        && <ListChecks className="w-4 h-4" />}
+            {log.type === "member"      && <UserPlus className="w-4 h-4" />}
+            {log.type === "settings"    && <DollarSign className="w-4 h-4" />}
+          </div>
+          <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 const BottomNav = ({ active, onChange }) => {
   const items = [
     { id: "tasks", label: "Opgaver", icon: ListChecks },
@@ -904,7 +1501,9 @@ export default function App() {
   const [welcomeToast, setWelcomeToast] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSwaps, setShowSwaps] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [tasks, setTasks] = useState(mockTasks);
 
   const claimedTasks = useMemo(
     () => mockTasks.filter((t) => claimedIds.has(t.id)),
@@ -913,6 +1512,7 @@ export default function App() {
 
   const handleAuth = (authData) => {
     const initials = authData.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase();
+    const autoRole = SUPER_ADMIN_EMAILS.includes(authData.email) ? "super_admin" : "user";
     setCurrentUser({
       ...mockUser,
       name: authData.name,
@@ -920,6 +1520,7 @@ export default function App() {
       phone: authData.phone || mockUser.phone,
       team: authData.team,
       initials,
+      role: autoRole,
     });
     setIsAuthenticated(true);
     setTab("tasks");
@@ -933,6 +1534,7 @@ export default function App() {
     setClaimedIds(new Set());
     setShowCalendar(false);
     setShowSwaps(false);
+    setShowAdmin(false);
     setSelectedTask(null);
   };
 
@@ -962,8 +1564,10 @@ export default function App() {
       <div className="max-w-md mx-auto bg-white min-h-screen relative shadow-xl">
         {welcomeToast && <div className="fixed top-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50 animate-slideup" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{welcomeToast}</div>}
 
-        {showCalendar ? (
-          <CalendarScreen tasks={mockTasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
+        {showAdmin ? (
+          <AdminDashboard currentUserRole={currentUser.role} onBack={() => setShowAdmin(false)} tasks={tasks} setTasks={setTasks} />
+        ) : showCalendar ? (
+          <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
           <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} />
         ) : selectedTask ? (
@@ -997,7 +1601,7 @@ export default function App() {
           </div>
         ) : (
           <>
-            {tab === "tasks" && <TasksScreen tasks={mockTasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
+            {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
             {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
             {tab === "scoreboard" && <ScoreboardScreen />}
             {tab === "profile" && (
@@ -1014,6 +1618,24 @@ export default function App() {
                 <div className="px-5 mt-6 space-y-2">
                   <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>
                   <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>
+                  {/* Demo rolle-switcher */}
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <div className="text-[10px] uppercase tracking-widest font-bold text-amber-800 mb-2 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Demo: skift rolle</div>
+                    <div className="flex gap-1.5">
+                      {[["user","Bruger"],["admin","Admin"],["super_admin","Super Admin"]].map(([r,l]) => (
+                        <button key={r} onClick={() => setCurrentUser((u) => ({ ...u, role: r }))} className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${currentUser.role === r ? "text-white" : "bg-white text-stone-600 border border-stone-200"}`} style={currentUser.role === r ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{l}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {(currentUser.role === "admin" || currentUser.role === "super_admin") && (
+                    <button onClick={() => setShowAdmin(true)} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.purple} 100%)` }}>
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>{currentUser.role === "super_admin" ? <Crown className="w-5 h-5" fill="white" /> : <ShieldCheck className="w-5 h-5" />}</div>
+                        <div className="flex-1"><div className="font-bold text-[15px]">Åbn admin-panel</div><div className="text-[11px] text-white/80 mt-0.5">{currentUser.role === "super_admin" ? "Fuld kontrol over klubben" : "Administrér opgaver og medlemmer"}</div></div>
+                        <ChevronRight className="w-5 h-5 opacity-70" />
+                      </div>
+                    </button>
+                  )}
                   <button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button>
                 </div>
               </div>
@@ -1023,7 +1645,7 @@ export default function App() {
 
         {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{toast}</div>}
 
-        {!showCalendar && !showSwaps && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
+        {!showCalendar && !showSwaps && !showAdmin && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
       </div>
     </div>
   );
