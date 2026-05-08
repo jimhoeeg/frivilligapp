@@ -361,8 +361,8 @@ const AuthScreen = ({ onAuthenticated }) => {
       }
     } catch (err) {
       setErrors({ email: "Noget gik galt – prøv igen" });
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   return (
@@ -2004,7 +2004,9 @@ export default function App() {
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
     try {
-      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+      const query = supabase.from("profiles").select("*").eq("id", userId).single();
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Profile load timeout")), 8000));
+      const { data, error } = await Promise.race([query, timeout]);
       if (error) console.error("Profile load error:", error);
       if (data) {
         setCurrentUser({
@@ -2106,11 +2108,12 @@ export default function App() {
     loadTasks();
   }, []);
 
-  const handleAuth = async (authData) => {
-    // Load profile immediately with the userId we got from signIn/signUp
+  const handleAuth = (authData) => {
+    // Show global spinner while profile loads in the background.
+    // loadProfile will set authLoading=false in its finally block.
     if (authData.userId) {
       setAuthLoading(true);
-      await loadProfile(authData.userId);
+      loadProfile(authData.userId);
     }
     const first = authData.name ? authData.name.split(" ")[0] : "";
     setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage!`);
