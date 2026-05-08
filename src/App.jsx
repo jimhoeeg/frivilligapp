@@ -442,9 +442,9 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   );
 };
 
-const Dashboard = ({ claimedTasks }) => {
-  const earned = mockUser.pointsEarned + claimedTasks.reduce((s, t) => s + t.points, 0);
-  const goal = mockUser.pointsGoal;
+const Dashboard = ({ claimedTasks, currentUser }) => {
+  const earned = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+  const goal = 75;
   const pct = Math.min(100, Math.round((earned / goal) * 100));
   const remaining = Math.max(0, goal - earned);
 
@@ -453,7 +453,7 @@ const Dashboard = ({ claimedTasks }) => {
       <div className="px-5 pt-12 pb-6 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
         <div className="relative">
           <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200 mb-1">Mit Dashboard</div>
-          <h1 className="text-2xl font-bold mb-5">Hej, {mockUser.name.split(" ")[0]} 👋</h1>
+          <h1 className="text-2xl font-bold mb-5">Hej, {currentUser?.name?.split(" ")[0] || "frivillig"} 👋</h1>
 
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
             <div className="flex items-baseline justify-between mb-2">
@@ -479,7 +479,7 @@ const Dashboard = ({ claimedTasks }) => {
       </div>
 
       <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
-        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length + mockUser.upcomingTasks}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
+        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>3</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">#12</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
       </div>
@@ -989,31 +989,31 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
 
 // ---- OVERSIGT ----
 const AdminOverview = ({ onNavigate, tasks }) => {
-  const totalMembers  = mockMembers.length;
-  const goalReached   = mockMembers.filter((m) => m.points >= 75).length;
-  const behindCount   = mockMembers.filter((m) => m.points < 30).length;
-  const openSpots     = tasks.reduce((s, t) => s + t.spotsLeft, 0);
-  const avgPoints     = Math.round(mockMembers.reduce((s, m) => s + m.points, 0) / totalMembers);
+  const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
+
+  useEffect(() => {
+    supabase.from("profiles").select("points").then(({ data }) => {
+      if (data && data.length > 0) {
+        const total = data.length;
+        const goalReached = data.filter((m) => m.points >= 75).length;
+        const behind = data.filter((m) => m.points < 30).length;
+        const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
+        setStats({ total, goalReached, behind, avg });
+      }
+    });
+  }, []);
+
+  const openSpots = tasks.reduce((s, t) => s + t.spotsLeft, 0);
 
   return (
     <div className="space-y-5">
-      {/* Pending alert */}
-      {mockPendingMembers.length > 0 && (
-        <button onClick={() => onNavigate("approvals")} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center shrink-0"><UserCheck className="w-5 h-5" /></div>
-            <div className="flex-1"><div className="font-bold text-[15px]">{mockPendingMembers.length} {mockPendingMembers.length === 1 ? "medlem venter" : "medlemmer venter"} på godkendelse</div><div className="text-[11px] text-white/80 mt-0.5">Tryk for at gennemgå ansøgninger</div></div>
-            <ChevronRight className="w-5 h-5 opacity-70" />
-          </div>
-        </button>
-      )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Aktive medlemmer", value: totalMembers,          icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
-          { label: "Nået sæsonmål",    value: `${goalReached}/${totalMembers}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
-          { label: "Gns. point",       value: `${avgPoints} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
+          { label: "Nået sæsonmål",    value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
+          { label: "Gns. point",       value: `${stats.avg} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
           { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
@@ -1031,11 +1031,11 @@ const AdminOverview = ({ onNavigate, tasks }) => {
           <AlertTriangle className="w-5 h-5 text-pink-500" />
         </div>
         {[
-          { label: "🎉 Har nået målet", count: goalReached,                                  color: theme.greenMid },
-          { label: "🟣 På vej (30–74 pt)", count: totalMembers - goalReached - behindCount,  color: theme.purple },
-          { label: "⚠️ Bagud (under 30 pt)", count: behindCount,                             color: theme.pink },
+          { label: "🎉 Har nået målet", count: stats.goalReached,                                         color: theme.greenMid },
+          { label: "🟣 På vej (30–74 pt)", count: stats.total - stats.goalReached - stats.behind,       color: theme.purple },
+          { label: "⚠️ Bagud (under 30 pt)", count: stats.behind,                                       color: theme.pink },
         ].map((row, i) => {
-          const pct = Math.round((row.count / totalMembers) * 100);
+          const pct = stats.total > 0 ? Math.round((row.count / stats.total) * 100) : 0;
           return (
             <div key={i} className="mb-2.5">
               <div className="flex justify-between text-[12px] mb-1"><span className="text-stone-700">{row.label}</span><span className="font-bold">{row.count}</span></div>
@@ -1049,16 +1049,29 @@ const AdminOverview = ({ onNavigate, tasks }) => {
       </div>
 
       {/* Seneste audit */}
-      <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
-        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Seneste aktivitet</div>
-        <div className="space-y-2.5">
-          {mockAuditLog.slice(0, 3).map((log) => (
-            <div key={log.id} className="flex gap-3 items-start">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}><Activity className="w-4 h-4" /></div>
-              <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
-            </div>
-          ))}
-        </div>
+      <AuditPreview />
+    </div>
+  );
+};
+
+const AuditPreview = () => {
+  const [logs, setLogs] = useState([]);
+  useEffect(() => {
+    supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(3).then(({ data }) => {
+      if (data) setLogs(data);
+    });
+  }, []);
+  if (logs.length === 0) return null;
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
+      <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Seneste aktivitet</div>
+      <div className="space-y-2.5">
+        {logs.map((log) => (
+          <div key={log.id} className="flex gap-3 items-start">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}><Activity className="w-4 h-4" /></div>
+            <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor_name} · {new Date(log.created_at).toLocaleDateString("da-DK")}</div></div>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1066,7 +1079,7 @@ const AdminOverview = ({ onNavigate, tasks }) => {
 
 // ---- GODKENDELSER ----
 const AdminApprovals = () => {
-  const [pending, setPending] = useState(mockPendingMembers);
+  const [pending, setPending] = useState([]);
   const [done, setDone]       = useState([]);
   const [expanded, setExpanded] = useState(null);
   const [rejecting, setRejecting] = useState(null);
@@ -1542,27 +1555,40 @@ const AdminSettings = () => {
 };
 
 // ---- AUDIT LOG (kun Super Admin) ----
-const AdminAuditLog = () => (
+const AdminAuditLog = () => {
+  const [logs, setLogs] = useState([]);
+  useEffect(() => {
+    supabase.from("audit_log").select("*").order("created_at", { ascending: false }).then(({ data }) => {
+      if (data) setLogs(data);
+    });
+  }, []);
+  return (
   <div className="space-y-3">
     <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
       <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
       <p className="text-[11px] text-violet-900">Alle ændringer foretaget af Admins logges her. Loggen kan ikke slettes og opbevares i 5 år.</p>
     </div>
+    {logs.length === 0 ? (
+      <div className="text-center py-8 text-stone-400 text-sm">Ingen aktivitet endnu</div>
+    ) : (
     <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
-      {mockAuditLog.map((log) => (
+      {logs.map((log) => (
         <div key={log.id} className="flex gap-3 items-start px-4 py-3">
           <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: theme.greenPale, color: theme.greenDark }}>
             {log.type === "role_change" && <ShieldCheck className="w-4 h-4" />}
             {log.type === "task"        && <ListChecks className="w-4 h-4" />}
             {log.type === "member"      && <UserPlus className="w-4 h-4" />}
             {log.type === "settings"    && <DollarSign className="w-4 h-4" />}
+            {!["role_change","task","member","settings"].includes(log.type) && <Activity className="w-4 h-4" />}
           </div>
-          <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor} · {log.date}</div></div>
+          <div><div className="text-[13px] text-stone-900">{log.action}</div><div className="text-[11px] text-stone-500 mt-0.5">{log.actor_name} · {new Date(log.created_at).toLocaleDateString("da-DK")}</div></div>
         </div>
       ))}
     </div>
+    )}
   </div>
-);
+  );
+};
 
 const BottomNav = ({ active, onChange }) => {
   const items = [
@@ -1592,7 +1618,8 @@ const BottomNav = ({ active, onChange }) => {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState({ ...mockUser, role: "user" });
+  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab] = useState("tasks");
   const [claimedIds, setClaimedIds] = useState(new Set());
   const [toast, setToast] = useState(null);
@@ -1601,7 +1628,7 @@ export default function App() {
   const [showSwaps, setShowSwaps] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
-  const [tasks, setTasks] = useState(mockTasks);
+  const [tasks, setTasks] = useState([]);
 
   const claimedTasks = useMemo(
     () => tasks.filter((t) => claimedIds.has(t.id)),
@@ -1609,16 +1636,15 @@ export default function App() {
   );
 
   // Load profile from Supabase and update currentUser
-  const loadProfile = async (userId, isNew = false) => {
+  const loadProfile = async (userId) => {
     const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
     if (data) {
       setCurrentUser({
-        ...mockUser,
         id: data.id,
         name: data.name,
         email: data.email,
-        phone: data.phone || mockUser.phone,
-        team: data.team || mockUser.team,
+        phone: data.phone || "",
+        team: data.team || "",
         initials: data.initials || data.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
         role: data.role || "user",
         pointsEarned: data.points || 0,
@@ -1626,11 +1652,7 @@ export default function App() {
       });
     }
     setIsAuthenticated(true);
-    setTab("tasks");
-    if (isNew) {
-      setWelcomeToast("Velkommen til RVK Frivillig! 🎉");
-      setTimeout(() => setWelcomeToast(null), 3500);
-    }
+    setAuthLoading(false);
   };
 
   // Listen for Supabase auth state changes (handles page reload, token refresh)
@@ -1640,6 +1662,7 @@ export default function App() {
         await loadProfile(session.user.id);
       } else {
         setIsAuthenticated(false);
+        setAuthLoading(false);
       }
     });
     return () => subscription.unsubscribe();
@@ -1711,6 +1734,17 @@ export default function App() {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-stone-50 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+          <div className="text-sm text-stone-500 font-medium">Indlæser...</div>
+        </div>
+      </div>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-stone-50 font-sans antialiased">
@@ -1765,7 +1799,7 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
@@ -1774,23 +1808,14 @@ export default function App() {
                   <div className="flex flex-col items-center"><div className="w-24 h-24 rounded-full flex items-center justify-center font-black text-3xl text-white border-4 border-white/30 shadow-xl" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{currentUser.initials}</div><div className="text-xl font-bold mt-3">{currentUser.name}</div><div className="text-[11px] text-emerald-200 mt-1">{currentUser.team}</div></div>
                 </div>
                 <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.pointsEarned}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{mockUser.tasksCompleted}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
-                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">#{mockUser.seasonRank}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.pointsEarned ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Point</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.tasksCompleted ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
+                  <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.team || "–"}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Hold</div></div>
                 </div>
                 <div className="px-5 mt-6 space-y-2">
-                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>
-                  <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>
-                  {/* Demo rolle-switcher */}
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <div className="text-[10px] uppercase tracking-widest font-bold text-amber-800 mb-2 flex items-center gap-1"><AlertTriangle className="w-3 h-3" />Demo: skift rolle</div>
-                    <div className="flex gap-1.5">
-                      {[["user","Bruger"],["admin","Admin"],["super_admin","Super Admin"]].map(([r,l]) => (
-                        <button key={r} onClick={() => setCurrentUser((u) => ({ ...u, role: r }))} className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all ${currentUser.role === r ? "text-white" : "bg-white text-stone-600 border border-stone-200"}`} style={currentUser.role === r ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{l}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {(currentUser.role === "admin" || currentUser.role === "super_admin") && (
+                  {currentUser?.email && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>}
+                  {currentUser?.phone && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>}
+                  {(currentUser?.role === "admin" || currentUser?.role === "super_admin") && (
                     <button onClick={() => setShowAdmin(true)} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.purple} 100%)` }}>
                       <div className="flex items-center gap-3">
                         <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>{currentUser.role === "super_admin" ? <Crown className="w-5 h-5" fill="white" /> : <ShieldCheck className="w-5 h-5" />}</div>
