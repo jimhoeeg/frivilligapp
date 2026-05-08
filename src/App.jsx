@@ -237,6 +237,57 @@ const RoleBadge = ({ role, large = false }) => {
   return null;
 };
 
+const ResetPasswordScreen = ({ onDone }) => {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleSave = async () => {
+    setError("");
+    if (password.length < 6) { setError("Adgangskode skal være mindst 6 tegn"); return; }
+    if (password !== confirm) { setError("Adgangskoderne matcher ikke"); return; }
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    setLoading(false);
+    if (error) { setError(error.message); return; }
+    setSuccess(true);
+    setTimeout(() => onDone(), 2000);
+  };
+
+  return (
+    <div className="min-h-screen relative overflow-hidden flex items-center" style={{ background: `linear-gradient(160deg, ${theme.greenDark} 0%, ${theme.greenMid} 55%, ${theme.purple} 100%)` }}>
+      <div className="relative max-w-md mx-auto w-full px-6">
+        <div className="bg-white rounded-3xl shadow-2xl p-6">
+          <div className="flex flex-col items-center mb-5">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-3" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+              <Lock className="w-7 h-7 text-white" />
+            </div>
+            <h2 className="text-xl font-bold text-stone-900">Vælg ny adgangskode</h2>
+            <p className="text-[13px] text-stone-500 mt-1 text-center">Indtast en ny adgangskode på mindst 6 tegn</p>
+          </div>
+          {success ? (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 text-emerald-800">
+              <Check className="w-5 h-5" />
+              <div className="text-sm font-semibold">Adgangskode opdateret! Logger ind...</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <AuthField icon={<Lock className="w-4 h-4" />} label="Ny adgangskode" type="password" value={password} onChange={setPassword} placeholder="Mindst 6 tegn" />
+              <AuthField icon={<Lock className="w-4 h-4" />} label="Bekræft adgangskode" type="password" value={confirm} onChange={setConfirm} placeholder="Gentag" />
+              {error && <p className="text-[12px] text-pink-600">{error}</p>}
+              <button onClick={handleSave} disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg disabled:opacity-60 mt-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                {loading ? "Gemmer..." : "Gem adgangskode"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AuthScreen = ({ onAuthenticated }) => {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -248,6 +299,7 @@ const AuthScreen = ({ onAuthenticated }) => {
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   const [teams, setTeams] = useState([]);
 
@@ -261,8 +313,10 @@ const AuthScreen = ({ onAuthenticated }) => {
     const e = {};
     if (!email) e.email = "E-mail er påkrævet";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Ugyldig e-mail";
-    if (!password) e.password = "Adgangskode er påkrævet";
-    else if (password.length < 6) e.password = "Mindst 6 tegn";
+    if (mode !== "forgot") {
+      if (!password) e.password = "Adgangskode er påkrævet";
+      else if (password.length < 6) e.password = "Mindst 6 tegn";
+    }
     if (mode === "signup") {
       if (!name) e.name = "Navn er påkrævet";
       if (!team) e.team = "Vælg dit hold";
@@ -270,6 +324,20 @@ const AuthScreen = ({ onAuthenticated }) => {
     }
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const handleForgot = async () => {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setErrors({ email: "Indtast en gyldig e-mail" });
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (error) { setErrors({ email: error.message }); return; }
+    setResetSent(true);
   };
 
   const handleSubmit = async () => {
@@ -316,18 +384,41 @@ const AuthScreen = ({ onAuthenticated }) => {
         </div>
 
         <div className="bg-white rounded-3xl shadow-2xl p-6 flex-1">
-          <div className="bg-stone-100 rounded-xl p-1 flex mb-6">
-            <button onClick={() => { setMode("login"); setErrors({}); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "login" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>Log ind</button>
-            <button onClick={() => { setMode("signup"); setErrors({}); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "signup" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>Opret bruger</button>
-          </div>
+          {mode !== "forgot" && (
+            <div className="bg-stone-100 rounded-xl p-1 flex mb-6">
+              <button onClick={() => { setMode("login"); setErrors({}); setResetSent(false); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "login" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>Log ind</button>
+              <button onClick={() => { setMode("signup"); setErrors({}); setResetSent(false); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "signup" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"}`}>Opret bruger</button>
+            </div>
+          )}
 
-          <h2 className="text-xl font-bold text-stone-900 mb-1">{mode === "login" ? "Velkommen tilbage" : "Bliv frivillig"}</h2>
-          <p className="text-[13px] text-stone-500 mb-5">{mode === "login" ? "Log ind for at se dine opgaver og point" : "Opret en profil og kom i gang med at samle point"}</p>
+          <h2 className="text-xl font-bold text-stone-900 mb-1">{mode === "login" ? "Velkommen tilbage" : mode === "signup" ? "Bliv frivillig" : "Nulstil adgangskode"}</h2>
+          <p className="text-[13px] text-stone-500 mb-5">{mode === "login" ? "Log ind for at se dine opgaver og point" : mode === "signup" ? "Opret en profil og kom i gang med at samle point" : "Indtast din e-mail, så sender vi dig et link til at nulstille din adgangskode"}</p>
 
+          {mode === "forgot" && resetSent ? (
+            <div className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-900 text-sm">Tjek din indbakke</div>
+                  <p className="text-[12px] text-emerald-800 mt-0.5">Vi har sendt et link til <strong>{email}</strong>. Klik på linket for at vælge en ny adgangskode.</p>
+                </div>
+              </div>
+              <button onClick={() => { setMode("login"); setResetSent(false); setErrors({}); }} className="w-full py-3 rounded-xl bg-stone-100 text-stone-700 text-sm font-bold">
+                Tilbage til login
+              </button>
+            </div>
+          ) : (
           <div className="space-y-3">
             {mode === "signup" && <AuthField icon={<User className="w-4 h-4" />} label="Fulde navn" value={name} onChange={setName} placeholder="F.eks. Mette Sørensen" error={errors.name} />}
             <AuthField icon={<AtSign className="w-4 h-4" />} label="E-mail" type="email" value={email} onChange={setEmail} placeholder="din@email.dk" error={errors.email} />
-            <AuthField icon={<Lock className="w-4 h-4" />} label="Adgangskode" type={showPassword ? "text" : "password"} value={password} onChange={setPassword} placeholder={mode === "signup" ? "Mindst 6 tegn" : "••••••••"} error={errors.password} rightIcon={<button type="button" onClick={() => setShowPassword(!showPassword)} className="text-stone-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>} />
+            {mode !== "forgot" && <AuthField icon={<Lock className="w-4 h-4" />} label="Adgangskode" type={showPassword ? "text" : "password"} value={password} onChange={setPassword} placeholder={mode === "signup" ? "Mindst 6 tegn" : "••••••••"} error={errors.password} rightIcon={<button type="button" onClick={() => setShowPassword(!showPassword)} className="text-stone-400">{showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button>} />}
+            {mode === "login" && (
+              <div className="text-right">
+                <button type="button" onClick={() => { setMode("forgot"); setErrors({}); }} className="text-[12px] text-emerald-700 font-semibold hover:underline">
+                  Glemt adgangskode?
+                </button>
+              </div>
+            )}
 
             {mode === "signup" && <>
               <AuthField icon={<Phone className="w-4 h-4" />} label="Telefon (valgfri)" type="tel" value={phone} onChange={setPhone} placeholder="+45 ..." />
@@ -350,20 +441,26 @@ const AuthScreen = ({ onAuthenticated }) => {
               {errors.terms && <p className="text-[11px] text-pink-600 -mt-2">{errors.terms}</p>}
             </>}
 
-            <button onClick={handleSubmit} disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2 mt-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)`, boxShadow: "0 8px 24px -8px rgba(236, 72, 153, 0.5)" }}>
+            <button onClick={mode === "forgot" ? handleForgot : handleSubmit} disabled={loading} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg active:scale-[0.98] transition-transform flex items-center justify-center gap-2 mt-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)`, boxShadow: "0 8px 24px -8px rgba(236, 72, 153, 0.5)" }}>
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  {mode === "login" ? "Logger ind..." : "Opretter profil..."}
+                  {mode === "login" ? "Logger ind..." : mode === "signup" ? "Opretter profil..." : "Sender..."}
                 </>
               ) : (
                 <>
-                  {mode === "login" ? "Log ind" : "Opret min profil"}
+                  {mode === "login" ? "Log ind" : mode === "signup" ? "Opret min profil" : "Send nulstillings-link"}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
+            {mode === "forgot" && (
+              <button type="button" onClick={() => { setMode("login"); setErrors({}); }} className="w-full py-2.5 text-[12px] text-stone-600 font-semibold">
+                ← Tilbage til login
+              </button>
+            )}
           </div>
+          )}
         </div>
 
         <div className="text-center mt-5 text-[11px] text-white/70">© Randers Volleyballklub 2026</div>
@@ -1898,30 +1995,67 @@ export default function App() {
     [claimedIds, tasks]
   );
 
+  // Detect password recovery flow (when user clicks email link)
+  const [recoveryMode, setRecoveryMode] = useState(false);
+
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
-    const { data } = await supabase.from("profiles").select("*").eq("id", userId).single();
-    if (data) {
-      setCurrentUser({
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        phone: data.phone || "",
-        team: data.team || "",
-        initials: data.initials || data.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
-        role: data.role || "user",
-        pointsEarned: data.points || 0,
-        tasksCompleted: data.tasks_done || 0,
-        avatarUrl: data.avatar_url || null,
-      });
+    try {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+      if (error) console.error("Profile load error:", error);
+      if (data) {
+        setCurrentUser({
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          phone: data.phone || "",
+          team: data.team || "",
+          initials: data.initials || data.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
+          role: data.role || "user",
+          pointsEarned: data.points || 0,
+          tasksCompleted: data.tasks_done || 0,
+          avatarUrl: data.avatar_url || null,
+        });
+        setIsAuthenticated(true);
+      }
+    } catch (e) {
+      console.error("loadProfile failed:", e);
+    } finally {
+      setAuthLoading(false);
     }
-    setIsAuthenticated(true);
-    setAuthLoading(false);
   };
 
-  // Listen for Supabase auth state changes (handles page reload, token refresh)
+  // Initial session check + auth state listener
   useEffect(() => {
+    let mounted = true;
+
+    // Detect password recovery from URL hash
+    const hash = window.location.hash;
+    if (hash.includes("type=recovery")) {
+      setRecoveryMode(true);
+    }
+
+    // Check current session immediately on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
+        loadProfile(session.user.id);
+      } else {
+        setAuthLoading(false);
+      }
+    }).catch((e) => {
+      console.error("getSession failed:", e);
+      if (mounted) setAuthLoading(false);
+    });
+
+    // Listen for future changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        setAuthLoading(false);
+        return;
+      }
       if (session?.user) {
         await loadProfile(session.user.id);
       } else {
@@ -1929,7 +2063,8 @@ export default function App() {
         setAuthLoading(false);
       }
     });
-    return () => subscription.unsubscribe();
+
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
   // Load tasks from Supabase (with steps)
@@ -2005,6 +2140,14 @@ export default function App() {
           <div className="w-10 h-10 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
           <div className="text-sm text-stone-500 font-medium">Indlæser...</div>
         </div>
+      </div>
+    );
+  }
+
+  if (recoveryMode) {
+    return (
+      <div className="min-h-screen bg-stone-50 font-sans antialiased">
+        <ResetPasswordScreen onDone={() => { setRecoveryMode(false); window.location.hash = ""; }} />
       </div>
     );
   }
