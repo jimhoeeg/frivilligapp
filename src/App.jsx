@@ -1835,6 +1835,81 @@ const AdminAuditLog = () => {
   );
 };
 
+const ProfileEditSection = ({ currentUser, setCurrentUser, setToast }) => {
+  const [name, setName]   = useState(currentUser?.name || "");
+  const [phone, setPhone] = useState(currentUser?.phone || "");
+  const [team, setTeam]   = useState(currentUser?.team || "");
+  const [teams, setTeams] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved]   = useState(false);
+
+  useEffect(() => {
+    supabase.from("teams").select("name").order("name").then(({ data }) => {
+      setTeams(data && data.length > 0 ? data.map((t) => t.name) : ["Ny"]);
+    });
+  }, []);
+
+  const dirty = name !== (currentUser?.name || "") || phone !== (currentUser?.phone || "") || team !== (currentUser?.team || "");
+
+  const save = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    const { error } = await supabase.from("profiles").update({ name: name.trim(), phone: phone.trim(), team }).eq("id", currentUser.id);
+    setSaving(false);
+    if (error) { setToast("Kunne ikke gemme: " + error.message); setTimeout(() => setToast(null), 3000); return; }
+    setCurrentUser((u) => ({ ...u, name: name.trim(), phone: phone.trim(), team,
+      initials: name.trim().split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase() }));
+    setSaved(true);
+    setToast("✅ Profil opdateret");
+    setTimeout(() => { setToast(null); setSaved(false); }, 2500);
+  };
+
+  return (
+    <div className="px-5 mt-5">
+      <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 space-y-3">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-1">Rediger oplysninger</div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Navn</label>
+          <div className="relative"><User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Dit fulde navn" className="w-full pl-9 pr-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Telefon</label>
+          <div className="relative"><Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+45 ..." type="tel" className="w-full pl-9 pr-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Hold</label>
+          <div className="relative"><Users className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <select value={team} onChange={(e) => setTeam(e.target.value)} className="w-full pl-9 pr-8 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none appearance-none">
+              <option value="">Vælg hold...</option>
+              {teams.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">E-mail</label>
+          <div className="relative"><Mail className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+            <input value={currentUser?.email || ""} disabled className="w-full pl-9 pr-3 py-2.5 text-sm bg-stone-100 rounded-xl border border-stone-200 outline-none text-stone-500 cursor-not-allowed" />
+          </div>
+          <p className="text-[10px] text-stone-400 mt-1">E-mail kan ikke ændres her</p>
+        </div>
+
+        <button onClick={save} disabled={!dirty || saving} className="w-full py-3 rounded-xl font-bold text-white text-[13px] flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Gemmer...</> : saved ? <><Check className="w-4 h-4" />Gemt!</> : "Gem ændringer"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const ProfileAvatar = ({ currentUser, setCurrentUser, setToast }) => {
   const [uploading, setUploading] = useState(false);
 
@@ -1851,8 +1926,11 @@ const ProfileAvatar = ({ currentUser, setCurrentUser, setToast }) => {
     const path = `${currentUser.id}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from("avatars").upload(path, file, { cacheControl: "3600", upsert: true });
     if (upErr) {
-      setToast("Upload fejlede: " + upErr.message);
-      setTimeout(() => setToast(null), 3000);
+      const msg = upErr.message?.toLowerCase().includes("bucket")
+        ? "Avatars-bucket mangler – se instruktioner i appen"
+        : "Upload fejlede: " + upErr.message;
+      setToast(msg);
+      setTimeout(() => setToast(null), 4000);
       setUploading(false);
       return;
     }
@@ -2250,9 +2328,11 @@ export default function App() {
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.tasksCompleted ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.team || "–"}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Hold</div></div>
                 </div>
-                <div className="px-5 mt-6 space-y-2">
-                  {currentUser?.email && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Mail className="w-4 h-4" />{currentUser.email}</button>}
-                  {currentUser?.phone && <button className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2"><Phone className="w-4 h-4" />{currentUser.phone}</button>}
+
+                {/* Rediger profil */}
+                <ProfileEditSection currentUser={currentUser} setCurrentUser={setCurrentUser} setToast={setToast} />
+
+                <div className="px-5 mt-4 space-y-2">
                   {(currentUser?.role === "admin" || currentUser?.role === "super_admin") && (
                     <button onClick={() => setShowAdmin(true)} className="w-full rounded-2xl p-4 text-white text-left relative overflow-hidden active:scale-[0.99] transition-transform shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.purple} 100%)` }}>
                       <div className="flex items-center gap-3">
