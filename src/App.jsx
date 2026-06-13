@@ -374,7 +374,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   const [filter, setFilter] = useState("Alle");
   const [query, setQuery] = useState("");
 
-  const filters = ["Alle", "Haster", "Dommerbord", "Kiosk", "Opsætning", "Bagning"];
+  const filters = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
 
   const visible = useMemo(() => {
     return tasks.filter((t) => {
@@ -1315,7 +1315,7 @@ const AdminTasks = ({ tasks, setTasks }) => {
 
 const TaskFormModal = ({ task, onClose, onSave }) => {
   const [title, setTitle]       = useState(task?.title || "");
-  const [category, setCategory] = useState(task?.category || "Dommerbord");
+  const [category, setCategory] = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]         = useState(task?.icon || "whistle");
   const [date, setDate]         = useState(task?.date || "");
   const [time, setTime]         = useState(task?.time || "");
@@ -1326,11 +1326,14 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const [urgent, setUrgent]     = useState(task?.urgent || false);
   const [description, setDesc]  = useState(task?.description?.join("\n") || "");
 
-  const iconOptions = [
-    { id: "whistle", label: "Dommerbord" },
-    { id: "coffee",  label: "Kiosk" },
-    { id: "setup",   label: "Opsætning" },
-    { id: "cake",    label: "Bagning" },
+  const categories = [
+    { label: "Kampafvikling & Sekretærbord",      icon: "whistle" },
+    { label: "Hygge og Socialt",                  icon: "cake"    },
+    { label: "Holdleder & Transport",             icon: "setup"   },
+    { label: "Stævneplanlægning og Afholdelse",   icon: "whistle" },
+    { label: "Kommunikation & PR",                icon: "coffee"  },
+    { label: "Faciliteter & Materialer",          icon: "setup"   },
+    { label: "Klubadministration",                icon: "setup"   },
   ];
 
   const handleSave = () => {
@@ -1353,13 +1356,12 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
           {/* Kategori + ikon */}
           <div>
             <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Kategori</label>
-            <div className="grid grid-cols-4 gap-2">
-              {iconOptions.map((o) => (
-                <button key={o.id} onClick={() => { setIcon(o.id); setCategory(o.label); }}
-                  className={`py-3 rounded-xl border flex flex-col items-center gap-1 text-[10px] font-semibold transition-all ${icon === o.id ? "border-violet-400 bg-violet-50 text-violet-700" : "border-stone-200 text-stone-600 hover:border-stone-300"}`}>
-                  <CategoryIcon type={o.id} className="w-5 h-5" />{o.label}
-                </button>
-              ))}
+            <div className="relative">
+              <select value={category} onChange={(e) => { const cat = categories.find((c) => c.label === e.target.value); setCategory(e.target.value); if (cat) setIcon(cat.icon); }}
+                className="w-full px-3 py-3 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none appearance-none pr-8">
+                {categories.map((c) => <option key={c.label} value={c.label}>{c.label}</option>)}
+              </select>
+              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
             </div>
           </div>
 
