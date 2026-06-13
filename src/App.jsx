@@ -1313,7 +1313,88 @@ const AdminTasks = ({ tasks, setTasks }) => {
   );
 };
 
+const TASK_TEMPLATES = [
+  {
+    label: "Kampafvikling & Sekretærbord", icon: "whistle",
+    templates: [
+      { title: "Dømme kampe som klubdommer (lokalrækker)", points: 15, difficulty: "Medium", description: "Døm en kamp i lokalrækkerne som klubdommer.\nMød op 15 min. før kampstart.\nAflever kampskema til halsoveren efter kampen." },
+      { title: "Sekretærbordet – elektronisk holdkort/point", points: 10, difficulty: "Let", description: "Sid ved sekretærbordet og før elektronisk holdkort.\nVær på plads senest 20 min. før kampstart.\nKontakt kampansvarlig ved tvivl." },
+      { title: "Halspeaker til divisions-/hjemmekamp", points: 10, difficulty: "Let", description: "Vær halspeaker ved hjemmekampe.\nAnnoncér hold, spillerskift og resultater.\nBrug klubbens speaker-udstyr." },
+      { title: "Linjedommer til stor kamp", points: 10, difficulty: "Let", description: "Vær linjedommer ved en større kamp.\nMød op 30 min. før kampstart til briefing.\nFølg dommernes anvisninger under kampen." },
+      { title: "Opsætning/nedtagning af bane og net", points: 5, difficulty: "Let", description: "Opsæt eller tag baner og net ned ved kampdag.\nTjek at net er i korrekt højde.\nLæg alt udstyr tilbage på rette plads." },
+      { title: "Kampansvarlig/Halsover", points: 15, difficulty: "Medium", description: "Mød op som den første og lås hallen op.\nSørg for at alt er klar til kampen.\nLuk hallen og aflevér nøgler til rette vedkommende." },
+    ],
+  },
+  {
+    label: "Hygge og Socialt", icon: "cake",
+    templates: [
+      { title: "Formand for festudvalget (Sæson)", points: 75, difficulty: "Hård", description: "Vær formand for festudvalget hele sæsonen.\nPlanlæg og koordinér alle sociale arrangementer.\nRapportér til bestyrelsen." },
+      { title: "Udvalgsmedlem i festudvalget (Sæson)", points: 40, difficulty: "Medium", description: "Deltag aktivt i festudvalgets arbejde hele sæsonen.\nHjælp med planlægning og praktisk afholdelse af arrangementer." },
+      { title: "Klargøring og madlavning til fællesspisning", points: 15, difficulty: "Let", description: "Hjælp med at klargøre og lave mad til fællesspisning.\nMød op 1 time før arrangementet starter.\nRyd op bagefter." },
+      { title: "Kioskvagt til alm. hjemmekamp (ca. 2-3 timer)", points: 10, difficulty: "Let", description: "Bemand kiosken under en hjemmekamp.\nSørg for at varer er fyldt op.\nAflever kassen til kassereren efter kampen." },
+      { title: "Bage kage / lave madpakker til et hold", points: 5, difficulty: "Let", description: "Bag kage eller lav madpakker til et hold.\nAftaler omfang med holdleder." },
+      { title: "Oprydning/Rengøring efter klubfest", points: 15, difficulty: "Let", description: "Hjælp med oprydning og rengøring efter klubfest eller arrangement.\nBliv til alt er ryddet op og hallen er klar til næste brug." },
+      { title: "Indkøber til kiosken (Sæson)", points: 50, difficulty: "Medium", description: "Stå for indkøb til klubkiosken hele sæsonen.\nHold styr på lagerstatus og bestil varer.\nSørg for at priser er opdaterede." },
+    ],
+  },
+  {
+    label: "Holdleder & Transport", icon: "setup",
+    templates: [
+      { title: "Fast holdleder for et ungdoms- eller seniorhold (Sæson)", points: 75, difficulty: "Hård", description: "Vær fast holdleder for et hold hele sæsonen.\nKommunikér med forældre, spillere og trænere.\nSørg for tilmelding, kørsel og praktiske forhold." },
+      { title: "Kørsel til udekamp inkl. heppekor", points: 15, difficulty: "Let", description: "Kør spillere til udekamp og hep holdet under kampen.\nAftaler mødested og tidspunkt med holdleder.\nSørg for at alle kommer sikkert hjem." },
+      { title: "Kørsel til udekamp – kun aflevering/afhentning", points: 5, difficulty: "Let", description: "Kør spillere til eller fra udekamp.\nAftaler tidspunkt og sted med holdleder." },
+      { title: "Fast vaskemaskine – holdets trøjer hele sæsonen", points: 50, difficulty: "Medium", description: "Vask holdets spillertøj efter samtlige kampe og stævner hele sæsonen.\nAftaler afhentning og aflevering med holdleder." },
+      { title: "Vask af spillertøj efter én kamp/stævne", points: 5, difficulty: "Let", description: "Vask holdets spillertøj efter én kamp eller et stævne.\nAftaler afhentning og aflevering med holdleder." },
+    ],
+  },
+  {
+    label: "Stævneplanlægning og Afholdelse", icon: "whistle",
+    templates: [
+      { title: "Stævneleder/Hovedansvarlig for klubbens eget stævne", points: 75, difficulty: "Hård", description: "Vær overordnet ansvarlig for afviklingen af et klubstævne.\nKoordinér alle frivillige og leverandører.\nSørg for at stævneprogrammet følges." },
+      { title: "Medlem af stævneudvalg (planlægning)", points: 40, difficulty: "Medium", description: "Deltag i planlægningen af klubbens stævne.\nMød til udvalgets møder og tag ansvar for aftalte opgaver." },
+      { title: "Natvagt/Halsover ved overnatningsstævne", points: 30, difficulty: "Medium", description: "Vær halsover om natten ved overnatningsstævne (ca. kl. 23–07).\nSørg for ro og tryghed for de deltagende unge." },
+      { title: "Stævnesekretariatet – registrér resultater (halvdags)", points: 20, difficulty: "Let", description: "Sid i stævnesekretariatet og registrér resultater og tider.\nStyr kampuret og koordinér med dommerne." },
+      { title: "Kioskvagt ved stort weekendstævne (vagt á 3 timer)", points: 15, difficulty: "Let", description: "Bemand kiosken i 3 timer under weekendstævnet.\nSørg for at varer er fyldt op løbende." },
+      { title: "Opsætning fredag aften inden stævne / Hovedrengøring søndag", points: 15, difficulty: "Let", description: "Hjælp med at sætte hallen op fredag aften eller stå for hovedrengøring søndag.\nFølg stævnelederens anvisninger." },
+    ],
+  },
+  {
+    label: "Kommunikation & PR", icon: "coffee",
+    templates: [
+      { title: "Webmaster / Hovedansvarlig for SoMe (Sæson)", points: 75, difficulty: "Hård", description: "Vær ansvarlig for klubbens hjemmeside og sociale medier hele sæsonen.\nPost regelmæssige opdateringer og resultater.\nKoordinér indhold med bestyrelsen." },
+      { title: "Sponsorudvalg (Sæson – indhente sponsorer)", points: 75, difficulty: "Hård", description: "Vær en del af sponsorudvalget og indhent sponsorer til klubben hele sæsonen.\nKontakt lokale virksomheder og lav sponsoraftaler." },
+      { title: "Fotograf til kampdag/stævne inkl. redigering og deling", points: 15, difficulty: "Let", description: "Tag billeder ved en kampdag eller stævne.\nRedigér udvalgte billeder og del med klubben.\nBrug klubbens fotokanaler til deling." },
+      { title: "Skrive kampreferater / artikler til hjemmeside/Facebook", points: 10, difficulty: "Let", description: "Skriv et kort kampreferat eller en artikel til hjemmeside eller Facebook.\nAflever tekst til SoMe-ansvarlig senest dagen efter kampen." },
+      { title: "Lave grafisk materiale (plakater, opslag, stævneprogram)", points: 10, difficulty: "Let", description: "Lav grafisk materiale til klubbens aktiviteter.\nBrug klubbens farver og logo.\nAflever filer til SoMe-ansvarlig i aftalt format." },
+      { title: "Dele flyers / hænge plakater op i lokalområdet", points: 5, difficulty: "Let", description: "Del flyers eller hæng plakater op i lokalområdet.\nFå materiale udleveret af SoMe-ansvarlig.\nIndmeld hvilke steder du har besøgt." },
+    ],
+  },
+  {
+    label: "Faciliteter & Materialer", icon: "setup",
+    templates: [
+      { title: "Materialeansvarlig (Sæson)", points: 75, difficulty: "Hård", description: "Hold overblik over bolde, tøj, net og øvrigt udstyr hele sæsonen.\nRegistrér slitage og bestil nyt ved behov.\nRapportér til bestyrelsen." },
+      { title: "Klargøring af beachvolleyball-baner (arbejdsdag)", points: 20, difficulty: "Medium", description: "Hjælp med at klargøre beachvolleyball-banerne til sæsonen.\nMød op til den aftalte arbejdsdag.\nMedtag egnet fodtøj og arbejdstøj." },
+      { title: "Vedligehold af beach-baner (luge ukrudt, rive baner)", points: 10, difficulty: "Let", description: "Vedligehold beachbanerne ved at luge ukrudt og rive sand.\nCa. 2 timers arbejde pr. gang." },
+      { title: "Hovedoprydning og organisering af boldrum", points: 15, difficulty: "Let", description: "Ryd op og organiser klubbens boldrum.\nSørg for at alt udstyr er på rette plads og mærket." },
+      { title: "Småreparationer (sy net, fikse boldvogne, pumpe bolde)", points: 10, difficulty: "Let", description: "Foretag småreparationer på klubbens udstyr.\nSy net, reparer boldvogne eller pump bolde.\nRapportér større skader til materialeansvarlig." },
+    ],
+  },
+  {
+    label: "Klubadministration", icon: "setup",
+    templates: [
+      { title: "Bestyrelsesmedlem (Formand, Kasserer m.fl.)", points: 100, difficulty: "Hård", description: "Sidder i klubbens bestyrelse hele sæsonen.\nDeltager i bestyrelsesmøder og varetager bestyrelsespost.\nRapporterer til generalforsamlingen." },
+      { title: "Revisor / Økonomisk hjælp (Sæson)", points: 40, difficulty: "Medium", description: "Hjælp med revision eller økonomi hele sæsonen.\nGennemgå regnskab og bilag.\nRapportér til kassereren." },
+      { title: "Børneattest-ansvarlig (Sæson)", points: 40, difficulty: "Medium", description: "Indhent og tjek børneattester for alle relevante frivillige.\nHold register opdateret hele sæsonen.\nRapportér mangler til formanden." },
+      { title: "Hjælp til medlemsregistrering og kontingentkørsel", points: 25, difficulty: "Let", description: "Hjælp med at registrere nye medlemmer og køre kontingentopkrævning.\nAftaler opgaveomfang med kassereren." },
+      { title: "Fonds-ansøger (skrive og sende fondansøgninger)", points: 25, difficulty: "Medium", description: "Skriv og send ansøgninger til fonde og puljer på vegne af klubben.\nKoordinér med bestyrelsen om behovsområder.\nRapportér svar og tildelinger." },
+    ],
+  },
+];
+
 const TaskFormModal = ({ task, onClose, onSave }) => {
+  const isNew = !task;
+  const [step, setStep]         = useState(isNew ? "pick" : "form");
+  const [tplCat, setTplCat]     = useState(TASK_TEMPLATES[0].label);
   const [title, setTitle]       = useState(task?.title || "");
   const [category, setCategory] = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]         = useState(task?.icon || "whistle");
@@ -1325,6 +1406,12 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
   const [urgent, setUrgent]     = useState(task?.urgent || false);
   const [description, setDesc]  = useState(task?.description?.join("\n") || "");
+
+  const applyTemplate = (tpl, catLabel, catIcon) => {
+    setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
+    setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
+    setStep("form");
+  };
 
   const categories = [
     { label: "Kampafvikling & Sekretærbord",      icon: "whistle" },
@@ -1341,12 +1428,61 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
     onSave({ title, category, icon, date, dateFull: date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
   };
 
+  const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
+
+  if (step === "pick") {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+        <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[92vh] flex flex-col animate-slideup" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between z-10 shrink-0">
+            <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+            <h3 className="text-lg font-bold mt-2">Vælg skabelon</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
+          </div>
+          {/* Category tabs */}
+          <div className="shrink-0 flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
+            {TASK_TEMPLATES.map((g) => (
+              <button key={g.label} onClick={() => setTplCat(g.label)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === g.label ? "text-white" : "bg-stone-100 text-stone-700"}`}
+                style={tplCat === g.label ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+          {/* Template list */}
+          <div className="overflow-y-auto flex-1 p-4 space-y-2 pb-24">
+            {activeTplGroup.templates.map((tpl) => (
+              <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label, activeTplGroup.icon)}
+                className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
+                  <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full whitespace-nowrap">{tpl.points} pt</span>
+                </div>
+                <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${tpl.difficulty === "Hård" ? "bg-pink-100 text-pink-700" : tpl.difficulty === "Medium" ? "bg-violet-100 text-violet-700" : "bg-stone-200 text-stone-600"}`}>{tpl.difficulty}</span>
+              </button>
+            ))}
+          </div>
+          {/* Footer: start from scratch */}
+          <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 shrink-0">
+            <button onClick={() => setStep("form")} className="w-full py-3 rounded-xl border border-stone-200 text-stone-700 font-semibold text-[14px] hover:bg-stone-50">
+              Start fra bunden (ingen skabelon)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[92vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between z-10">
           <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
-          <h3 className="text-lg font-bold mt-2">{task ? "Rediger opgave" : "Ny opgave"}</h3>
+          <div className="flex items-center gap-2 mt-2">
+            {isNew && <button onClick={() => setStep("pick")} className="p-1.5 hover:bg-stone-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>}
+            <h3 className="text-lg font-bold">{task ? "Rediger opgave" : "Ny opgave"}</h3>
+          </div>
           <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
         </div>
 
