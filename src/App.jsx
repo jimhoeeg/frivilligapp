@@ -370,21 +370,74 @@ const AuthScreen = ({ onAuthenticated }) => {
   );
 };
 
+const DA_MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni","Juli","August","September","Oktober","November","December"];
+const DA_MONTH_ABBR  = { jan:0,feb:1,mar:2,apr:3,maj:4,jun:5,jul:6,aug:7,sep:8,okt:9,nov:10,dec:11 };
+
+const parseTaskDate = (task) => {
+  if (task.dateFull && /^\d{4}-\d{2}-\d{2}/.test(task.dateFull))
+    return new Date(task.dateFull + "T12:00:00");
+  const m = (task.date || "").match(/(\d+)\.\s*(\w+)/);
+  if (!m) return null;
+  const mo = DA_MONTH_ABBR[m[2].toLowerCase()];
+  if (mo === undefined) return null;
+  const today = new Date();
+  const d = new Date(today.getFullYear(), mo, parseInt(m[1]), 12);
+  if (d < today && (today - d) > 180 * 24 * 60 * 60 * 1000) d.setFullYear(d.getFullYear() + 1);
+  return d;
+};
+
 const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOpenSwaps, onOpenCalendar, unreadCount }) => {
-  const [filter, setFilter] = useState("Alle");
+  const [catFilter,  setCatFilter]  = useState("Alle");
+  const [dateFilter, setDateFilter] = useState("Alle");
   const [query, setQuery] = useState("");
 
-  const filters = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
+  const catFilters  = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
+  const dateFilters = ["Alle", "Denne måned", "Næste måned", "Halvt sæson"];
 
   const visible = useMemo(() => {
-    return tasks.filter((t) => {
-      if (claimedIds.has(t.id)) return false;
-      if (filter === "Haster" && !t.urgent) return false;
-      if (filter !== "Alle" && filter !== "Haster" && t.category !== filter) return false;
-      if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
-      return true;
+    const today = new Date();
+    const thisMonth = today.getMonth();
+    const thisYear  = today.getFullYear();
+    const nextMonth = (thisMonth + 1) % 12;
+    const nextYear  = thisMonth === 11 ? thisYear + 1 : thisYear;
+    const halfEnd   = new Date(thisYear, thisMonth + 6, 1);
+
+    return tasks
+      .filter((t) => {
+        if (claimedIds.has(t.id)) return false;
+        if (catFilter === "Haster" && !t.urgent) return false;
+        if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
+        if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
+        if (dateFilter !== "Alle") {
+          const d = parseTaskDate(t);
+          if (!d) return false;
+          if (dateFilter === "Denne måned"  && !(d.getMonth() === thisMonth && d.getFullYear() === thisYear)) return false;
+          if (dateFilter === "Næste måned"  && !(d.getMonth() === nextMonth && d.getFullYear() === nextYear)) return false;
+          if (dateFilter === "Halvt sæson"  && !(d >= today && d < halfEnd)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const da = parseTaskDate(a), db = parseTaskDate(b);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        return da - db;
+      });
+  }, [tasks, catFilter, dateFilter, query, claimedIds]);
+
+  // Group by month for display
+  const grouped = useMemo(() => {
+    const map = new Map();
+    visible.forEach((t) => {
+      const d = parseTaskDate(t);
+      const key = d ? `${d.getFullYear()}-${String(d.getMonth()).padStart(2,"0")}` : "zz-ukendt";
+      const label = d ? `${DA_MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}` : "Ukendt dato";
+      if (!map.has(key)) map.set(key, { label, tasks: [] });
+      map.get(key).tasks.push(t);
     });
-  }, [tasks, filter, query, claimedIds]);
+    return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v);
+  }, [visible]);
 
   return (
     <div className="pb-24">
@@ -418,12 +471,26 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
           </div>
         </div>
 
+        {/* Dato-filter */}
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide">
+          {dateFilters.map((f) => {
+            const active = dateFilter === f;
+            return (
+              <button key={f} onClick={() => setDateFilter(f)} className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-all flex items-center gap-1 ${active ? "text-white shadow-md" : "bg-white text-stone-700 border border-stone-200"}`} style={active ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>
+                {f === "Alle" && <CalendarDays className="w-3 h-3" />}
+                {f}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Kategori-filter */}
         <div className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
-          {filters.map((f) => {
-            const active = filter === f;
+          {catFilters.map((f) => {
+            const active = catFilter === f;
             const isUrgent = f === "Haster";
             return (
-              <button key={f} onClick={() => setFilter(f)} className={`shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold transition-all ${active ? "text-white shadow-md" : "bg-white text-stone-700 border border-stone-200 hover:border-stone-300"}`} style={active ? { background: isUrgent ? `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+              <button key={f} onClick={() => setCatFilter(f)} className={`shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold transition-all ${active ? "text-white shadow-md" : "bg-white text-stone-700 border border-stone-200 hover:border-stone-300"}`} style={active ? { background: isUrgent ? `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
                 {isUrgent && <Flame className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />}
                 {f}
               </button>
@@ -432,14 +499,25 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
         </div>
       </div>
 
-      <div className="px-5 mt-2 space-y-3">
+      <div className="px-5 mt-2">
         {visible.length === 0 ? (
           <div className="text-center py-12 text-stone-500">
             <AlertCircle className="w-10 h-10 mx-auto mb-2 text-stone-300" />
             <p className="text-sm">Ingen opgaver matcher lige nu</p>
           </div>
         ) : (
-          visible.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)
+          grouped.map((group) => (
+            <div key={group.label} className="mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">{group.label}</span>
+                <div className="flex-1 h-px bg-stone-200" />
+                <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+              </div>
+              <div className="space-y-3">
+                {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>
@@ -1195,16 +1273,23 @@ const AdminApprovals = () => {
   const [approvalError, setApprovalError] = useState(null);
 
   useEffect(() => {
-    // Show members who joined in the last 30 days
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    supabase.from("profiles").select("id,name,initials,email,phone,team,created_at").gte("created_at", since).order("created_at", { ascending: false }).then(({ data }) => {
-      if (data) setPending(data.map((m) => ({ id: m.id, name: m.name, initials: m.initials || "?", email: m.email || "–", phone: m.phone || "–", team: m.team || "–", appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null })));
-    });
+    // Show members not yet reviewed (reviewed_at IS NULL)
+    supabase.from("profiles")
+      .select("id,name,initials,email,phone,team,created_at")
+      .is("reviewed_at", null)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (data) setPending(data.map((m) => ({
+          id: m.id, name: m.name, initials: m.initials || "?",
+          email: m.email || "–", phone: m.phone || "–", team: m.team || "–",
+          appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null,
+        })));
+      });
   }, []);
 
   const approve = async (a) => {
-    // Mark as reviewed in DB (no functional gate yet — all signed-up users have access)
-    await supabase.from("profiles").update({ admin_requested: false }).eq("id", a.id);
+    const { error } = await supabase.from("profiles").update({ reviewed_at: new Date().toISOString() }).eq("id", a.id);
+    if (error) { setApprovalError(`Fejl: ${error.message} – kør supabase_approvals.sql i Supabase SQL Editor.`); return; }
     setPending((p) => p.filter((x) => x.id !== a.id));
     setDone((d) => [{ ...a, action: "approved" }, ...d]);
     setExpanded(null);
