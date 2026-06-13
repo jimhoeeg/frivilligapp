@@ -956,6 +956,14 @@ const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
 // Bootstrap: disse e-mails får automatisk super_admin
 const SUPER_ADMIN_EMAILS = ["formand@randersVK.dk", "admin@randersVK.dk"];
 
+const logAction = (type, action, actor) =>
+  supabase.from("audit_log").insert({
+    type,
+    action,
+    actor_name: actor?.name || "Ukendt",
+    actor_id:   actor?.id   || null,
+  });
+
 const AdminInput = ({ label, type = "text", placeholder, icon, textarea, value, onChange }) => (
   <div>
     {label && <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">{label}</label>}
@@ -976,8 +984,9 @@ const MenuButton = ({ icon, label, danger, onClick }) => (
 );
 
 // ---- ADMIN SHELL ----
-const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
+const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
   const [section, setSection] = useState("overview");
+  const currentUserRole = currentUser?.role;
   const isSuperAdmin = currentUserRole === "super_admin";
 
   const sections = [
@@ -1031,11 +1040,11 @@ const AdminDashboard = ({ currentUserRole, onBack, tasks, setTasks }) => {
       <div className="px-5 mt-5">
         {section === "overview"  && <AdminOverview onNavigate={setSection} tasks={tasks} />}
         {section === "approvals" && <AdminApprovals />}
-        {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} />}
-        {section === "members"   && <AdminMembers currentUserRole={currentUserRole} />}
+        {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} />}
+        {section === "members"   && <AdminMembers currentUserRole={currentUserRole} currentUser={currentUser} />}
         {section === "teams"     && isSuperAdmin && <AdminTeams />}
-        {section === "roles"     && isSuperAdmin && <AdminRoles />}
-        {section === "settings"  && isSuperAdmin && <AdminSettings />}
+        {section === "roles"     && isSuperAdmin && <AdminRoles currentUser={currentUser} />}
+        {section === "settings"  && isSuperAdmin && <AdminSettings currentUser={currentUser} />}
         {section === "audit"     && isSuperAdmin && <AdminAuditLog />}
       </div>
     </div>
@@ -1225,15 +1234,17 @@ const AdminApprovals = () => {
 };
 
 // ---- OPGAVESTYRING ----
-const AdminTasks = ({ tasks, setTasks }) => {
+const AdminTasks = ({ tasks, setTasks, currentUser }) => {
   const [showNew, setShowNew]     = useState(false);
   const [editTask, setEditTask]   = useState(null);
   const [menuOpen, setMenuOpen]   = useState(null);
 
   const deleteTask = async (id) => {
+    const task = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     setMenuOpen(null);
     await supabase.from("tasks").delete().eq("id", id);
+    logAction("task", `Slettede opgave: "${task?.title || id}"`, currentUser);
   };
 
   const duplicateTask = async (t) => {
@@ -1264,6 +1275,7 @@ const AdminTasks = ({ tasks, setTasks }) => {
         await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: editTask.id, step_order: i + 1, text })));
       }
       setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) } : t));
+      logAction("task", `Redigerede opgave: "${data.title}"`, currentUser);
     } else {
       const { data: row } = await supabase.from("tasks").insert({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
@@ -1276,6 +1288,7 @@ const AdminTasks = ({ tasks, setTasks }) => {
       }
       if (row) {
         setTasks((prev) => [...prev, { id: row.id, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) }]);
+        logAction("task", `Oprettede opgave: "${data.title}" (${data.points} pt)`, currentUser);
       }
     }
     setShowNew(false); setEditTask(null);
@@ -1560,14 +1573,16 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
 };
 
 // ---- MEDLEMMER ----
-const AdminMembers = ({ currentUserRole }) => {
+const AdminMembers = ({ currentUserRole, currentUser }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
   const [allMembers, setAllMembers] = useState([]);
   const isSuperAdmin = currentUserRole === "super_admin";
-  const [deleteTarget, setDeleteTarget] = useState(null); // member to delete
-  const [deleteStep, setDeleteStep] = useState(1);        // 1 = confirm, 2 = reason
+
+  // Delete flow
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteStep, setDeleteStep] = useState(1);
   const [deleteReason, setDeleteReason] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
@@ -1581,8 +1596,27 @@ const AdminMembers = ({ currentUserRole }) => {
     const { error: err } = await supabase.from("profiles").delete().eq("id", deleteTarget.id);
     setDeleting(false);
     if (err) { setDeleteError("Fejl: " + err.message); return; }
+    logAction("member", `Slettede (GDPR) ${deleteTarget.name} – årsag: ${deleteReason}`, currentUser);
     setAllMembers((prev) => prev.filter((m) => m.id !== deleteTarget.id));
     setDeleteTarget(null);
+  };
+
+  // Promote flow
+  const [promoteTarget, setPromoteTarget] = useState(null);
+  const [promoting, setPromoting] = useState(false);
+
+  const openPromote = (member) => { setPromoteTarget(member); setMenuOpen(null); };
+  const closePromote = () => { if (promoting) return; setPromoteTarget(null); };
+
+  const confirmPromote = async () => {
+    if (!promoteTarget) return;
+    setPromoting(true);
+    const { error: err } = await supabase.from("profiles").update({ role: "admin" }).eq("id", promoteTarget.id);
+    setPromoting(false);
+    if (err) return;
+    logAction("role_change", `Gav ${promoteTarget.name} admin-rolle`, currentUser);
+    setAllMembers((prev) => prev.map((m) => m.id === promoteTarget.id ? { ...m, role: "admin" } : m));
+    setPromoteTarget(null);
   };
 
   useEffect(() => {
@@ -1633,7 +1667,7 @@ const AdminMembers = ({ currentUserRole }) => {
                   <div className="absolute top-full right-0 mt-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-48 z-30">
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => setMenuOpen(null)} />
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => setMenuOpen(null)} />
-                    {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => setMenuOpen(null)} /></>}
+                    {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => openPromote(m)} /></>}
                     {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
                 )}
@@ -1642,6 +1676,25 @@ const AdminMembers = ({ currentUserRole }) => {
           );
         })}
       </div>
+
+      {/* Promote to admin modal */}
+      {promoteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={closePromote}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 pt-6 pb-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center mx-auto mb-3"><ShieldCheck className="w-6 h-6 text-violet-600" /></div>
+              <h3 className="font-bold text-[16px] text-stone-900 mb-1">Gør til Admin?</h3>
+              <p className="text-[13px] text-stone-500"><span className="font-semibold text-stone-800">{promoteTarget.name}</span> får adgang til admin-panelet og kan oprette/slette opgaver og godkende medlemmer.</p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={closePromote} disabled={promoting} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
+              <button onClick={confirmPromote} disabled={promoting} className="flex-1 py-2.5 rounded-xl text-white text-[14px] font-semibold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                {promoting ? "Gemmer…" : "Giv admin-adgang"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation modal */}
       {deleteTarget && (
@@ -1808,7 +1861,7 @@ const AdminTeams = () => {
 };
 
 // ---- ROLLER (kun Super Admin) ----
-const AdminRoles = () => {
+const AdminRoles = ({ currentUser }) => {
   const [members, setMembers] = useState([]);
 
   const reload = () => {
@@ -1832,16 +1885,22 @@ const AdminRoles = () => {
   const pending     = members.filter((m) => m.role === "user" && m.adminRequested);
 
   const promote = async (id, role) => {
+    const target = members.find((m) => m.id === id);
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role, adminRequested: false } : m));
     await supabase.from("profiles").update({ role, admin_requested: false }).eq("id", id);
+    logAction("role_change", `Gav ${target?.name} rollen "${role}"`, currentUser);
   };
   const demote = async (id) => {
+    const target = members.find((m) => m.id === id);
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
     await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+    logAction("role_change", `Fjernede admin-rolle fra ${target?.name}`, currentUser);
   };
   const rejectRequest = async (id) => {
+    const target = members.find((m) => m.id === id);
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, adminRequested: false } : m));
     await supabase.from("profiles").update({ admin_requested: false }).eq("id", id);
+    logAction("role_change", `Afslog admin-anmodning fra ${target?.name}`, currentUser);
   };
 
   return (
@@ -1958,7 +2017,7 @@ const AdminRoles = () => {
 };
 
 // ---- INDSTILLINGER (kun Super Admin) ----
-const AdminSettings = () => {
+const AdminSettings = ({ currentUser }) => {
   const [pointGoal, setPointGoal]     = useState("100");
   const [contribution, setContrib]    = useState("1500");
   const [seasonStart, setStart]       = useState("2025-08-01");
@@ -1988,6 +2047,7 @@ const AdminSettings = () => {
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
+    logAction("settings", `Opdaterede indstillinger: halvsmål=${pointGoal} pt, bidrag=${contribution} kr`, currentUser);
   };
 
   return (
@@ -2499,7 +2559,7 @@ export default function App() {
         {welcomeToast && <div className="fixed top-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50 animate-slideup" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{welcomeToast}</div>}
 
         {showAdmin ? (
-          <AdminDashboard currentUserRole={currentUser.role} onBack={() => setShowAdmin(false)} tasks={tasks} setTasks={setTasks} />
+          <AdminDashboard currentUser={currentUser} onBack={() => setShowAdmin(false)} tasks={tasks} setTasks={setTasks} />
         ) : showCalendar ? (
           <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
