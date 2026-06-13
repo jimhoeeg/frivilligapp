@@ -1418,11 +1418,209 @@ const AdminApprovals = () => {
   );
 };
 
+// ---- OPGAVETILMELDTE ----
+const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
+  const [signups,      setSignups]      = useState([]);
+  const [allMembers,   setAllMembers]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [assignSearch, setAssignSearch] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState(null);
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const [{ data: claims }, { data: members }] = await Promise.all([
+        supabase.from("task_claims").select("user_id, profiles(id, name, role)").eq("task_id", task.id),
+        supabase.from("profiles").select("id, name, role").order("name"),
+      ]);
+      setSignups(claims || []);
+      setAllMembers(members || []);
+      setLoading(false);
+    })();
+  }, [task.id]);
+
+  const signedUpIds = new Set(signups.map((s) => s.user_id));
+
+  const removeSignup = async (profile) => {
+    setSaving(true); setError(null);
+    const { error: e1 } = await supabase.from("task_claims").delete().eq("task_id", task.id).eq("user_id", profile.id);
+    if (e1) { setError("Kunne ikke fjerne tilmelding: " + e1.message); setSaving(false); return; }
+
+    const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", profile.id).single();
+    if (prof) {
+      await supabase.from("profiles").update({
+        points: Math.max(0, (prof.points || 0) - task.points),
+        tasks_done: Math.max(0, (prof.tasks_done || 0) - 1),
+      }).eq("id", profile.id);
+    }
+
+    const newSpots = (task.spotsLeft || 0) + 1;
+    await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
+    task.spotsLeft = newSpots;
+
+    setSignups((prev) => prev.filter((s) => s.user_id !== profile.id));
+    setConfirmRemove(null); setSaving(false);
+    logAction("task", `Fjernede ${profile.name} fra "${task.title}"`, currentUser);
+  };
+
+  const assignMember = async (member) => {
+    setSaving(true); setError(null);
+    const { error: e1 } = await supabase.from("task_claims").insert({ task_id: task.id, user_id: member.id });
+    if (e1) { setError("Kunne ikke tildele: " + e1.message); setSaving(false); return; }
+
+    const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", member.id).single();
+    if (prof) {
+      await supabase.from("profiles").update({
+        points: (prof.points || 0) + task.points,
+        tasks_done: (prof.tasks_done || 0) + 1,
+      }).eq("id", member.id);
+    }
+
+    const newSpots = Math.max(0, (task.spotsLeft || 0) - 1);
+    await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
+    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
+    task.spotsLeft = newSpots;
+
+    setSignups((prev) => [...prev, { user_id: member.id, profiles: member }]);
+    setAssignSearch(""); setSaving(false);
+    logAction("task", `Tildelte "${task.title}" til ${member.name}`, currentUser);
+  };
+
+  const filteredMembers = allMembers.filter(
+    (m) => !signedUpIds.has(m.id) && (m.name || "").toLowerCase().includes(assignSearch.toLowerCase())
+  );
+
+  const canAssign = (task.spotsLeft || 0) > 0;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><ArrowLeft className="w-4 h-4 text-stone-500" /></button>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-[14px] text-stone-900 truncate">{task.title}</div>
+          <div className="text-[11px] text-stone-500">{task.date} · {task.spotsLeft}/{task.spotsTotal} ledige pladser</div>
+        </div>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[13px] text-red-700">{error}</div>}
+
+      {/* Tilmeldte */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">
+          Tilmeldte ({signups.length})
+        </div>
+        {loading ? (
+          <div className="text-center py-6 text-stone-400 text-sm">Indlæser...</div>
+        ) : signups.length === 0 ? (
+          <div className="bg-stone-50 rounded-xl p-4 text-center text-[13px] text-stone-400">Ingen tilmeldte endnu</div>
+        ) : (
+          <div className="space-y-2">
+            {signups.map((s) => {
+              const p = s.profiles;
+              if (!p) return null;
+              return (
+                <div key={s.user_id} className="bg-white border border-stone-100 rounded-xl p-3 flex items-center gap-3 shadow-sm">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                    {(p.name || "?")[0].toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[13px] text-stone-900">{p.name}</div>
+                    <div className="text-[11px] text-stone-400">{p.role}</div>
+                  </div>
+                  <button
+                    onClick={() => setConfirmRemove(p)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 active:scale-95"
+                  >
+                    <UserX className="w-3.5 h-3.5" />Fjern
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Tildel */}
+      <div>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">
+          Tildel opgave til medlem
+        </div>
+        {!canAssign && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[12px] text-amber-700 mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />Alle pladser er optaget — tildel alligevel ved at søge nedenfor
+          </div>
+        )}
+        <div className="relative mb-2">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+          <input
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-stone-200 text-[13px] bg-stone-50 focus:outline-none focus:ring-2 focus:ring-emerald-300"
+            placeholder="Søg efter medlem..."
+            value={assignSearch}
+            onChange={(e) => setAssignSearch(e.target.value)}
+          />
+        </div>
+        {assignSearch.length > 0 && (
+          <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            {filteredMembers.length === 0 ? (
+              <div className="text-center py-3 text-[12px] text-stone-400">Ingen match</div>
+            ) : filteredMembers.map((m) => (
+              <button
+                key={m.id}
+                disabled={saving}
+                onClick={() => assignMember(m)}
+                className="w-full flex items-center gap-3 bg-white border border-stone-100 rounded-xl p-3 shadow-sm hover:border-emerald-300 hover:bg-emerald-50 active:scale-[0.98] text-left"
+              >
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                  {(m.name || "?")[0].toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-[13px] text-stone-900">{m.name}</div>
+                  <div className="text-[11px] text-stone-400">{m.role}</div>
+                </div>
+                <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">
+                  <UserPlus className="w-3 h-3" />Tildel
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Bekræft fjern */}
+      {confirmRemove && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setConfirmRemove(null)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-[15px] font-bold text-stone-900 mb-1">Fjern tilmelding?</div>
+            <p className="text-[13px] text-stone-500 mb-4">
+              <strong>{confirmRemove.name}</strong> fjernes fra opgaven og mister <strong>{task.points} point</strong>.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmRemove(null)} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[13px] font-semibold text-stone-600">Annuller</button>
+              <button
+                disabled={saving}
+                onClick={() => removeSignup(confirmRemove)}
+                className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white bg-red-500 hover:bg-red-600 active:scale-[0.98]"
+              >
+                {saving ? "Gemmer..." : "Fjern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ---- OPGAVESTYRING ----
 const AdminTasks = ({ tasks, setTasks, currentUser }) => {
-  const [showNew, setShowNew]     = useState(false);
-  const [editTask, setEditTask]   = useState(null);
-  const [menuOpen, setMenuOpen]   = useState(null);
+  const [showNew, setShowNew]       = useState(false);
+  const [editTask, setEditTask]     = useState(null);
+  const [menuOpen, setMenuOpen]     = useState(null);
+  const [signupsTask, setSignupsTask] = useState(null);
 
   const deleteTask = async (id) => {
     const task = tasks.find((t) => t.id === id);
@@ -1482,6 +1680,10 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
     setShowNew(false); setEditTask(null);
   };
 
+  if (signupsTask) {
+    return <AdminTaskSignups task={signupsTask} onClose={() => setSignupsTask(null)} setTasks={setTasks} currentUser={currentUser} />;
+  }
+
   return (
     <div className="space-y-4">
       <button onClick={() => setShowNew(true)} className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
@@ -1503,6 +1705,8 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
                       <button onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                       {menuOpen === t.id && (
                         <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-44 z-30">
+                          <MenuButton icon={<Users className="w-3.5 h-3.5" />} label="Tilmeldte" onClick={() => { setSignupsTask(t); setMenuOpen(null); }} />
+                          <div className="h-px bg-stone-100 my-1" />
                           <MenuButton icon={<Pencil className="w-3.5 h-3.5" />} label="Rediger" onClick={() => { setEditTask(t); setMenuOpen(null); }} />
                           <MenuButton icon={<Copy className="w-3.5 h-3.5" />} label="Duplikér" onClick={() => duplicateTask(t)} />
                           <div className="h-px bg-stone-100 my-1" />
@@ -1515,6 +1719,12 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
                     <div className="flex-1 h-1.5 bg-stone-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct === 100 ? `linear-gradient(90deg, ${theme.greenMid}, ${theme.greenLight})` : `linear-gradient(90deg, ${theme.purple}, ${theme.pink})` }} /></div>
                     <span className="text-[10px] font-bold text-stone-600">{filled}/{t.spotsTotal}</span>
                     <span className="px-1.5 py-0.5 rounded-md text-white text-[10px] font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</span>
+                    <button
+                      onClick={() => setSignupsTask(t)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-stone-600 bg-stone-100 hover:bg-stone-200 active:scale-95"
+                    >
+                      <Users className="w-3 h-3" />{filled}
+                    </button>
                   </div>
                 </div>
               </div>
