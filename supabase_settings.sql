@@ -27,7 +27,7 @@ create policy "settings_update" on public.settings for update using (
 
 -- Seed standard værdier
 insert into public.settings (key, value) values
-  ('point_goal',      '75'),
+  ('point_goal',      '100'),
   ('contribution_kr', '1500'),
   ('season_start',    '2025-08-01'),
   ('season_end',      '2026-06-30')

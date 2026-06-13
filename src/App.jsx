@@ -447,10 +447,14 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 };
 
 const Dashboard = ({ claimedTasks, currentUser }) => {
-  const earned = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
-  const goal = 75;
-  const pct = Math.min(100, Math.round((earned / goal) * 100));
-  const remaining = Math.max(0, goal - earned);
+  const earned    = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+  const halfGoal  = 100;
+  const fullGoal  = 200;
+  const pct       = Math.min(100, Math.round((earned / fullGoal) * 100));
+  const halfPct   = Math.min(50, Math.round((Math.min(earned, halfGoal) / fullGoal) * 100));
+  const restPct   = Math.max(0, Math.min(50, Math.round(((earned - halfGoal) / fullGoal) * 100)));
+  const halfDone  = earned >= halfGoal;
+  const fullDone  = earned >= fullGoal;
 
   return (
     <div className="pb-24">
@@ -465,18 +469,28 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
                 <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-200">Sæsonens point</div>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className="text-4xl font-black">{earned}</span>
-                  <span className="text-lg text-white/70">/ {goal}</span>
+                  <span className="text-lg text-white/70">/ {fullGoal}</span>
                 </div>
+                <div className="text-[10px] text-white/60 mt-0.5">Halvt sæsonmål: {halfGoal} pt</div>
               </div>
-              <div className="px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{pct}%</div>
+              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${fullDone ? "bg-emerald-400/80" : ""}`} style={!fullDone ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{pct}%</div>
             </div>
 
-            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-2 relative">
-              <div className="h-full rounded-full transition-all duration-700 relative overflow-hidden" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${theme.pinkLight} 0%, ${theme.pink} 50%, ${theme.purple} 100%)`, boxShadow: `0 0 12px ${theme.pink}80` }} />
+            {/* Two-segment progress bar: first half (0-100) + second half (100-200) */}
+            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-1 relative flex">
+              <div className="h-full rounded-l-full transition-all duration-700 relative overflow-hidden" style={{ width: `${halfPct}%`, background: `linear-gradient(90deg, ${theme.pinkLight}, ${theme.pink})`, boxShadow: `0 0 8px ${theme.pink}80` }} />
+              {restPct > 0 && <div className="h-full transition-all duration-700" style={{ width: `${restPct}%`, background: `linear-gradient(90deg, ${theme.purple}, #7c3aed)` }} />}
+            </div>
+            <div className="flex justify-between text-[9px] text-white/50 mb-2">
+              <span>0</span><span>{halfGoal}</span><span>{fullGoal}</span>
             </div>
 
-            <div className="flex items-center justify-between text-xs text-white/80">
-              {remaining > 0 ? <span><strong className="text-white">{remaining} point</strong> til du slipper for frivillighedsbidraget</span> : <span className="text-emerald-100 font-semibold">🎉 Du har nået sæsonens mål!</span>}
+            <div className="text-xs text-white/80">
+              {fullDone
+                ? <span className="text-emerald-100 font-semibold">🎉 Hele sæsonens mål nået!</span>
+                : halfDone
+                  ? <span>✓ 1. halvsmål nået · <strong className="text-white">{fullGoal - earned} pt</strong> til hele sæsonen</span>
+                  : <span><strong className="text-white">{halfGoal - earned} pt</strong> til 1. halvsmål – fritaget bidrag</span>}
             </div>
           </div>
         </div>
@@ -1036,8 +1050,8 @@ const AdminOverview = ({ onNavigate, tasks }) => {
     supabase.from("profiles").select("points").then(({ data }) => {
       if (data && data.length > 0) {
         const total = data.length;
-        const goalReached = data.filter((m) => m.points >= 75).length;
-        const behind = data.filter((m) => m.points < 30).length;
+        const goalReached = data.filter((m) => m.points >= 100).length;
+        const behind = data.filter((m) => m.points < 50).length;
         const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
         setStats({ total, goalReached, behind, avg });
       }
@@ -1053,7 +1067,7 @@ const AdminOverview = ({ onNavigate, tasks }) => {
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Aktive medlemmer", value: stats.total,            icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
-          { label: "Nået sæsonmål",    value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
+          { label: "Nået halvsmål",     value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
           { label: "Gns. point",       value: `${stats.avg} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
           { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
         ].map((s, i) => (
@@ -1072,9 +1086,9 @@ const AdminOverview = ({ onNavigate, tasks }) => {
           <AlertTriangle className="w-5 h-5 text-pink-500" />
         </div>
         {[
-          { label: "🎉 Har nået målet", count: stats.goalReached,                                         color: theme.greenMid },
-          { label: "🟣 På vej (30–74 pt)", count: stats.total - stats.goalReached - stats.behind,       color: theme.purple },
-          { label: "⚠️ Bagud (under 30 pt)", count: stats.behind,                                       color: theme.pink },
+          { label: "🎉 Nået halvsmål (≥100 pt)", count: stats.goalReached,                                          color: theme.greenMid },
+          { label: "🟣 På vej (50–99 pt)",      count: stats.total - stats.goalReached - stats.behind,        color: theme.purple },
+          { label: "⚠️ Bagud (under 50 pt)",    count: stats.behind,                                           color: theme.pink },
         ].map((row, i) => {
           const pct = stats.total > 0 ? Math.round((row.count / stats.total) * 100) : 0;
           return (
@@ -1585,8 +1599,8 @@ const AdminMembers = ({ currentUserRole }) => {
 
   const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
-    if (filter === "behind"  && m.points >= 30)  return false;
-    if (filter === "reached" && m.points < 75)   return false;
+    if (filter === "behind"  && m.points >= 50)  return false;
+    if (filter === "reached" && m.points < 100)  return false;
     return true;
   });
 
@@ -1601,10 +1615,10 @@ const AdminMembers = ({ currentUserRole }) => {
           <button key={id} onClick={() => setFilter(id)} className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === id ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`} style={filter === id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>{label}</button>
         ))}
       </div>
-      <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm">
         {filtered.map((m) => {
-          const reached = m.points >= 75;
-          const behind  = m.points < 30;
+          const reached = m.points >= 100;
+          const behind  = m.points < 50;
           return (
             <div key={m.id} className="flex items-center gap-3 px-4 py-3 relative">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
@@ -1612,7 +1626,7 @@ const AdminMembers = ({ currentUserRole }) => {
                 <div className="flex items-center gap-1.5"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><RoleBadge role={m.role} /></div>
                 <div className="text-[11px] text-stone-500 truncate">{m.team} · {m.tasksDone} opgaver</div>
               </div>
-              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 75</div></div>
+              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 100</div></div>
               <div className="relative">
                 <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                 {menuOpen === m.id && (
@@ -1945,7 +1959,7 @@ const AdminRoles = () => {
 
 // ---- INDSTILLINGER (kun Super Admin) ----
 const AdminSettings = () => {
-  const [pointGoal, setPointGoal]     = useState("75");
+  const [pointGoal, setPointGoal]     = useState("100");
   const [contribution, setContrib]    = useState("1500");
   const [seasonStart, setStart]       = useState("2025-08-01");
   const [seasonEnd, setEnd]           = useState("2026-06-30");
@@ -1982,7 +1996,8 @@ const AdminSettings = () => {
 
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-4">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Pointsystem</div>
-        <AdminInput label="Sæsonens pointmål" type="number" placeholder="75" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <AdminInput label="Halvt sæsonmål (pr. halvsæson)" type="number" placeholder="100" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <p className="text-[11px] text-stone-400 -mt-2">Dobbelt giver fuldt sæsonmål ({pointGoal ? parseInt(pointGoal) * 2 : 200} pt). Point nulstilles kun af admin efter begge halvsæsoner.</p>
         <AdminInput label="Frivillighedsbidrag (kr)" type="number" placeholder="1500" icon={<DollarSign className="w-4 h-4" />} value={contribution} onChange={(e) => setContrib(e.target.value)} />
         <div>
           <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sæsonperiode</label>
