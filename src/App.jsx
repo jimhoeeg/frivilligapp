@@ -2242,25 +2242,30 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
     setPromoteTarget(null);
   };
 
-  // Bonus points flow
+  // Bonus/deduct points flow
   const [bonusTarget, setBonusTarget]   = useState(null);
+  const [bonusMode,   setBonusMode]     = useState("add"); // "add" | "deduct"
   const [bonusPoints, setBonusPoints]   = useState("");
   const [bonusReason, setBonusReason]   = useState("");
   const [bonusSaving, setBonusSaving]   = useState(false);
   const [bonusError,  setBonusError]    = useState(null);
 
-  const openBonus  = (m) => { setBonusTarget(m); setBonusPoints(""); setBonusReason(""); setBonusError(null); setMenuOpen(null); };
+  const openBonus  = (m, mode = "add") => { setBonusTarget(m); setBonusMode(mode); setBonusPoints(""); setBonusReason(""); setBonusError(null); setMenuOpen(null); };
   const closeBonus = () => { if (bonusSaving) return; setBonusTarget(null); };
 
   const confirmBonus = async () => {
     const pts = parseInt(bonusPoints);
     if (!bonusTarget || isNaN(pts) || pts <= 0) return;
     setBonusSaving(true); setBonusError(null);
-    const newTotal = (bonusTarget.points || 0) + pts;
+    const current = bonusTarget.points || 0;
+    const newTotal = bonusMode === "add" ? current + pts : Math.max(0, current - pts);
     const { error: err } = await supabase.from("profiles").update({ points: newTotal }).eq("id", bonusTarget.id);
     setBonusSaving(false);
     if (err) { setBonusError("Fejl: " + err.message); return; }
-    logAction("member", `Tildelte ${pts} bonuspoint til ${bonusTarget.name} – årsag: ${bonusReason}`, currentUser);
+    const actionText = bonusMode === "add"
+      ? `Tildelte ${pts} bonuspoint til ${bonusTarget.name} – årsag: ${bonusReason}`
+      : `Fratrakte ${pts} point fra ${bonusTarget.name} – årsag: ${bonusReason}`;
+    logAction("member", actionText, currentUser);
     setAllMembers((prev) => prev.map((m) => m.id === bonusTarget.id ? { ...m, points: newTotal } : m));
     setBonusTarget(null);
   };
@@ -2312,7 +2317,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                 {menuOpen === m.id && (
                   <div className="absolute top-full right-0 mt-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-48 z-30">
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => { setMenuOpen(null); if (m.email) window.location.href = `mailto:${m.email}?subject=RVK Frivillig`; }} />
-                    <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m)} />
+                    <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m, "add")} />
+                    <MenuButton icon={<X className="w-3.5 h-3.5" />} label="Fratræk point" onClick={() => openBonus(m, "deduct")} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => openPromote(m)} /></>}
                     {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
@@ -2328,12 +2334,35 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={closeBonus}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 pt-6 pb-4">
-              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3"><Zap className="w-6 h-6 text-emerald-600" /></div>
-              <h3 className="font-bold text-[16px] text-stone-900 mb-1 text-center">Tildel ekstra point</h3>
-              <p className="text-[13px] text-stone-500 mb-4 text-center">Til <span className="font-semibold text-stone-800">{bonusTarget.name}</span> (har {bonusTarget.points} pt i forvejen)</p>
+              {/* Add/Deduct toggle */}
+              <div className="flex bg-stone-100 rounded-xl p-1 mb-4">
+                <button onClick={() => setBonusMode("add")} className={`flex-1 py-1.5 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1.5 ${bonusMode === "add" ? "bg-white shadow text-emerald-700" : "text-stone-500"}`}>
+                  <Plus className="w-3.5 h-3.5" />Tildel
+                </button>
+                <button onClick={() => setBonusMode("deduct")} className={`flex-1 py-1.5 rounded-lg text-[13px] font-bold transition-all flex items-center justify-center gap-1.5 ${bonusMode === "deduct" ? "bg-white shadow text-red-600" : "text-stone-500"}`}>
+                  <X className="w-3.5 h-3.5" />Fratræk
+                </button>
+              </div>
+
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3 ${bonusMode === "add" ? "bg-emerald-100" : "bg-red-100"}`}>
+                <Zap className={`w-6 h-6 ${bonusMode === "add" ? "text-emerald-600" : "text-red-500"}`} />
+              </div>
+              <h3 className="font-bold text-[16px] text-stone-900 mb-1 text-center">
+                {bonusMode === "add" ? "Tildel ekstra point" : "Fratræk point"}
+              </h3>
+              <p className="text-[13px] text-stone-500 mb-4 text-center">
+                {bonusMode === "add" ? "Til" : "Fra"} <span className="font-semibold text-stone-800">{bonusTarget.name}</span> (har {bonusTarget.points || 0} pt)
+                {bonusMode === "deduct" && parseInt(bonusPoints) > 0 && (
+                  <span className="block text-red-500 font-semibold mt-0.5">
+                    → vil have {Math.max(0, (bonusTarget.points || 0) - parseInt(bonusPoints))} pt tilbage
+                  </span>
+                )}
+              </p>
               <div className="space-y-3">
                 <div>
-                  <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Antal bonuspoint</label>
+                  <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">
+                    {bonusMode === "add" ? "Antal bonuspoint" : "Antal point der fratrækkes"}
+                  </label>
                   <input type="number" min="1" value={bonusPoints} onChange={(e) => setBonusPoints(e.target.value)}
                     placeholder="F.eks. 10" className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
                 </div>
@@ -2347,8 +2376,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
             </div>
             <div className="px-5 pb-5 flex gap-2">
               <button onClick={closeBonus} disabled={bonusSaving} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
-              <button onClick={confirmBonus} disabled={bonusSaving || !bonusPoints || !bonusReason.trim()} className="flex-1 py-2.5 rounded-xl text-white text-[14px] font-semibold disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
-                {bonusSaving ? "Gemmer…" : "Tildel point"}
+              <button onClick={confirmBonus} disabled={bonusSaving || !bonusPoints || !bonusReason.trim()} className="flex-1 py-2.5 rounded-xl text-white text-[14px] font-semibold disabled:opacity-40" style={{ background: bonusMode === "add" ? `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` : "linear-gradient(135deg, #ef4444, #dc2626)" }}>
+                {bonusSaving ? "Gemmer…" : bonusMode === "add" ? "Tildel point" : "Fratræk point"}
               </button>
             </div>
           </div>
