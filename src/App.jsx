@@ -637,7 +637,7 @@ const BADGE_DEFS = [
   { id: "fullgoal",  emoji: "🏆", label: "Sæsonmål",       desc: "200 point – hele sæsonen",   req: (e) => e >= 200 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick }) => {
   const earned    = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
   const tasks     = currentUser?.tasksCompleted || 0;
   const halfGoal  = 100;
@@ -729,7 +729,7 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
       )}
 
       <div className="px-5 mt-6">
-        <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine kommende tjanser</h2><button className="text-xs font-semibold text-emerald-700">Se alle</button></div>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine kommende tjanser</h2></div>
         {claimedTasks.length === 0 ? (
           <div className="bg-white rounded-xl p-5 border border-dashed border-stone-200 text-center">
             <ListChecks className="w-8 h-8 mx-auto mb-2 text-stone-300" />
@@ -737,16 +737,19 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
             <p className="text-xs text-stone-400 mt-1">Gå til <strong className="text-emerald-700">Opgaver</strong> for at komme i gang.</p>
           </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             {claimedTasks.map((t) => (
-              <div key={t.id} className="bg-white rounded-xl p-3.5 border border-stone-100 shadow-sm flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-5 h-5" /></div>
+              <button key={t.id} onClick={() => onTaskClick && onTaskClick(t)} className="w-full bg-white rounded-xl px-3 py-2.5 border border-stone-100 shadow-sm flex items-center gap-3 hover:border-emerald-300 active:scale-[0.99] transition-all text-left">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-4 h-4" /></div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-sm text-stone-900 truncate">{t.title}</div>
-                  <div className="text-[11px] text-stone-500 flex items-center gap-2 mt-0.5"><span>{t.date}</span><span>•</span><span>{t.time}</span></div>
+                  <div className="font-semibold text-[13px] text-stone-900 truncate">{t.title}</div>
+                  <div className="text-[11px] text-stone-500 flex items-center gap-1.5 mt-0.5"><span>{t.date}</span>{t.time && <><span>·</span><span>{t.time}</span></>}</div>
                 </div>
-                <div className="px-2 py-1 rounded-full text-white text-[11px] font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</div>
-              </div>
+                <div className="shrink-0 flex items-center gap-1.5">
+                  <div className="px-2 py-0.5 rounded-full text-white text-[11px] font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</div>
+                  <ChevronRight className="w-4 h-4 text-stone-300" />
+                </div>
+              </button>
             ))}
           </div>
         )}
@@ -755,9 +758,106 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
   );
 };
 
+// ---- MEMBER OPGAVEOVERSIGT ----
+const MemberTasksModal = ({ member, onClose }) => {
+  const [claims, setClaims] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from("task_claims")
+        .select("task_id, tasks(id, title, date, date_full, time, location, points, icon, category)")
+        .eq("user_id", member.id);
+      setClaims((data || []).map((c) => c.tasks).filter(Boolean));
+      setLoading(false);
+    })();
+  }, [member.id]);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const upcoming = claims.filter((t) => {
+    const d = t.date_full ? new Date(t.date_full + "T00:00:00") : null;
+    return d ? d >= today : true;
+  }).sort((a, b) => new Date(a.date_full || 0) - new Date(b.date_full || 0));
+
+  const past = claims.filter((t) => {
+    const d = t.date_full ? new Date(t.date_full + "T00:00:00") : null;
+    return d ? d < today : false;
+  }).sort((a, b) => new Date(b.date_full || 0) - new Date(a.date_full || 0));
+
+  const totalPoints = claims.reduce((s, t) => s + (t.points || 0), 0);
+
+  const TaskRow = ({ t }) => (
+    <div className="flex items-center gap-3 py-2.5 border-b border-stone-100 last:border-b-0">
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+        <CategoryIcon type={t.icon} className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold text-stone-900 truncate">{t.title}</div>
+        <div className="text-[11px] text-stone-400">{t.date_full || t.date}{t.time ? ` · ${t.time}` : ""}</div>
+      </div>
+      <div className="shrink-0 text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+        +{t.points}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-t-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-5 pt-5 pb-4 border-b border-stone-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+              {(member.name || "?")[0].toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-[15px] text-stone-900">{member.name}</div>
+              <div className="text-[11px] text-stone-400">{member.role} · {totalPoints} point · {claims.length} opgaver i alt</div>
+            </div>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X className="w-4 h-4 text-stone-500" /></button>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+          {loading ? (
+            <div className="text-center py-10 text-stone-400 text-sm">Indlæser...</div>
+          ) : claims.length === 0 ? (
+            <div className="text-center py-10 text-stone-400 text-sm">Ingen opgaver registreret</div>
+          ) : (
+            <>
+              {upcoming.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1">Kommende ({upcoming.length})</div>
+                  <div className="bg-white border border-stone-100 rounded-xl shadow-sm overflow-hidden">
+                    {upcoming.map((t) => <TaskRow key={t.id} t={t} />)}
+                  </div>
+                </div>
+              )}
+              {past.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1">Tidligere ({past.length})</div>
+                  <div className="bg-stone-50 border border-stone-100 rounded-xl overflow-hidden">
+                    {past.map((t) => <TaskRow key={t.id} t={t} />)}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ScoreboardScreen = ({ currentUserId }) => {
   const [filter, setFilter] = useState("Alle hold");
   const [members, setMembers] = useState([]);
+  const [selectedMember, setSelectedMember] = useState(null);
 
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
@@ -825,18 +925,21 @@ const ScoreboardScreen = ({ currentUserId }) => {
         <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Alle medlemmer</h2><span className="text-[11px] text-stone-500 font-semibold">{filteredMembers.length} frivillige</span></div>
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm overflow-hidden">
           {filteredMembers.map((m, i) => (
-            <div key={m.id} className="flex items-center gap-3 px-4 py-3 border-b border-stone-100 last:border-b-0">
-              <div className="text-sm font-black text-stone-400">{i + 1}</div>
+            <button key={m.id} onClick={() => setSelectedMember(m)} className="w-full flex items-center gap-3 px-4 py-3 border-b border-stone-100 last:border-b-0 hover:bg-stone-50 active:bg-stone-100 text-left">
+              <div className="text-sm font-black text-stone-400 w-5 shrink-0">{i + 1}</div>
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-[14px] text-stone-900">{m.name}</div>
                 <div className="text-[11px] text-stone-500">{m.team} · {m.tasksDone} opgaver</div>
               </div>
               <div className="text-right shrink-0"><div className="font-black text-base text-stone-900">{m.points}</div><div className="text-[9px] text-stone-400 uppercase">point</div></div>
-            </div>
+              <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
+            </button>
           ))}
         </div>
       </div>
+
+      {selectedMember && <MemberTasksModal member={selectedMember} onClose={() => setSelectedMember(null)} />}
     </div>
   );
 };
@@ -1694,8 +1797,29 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
     const task = tasks.find((t) => t.id === id);
     setTasks((prev) => prev.filter((t) => t.id !== id));
     setMenuOpen(null);
+
+    // Deduct points from all enrolled members before deleting
+    if (task) {
+      const { data: claims } = await supabase
+        .from("task_claims")
+        .select("user_id")
+        .eq("task_id", id);
+      if (claims && claims.length > 0) {
+        for (const claim of claims) {
+          const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", claim.user_id).single();
+          if (prof) {
+            await supabase.from("profiles").update({
+              points: Math.max(0, (prof.points || 0) - task.points),
+              tasks_done: Math.max(0, (prof.tasks_done || 0) - 1),
+            }).eq("id", claim.user_id);
+          }
+        }
+        await supabase.from("task_claims").delete().eq("task_id", id);
+      }
+    }
+
     await supabase.from("tasks").delete().eq("id", id);
-    logAction("task", `Slettede opgave: "${task?.title || id}"`, currentUser);
+    logAction("task", `Slettede opgave: "${task?.title || id}" – point fratrukket alle tilmeldte`, currentUser);
   };
 
   const duplicateTask = async (t) => {
@@ -2201,6 +2325,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
   const [allMembers, setAllMembers] = useState([]);
+  const [memberTasksTarget, setMemberTasksTarget] = useState(null);
   const isSuperAdmin = currentUserRole === "super_admin";
 
   // Delete flow
@@ -2316,6 +2441,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                 <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                 {menuOpen === m.id && (
                   <div className="absolute top-full right-0 mt-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-48 z-30">
+                    <MenuButton icon={<ListChecks className="w-3.5 h-3.5" />} label="Se opgaver" onClick={() => { setMemberTasksTarget(m); setMenuOpen(null); }} />
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => { setMenuOpen(null); if (m.email) window.location.href = `mailto:${m.email}?subject=RVK Frivillig`; }} />
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m, "add")} />
                     <MenuButton icon={<X className="w-3.5 h-3.5" />} label="Fratræk point" onClick={() => openBonus(m, "deduct")} />
@@ -2383,6 +2509,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
           </div>
         </div>
       )}
+
+      {memberTasksTarget && <MemberTasksModal member={memberTasksTarget} onClose={() => setMemberTasksTarget(null)} />}
 
       {/* Promote to admin modal */}
       {promoteTarget && (
@@ -3329,7 +3457,7 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
