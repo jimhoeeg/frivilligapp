@@ -710,17 +710,37 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
 
 // ============ BYTTE-MARKED ============
 
-const SwapScreen = ({ onBack, claimedTasks }) => {
+const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
   const [tab, setTab] = useState("available");
   const [offers, setOffers] = useState([]);
   const [showNewOffer, setShowNewOffer] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  const loadOffers = async () => {
+    if (!currentUser?.id) return;
+    const { data } = await supabase
+      .from("swap_offers")
+      .select(`*, offering_task:tasks!offering_task_id(id,title,date,time,location,points,icon), wants_task:tasks!wants_task_id(id,title,date), from_user:profiles!from_user_id(id,name,initials,team)`)
+      .not("status", "in", '("accepted","declined")')
+      .order("created_at", { ascending: false });
+    if (!data) return;
+    const claimedSet = new Set(claimedTasks.map((t) => t.id));
+    setOffers(data.map((o) => {
+      let status = o.from_user_id === currentUser.id ? "outgoing" : (o.wants_task_id && claimedSet.has(o.wants_task_id)) ? "incoming" : "available";
+      return { id: o.id, status, from: o.from_user, offering: o.offering_task, wants: o.wants_task, message: o.message, sentAt: new Date(o.created_at).toLocaleDateString("da-DK") };
+    }));
+  };
+
+  useEffect(() => { loadOffers(); }, [currentUser?.id]);
+
   const incoming  = offers.filter((o) => o.status === "incoming");
   const available = offers.filter((o) => o.status === "available");
   const outgoing  = offers.filter((o) => o.status === "outgoing");
 
-  const remove = (id) => setOffers((prev) => prev.filter((o) => o.id !== id));
+  const remove = async (id) => {
+    setOffers((prev) => prev.filter((o) => o.id !== id));
+    await supabase.from("swap_offers").update({ status: "declined" }).eq("id", id);
+  };
 
   return (
     <div className="pb-24 bg-stone-50 min-h-screen">
@@ -784,7 +804,7 @@ const SwapScreen = ({ onBack, claimedTasks }) => {
       </div>
 
       {showNewOffer && (
-        <NewSwapModal claimedTasks={claimedTasks} onClose={() => setShowNewOffer(false)} />
+        <NewSwapModal claimedTasks={claimedTasks} currentUser={currentUser} onClose={() => { setShowNewOffer(false); loadOffers(); }} />
       )}
 
       {selected && (
@@ -803,7 +823,13 @@ const SwapScreen = ({ onBack, claimedTasks }) => {
             {selected.message && <div className="mb-4 bg-violet-50 border border-violet-200 rounded-xl p-3"><p className="text-[13px] text-stone-700 italic">"{selected.message}"</p></div>}
             <div className="flex gap-2">
               <button onClick={() => setSelected(null)} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Luk</button>
-              <button onClick={() => setSelected(null)} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Overtag tjansen (+{selected.offering.points} pt)</button>
+              <button onClick={async () => {
+                if (!currentUser?.id || !selected) return;
+                await supabase.from("task_claims").insert({ task_id: selected.offering.id, user_id: currentUser.id });
+                await supabase.from("swap_offers").update({ status: "accepted" }).eq("id", selected.id);
+                setSelected(null);
+                loadOffers();
+              }} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Overtag tjansen (+{selected.offering.points} pt)</button>
             </div>
           </div>
         </div>
@@ -861,9 +887,10 @@ const IncomingSwapCard = ({ offer, onAccept, onDecline }) => (
   </div>
 );
 
-const NewSwapModal = ({ claimedTasks, onClose }) => {
+const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
   const [selected, setSelected] = useState(null);
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[85vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
@@ -894,7 +921,15 @@ const NewSwapModal = ({ claimedTasks, onClose }) => {
         </div>
         <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
-          <button onClick={onClose} disabled={!selected} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Tilbyd til bytte</button>
+          <button onClick={async () => {
+            if (!selected || !currentUser?.id) return;
+            setSaving(true);
+            await supabase.from("swap_offers").insert({ from_user_id: currentUser.id, offering_task_id: selected, message: message || null, status: "available" });
+            setSaving(false);
+            onClose();
+          }} disabled={!selected || saving} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sender...</> : "Tilbyd til bytte"}
+          </button>
         </div>
       </div>
     </div>
@@ -1090,8 +1125,21 @@ const AdminApprovals = () => {
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason]    = useState("");
 
+  useEffect(() => {
+    // Show members who joined in the last 30 days
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    supabase.from("profiles").select("id,name,initials,email,phone,team,created_at").gte("created_at", since).order("created_at", { ascending: false }).then(({ data }) => {
+      if (data) setPending(data.map((m) => ({ id: m.id, name: m.name, initials: m.initials || "?", email: m.email || "–", phone: m.phone || "–", team: m.team || "–", appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null })));
+    });
+  }, []);
+
   const approve = (a) => { setPending((p) => p.filter((x) => x.id !== a.id)); setDone((d) => [{ ...a, action: "approved" }, ...d]); setExpanded(null); };
-  const reject  = (a) => { setPending((p) => p.filter((x) => x.id !== a.id)); setDone((d) => [{ ...a, action: "rejected", reason }, ...d]); setRejecting(null); setReason(""); };
+  const reject  = async (a) => {
+    await supabase.from("profiles").delete().eq("id", a.id);
+    setPending((p) => p.filter((x) => x.id !== a.id));
+    setDone((d) => [{ ...a, action: "rejected", reason }, ...d]);
+    setRejecting(null); setReason("");
+  };
 
   return (
     <div className="space-y-4">
@@ -1693,8 +1741,31 @@ const AdminSettings = () => {
   const [seasonStart, setStart]       = useState("2025-08-01");
   const [seasonEnd, setEnd]           = useState("2026-06-30");
   const [saved, setSaved]             = useState(false);
+  const [saving, setSaving]           = useState(false);
 
-  const save = () => { setSaved(true); setTimeout(() => setSaved(false), 2500); };
+  useEffect(() => {
+    supabase.from("settings").select("key,value").then(({ data }) => {
+      if (!data) return;
+      const map = Object.fromEntries(data.map((s) => [s.key, s.value]));
+      if (map.point_goal)     setPointGoal(map.point_goal);
+      if (map.contribution_kr) setContrib(map.contribution_kr);
+      if (map.season_start)   setStart(map.season_start);
+      if (map.season_end)     setEnd(map.season_end);
+    });
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    await supabase.from("settings").upsert([
+      { key: "point_goal",      value: pointGoal },
+      { key: "contribution_kr", value: contribution },
+      { key: "season_start",    value: seasonStart },
+      { key: "season_end",      value: seasonEnd },
+    ], { onConflict: "key" });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  };
 
   return (
     <div className="space-y-4">
@@ -1711,7 +1782,9 @@ const AdminSettings = () => {
             <AdminInput type="date" value={seasonEnd} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
-        <button onClick={save} className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}><Save className="w-4 h-4" />Gem indstillinger</button>
+        <button onClick={save} disabled={saving} className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] flex items-center justify-center gap-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+          {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Gemmer...</> : <><Save className="w-4 h-4" />Gem indstillinger</>}
+        </button>
       </div>
 
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-3">
@@ -1887,6 +1960,8 @@ export default function App() {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showSwaps, setShowSwaps] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showNotif, setShowNotif] = useState(false);
+  const [notifications, setNotifications] = useState([]);
   const [selectedTask, setSelectedTask] = useState(null);
   const [tasks, setTasks] = useState([]);
 
@@ -2005,6 +2080,26 @@ export default function App() {
     loadTasks();
   }, []);
 
+  // Load claimed task IDs and notifications when user is set
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    // Load claimed IDs
+    supabase.from("task_claims").select("task_id").eq("user_id", currentUser.id).then(({ data }) => {
+      if (data) setClaimedIds(new Set(data.map((c) => c.task_id)));
+    });
+    // Load notifications
+    supabase.from("notifications").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(30).then(({ data }) => {
+      if (data) setNotifications(data);
+    });
+  }, [currentUser?.id]);
+
+  const markNotifsRead = async () => {
+    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
   const handleAuth = (authData) => {
     // Show global spinner while profile loads in the background.
     // loadProfile will set authLoading=false in its finally block.
@@ -2037,14 +2132,32 @@ export default function App() {
     setToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
     setTimeout(() => setToast(null), 2500);
     setTimeout(() => setTab("dashboard"), 900);
-    // Persist to Supabase (trigger auto-updates points + spots_left)
     if (currentUser?.id) {
       await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
-      // Refresh spots on the claimed task
       const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", taskId).single();
       if (updated) {
         setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
       }
+      setCurrentUser((prev) => ({ ...prev, pointsEarned: (prev.pointsEarned || 0) + (task?.points || 0), tasksCompleted: (prev.tasksCompleted || 0) + 1 }));
+    }
+  };
+
+  const handleUnclaim = async (taskId) => {
+    const task = tasks.find((t) => t.id === taskId);
+    const next = new Set(claimedIds);
+    next.delete(taskId);
+    setClaimedIds(next);
+    setToast("Tjans frameldt");
+    setTimeout(() => setToast(null), 2500);
+    if (currentUser?.id) {
+      await supabase.from("task_claims").delete().eq("task_id", taskId).eq("user_id", currentUser.id);
+      await supabase.from("profiles").update({
+        points: Math.max(0, (currentUser.pointsEarned || 0) - (task?.points || 0)),
+        tasks_done: Math.max(0, (currentUser.tasksCompleted || 0) - 1),
+      }).eq("id", currentUser.id);
+      const { data: updated } = await supabase.from("tasks").update({ spots_left: (task?.spotsLeft || 0) + 1 }).eq("id", taskId).select("spots_left").single();
+      if (updated) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
+      setCurrentUser((prev) => ({ ...prev, pointsEarned: Math.max(0, (prev.pointsEarned || 0) - (task?.points || 0)), tasksCompleted: Math.max(0, (prev.tasksCompleted || 0) - 1) }));
     }
   };
 
@@ -2088,7 +2201,7 @@ export default function App() {
         ) : showCalendar ? (
           <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
-          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} />
+          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} />
         ) : selectedTask ? (
           <div className="pb-24">
             <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
@@ -2113,14 +2226,14 @@ export default function App() {
             </div>
             <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/80 border-t border-stone-100 max-w-md mx-auto">
               {claimedIds.has(selectedTask.id)
-                ? <div className="w-full py-3.5 rounded-xl font-bold text-white flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.greenMid}, ${theme.greenDark})` }}><Check className="w-5 h-5" />Du har taget tjansen!</div>
+                ? <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
                 : <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
               }
             </div>
           </div>
         ) : (
           <>
-            {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => {}} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={0} />}
+            {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
             {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
@@ -2157,6 +2270,36 @@ export default function App() {
         {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{toast}</div>}
 
         {!showCalendar && !showSwaps && !showAdmin && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
+
+        {/* Notification drawer */}
+        {showNotif && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowNotif(false)}>
+            <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[80vh] flex flex-col animate-slideup" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-stone-100 flex items-center justify-between">
+                <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+                <h3 className="text-lg font-bold mt-1">Notifikationer</h3>
+                <button onClick={() => setShowNotif(false)} className="p-1.5 hover:bg-stone-100 rounded-lg"><X className="w-5 h-5" /></button>
+              </div>
+              <div className="overflow-y-auto flex-1 divide-y divide-stone-100">
+                {notifications.length === 0 ? (
+                  <div className="p-10 text-center"><BellRing className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[13px] text-stone-500">Ingen notifikationer endnu</p></div>
+                ) : notifications.map((n) => (
+                  <div key={n.id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-violet-50/60"}`}>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white text-sm" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                      {n.type === "task_reminder" ? <Clock className="w-4 h-4" /> : n.type === "badge_unlocked" ? <Zap className="w-4 h-4" /> : <BellRing className="w-4 h-4" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[13px] text-stone-900">{n.title}</div>
+                      {n.body && <p className="text-[12px] text-stone-500 mt-0.5 leading-relaxed">{n.body}</p>}
+                      <div className="text-[11px] text-stone-400 mt-1">{new Date(n.created_at).toLocaleDateString("da-DK")}</div>
+                    </div>
+                    {!n.read && <div className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: theme.pink }} />}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
