@@ -446,8 +446,18 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   );
 };
 
+const BADGE_DEFS = [
+  { id: "signup",    emoji: "🌱", label: "Frivillig",      desc: "Tilmeldt som frivillig",     req: (e, t) => true },
+  { id: "first",     emoji: "⭐", label: "Første tjans",   desc: "Gennemført første opgave",   req: (e, t) => t >= 1 },
+  { id: "halfway",   emoji: "🔥", label: "Halvvejs",       desc: "50 point optjent",           req: (e) => e >= 50 },
+  { id: "halfgoal",  emoji: "🏅", label: "Halvsmål nået",  desc: "100 point – bidragsfri",     req: (e) => e >= 100 },
+  { id: "veteran",   emoji: "🎯", label: "Veteran",        desc: "5 tjanser gennemført",       req: (e, t) => t >= 5 },
+  { id: "fullgoal",  emoji: "🏆", label: "Sæsonmål",       desc: "200 point – hele sæsonen",   req: (e) => e >= 200 },
+];
+
 const Dashboard = ({ claimedTasks, currentUser }) => {
   const earned    = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+  const tasks     = currentUser?.tasksCompleted || 0;
   const halfGoal  = 100;
   const fullGoal  = 200;
   const pct       = Math.min(100, Math.round((earned / fullGoal) * 100));
@@ -455,6 +465,16 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
   const restPct   = Math.max(0, Math.min(50, Math.round(((earned - halfGoal) / fullGoal) * 100)));
   const halfDone  = earned >= halfGoal;
   const fullDone  = earned >= fullGoal;
+
+  const [rank, setRank] = useState(null);
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase.from("profiles").select("id", { count: "exact", head: true })
+      .gt("points", currentUser.pointsEarned || 0)
+      .then(({ count }) => setRank((count ?? 0) + 1));
+  }, [currentUser?.id, currentUser?.pointsEarned]);
+
+  const earnedBadges = BADGE_DEFS.filter((b) => b.req(earned, tasks));
 
   return (
     <div className="pb-24">
@@ -498,9 +518,33 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
 
       <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
-        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>3</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div></div>
-        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">#12</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div></div>
+        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm">
+          <div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{earnedBadges.length}</div>
+          <div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div>
+        </div>
+        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm">
+          <div className="text-xl font-black text-stone-900">{rank != null ? `#${rank}` : "–"}</div>
+          <div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Rangliste</div>
+        </div>
       </div>
+
+      {/* Badges */}
+      {earnedBadges.length > 0 && (
+        <div className="px-5 mt-5">
+          <h2 className="text-sm font-bold text-stone-900 mb-2">Mine badges</h2>
+          <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+            {BADGE_DEFS.map((b) => {
+              const unlocked = b.req(earned, tasks);
+              return (
+                <div key={b.id} className={`shrink-0 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border text-center min-w-[72px] transition-all ${unlocked ? "bg-white border-stone-200 shadow-sm" : "bg-stone-100 border-stone-100 opacity-40"}`}>
+                  <span className="text-2xl">{b.emoji}</span>
+                  <span className={`text-[10px] font-bold leading-tight ${unlocked ? "text-stone-800" : "text-stone-400"}`}>{b.label}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="px-5 mt-6">
         <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine kommende tjanser</h2><button className="text-xs font-semibold text-emerald-700">Se alle</button></div>
@@ -1619,11 +1663,34 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
     setPromoteTarget(null);
   };
 
+  // Bonus points flow
+  const [bonusTarget, setBonusTarget]   = useState(null);
+  const [bonusPoints, setBonusPoints]   = useState("");
+  const [bonusReason, setBonusReason]   = useState("");
+  const [bonusSaving, setBonusSaving]   = useState(false);
+  const [bonusError,  setBonusError]    = useState(null);
+
+  const openBonus  = (m) => { setBonusTarget(m); setBonusPoints(""); setBonusReason(""); setBonusError(null); setMenuOpen(null); };
+  const closeBonus = () => { if (bonusSaving) return; setBonusTarget(null); };
+
+  const confirmBonus = async () => {
+    const pts = parseInt(bonusPoints);
+    if (!bonusTarget || isNaN(pts) || pts <= 0) return;
+    setBonusSaving(true); setBonusError(null);
+    const newTotal = (bonusTarget.points || 0) + pts;
+    const { error: err } = await supabase.from("profiles").update({ points: newTotal }).eq("id", bonusTarget.id);
+    setBonusSaving(false);
+    if (err) { setBonusError("Fejl: " + err.message); return; }
+    logAction("member", `Tildelte ${pts} bonuspoint til ${bonusTarget.name} – årsag: ${bonusReason}`, currentUser);
+    setAllMembers((prev) => prev.map((m) => m.id === bonusTarget.id ? { ...m, points: newTotal } : m));
+    setBonusTarget(null);
+  };
+
   useEffect(() => {
-    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
+    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role,email").order("points", { ascending: false }).then(({ data }) => {
       if (data && data.length > 0) {
         setAllMembers(data.map((p) => ({
-          id: p.id, name: p.name,
+          id: p.id, name: p.name, email: p.email || "",
           initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
           team: p.team || "", points: p.points || 0, tasksDone: p.tasks_done || 0, role: p.role,
         })));
@@ -1665,8 +1732,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                 <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                 {menuOpen === m.id && (
                   <div className="absolute top-full right-0 mt-0 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-48 z-30">
-                    <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => setMenuOpen(null)} />
-                    <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => setMenuOpen(null)} />
+                    <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => { setMenuOpen(null); if (m.email) window.location.href = `mailto:${m.email}?subject=RVK Frivillig`; }} />
+                    <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m)} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => openPromote(m)} /></>}
                     {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
@@ -1676,6 +1743,38 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
           );
         })}
       </div>
+
+      {/* Bonus points modal */}
+      {bonusTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={closeBonus}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 pt-6 pb-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3"><Zap className="w-6 h-6 text-emerald-600" /></div>
+              <h3 className="font-bold text-[16px] text-stone-900 mb-1 text-center">Tildel ekstra point</h3>
+              <p className="text-[13px] text-stone-500 mb-4 text-center">Til <span className="font-semibold text-stone-800">{bonusTarget.name}</span> (har {bonusTarget.points} pt i forvejen)</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Antal bonuspoint</label>
+                  <input type="number" min="1" value={bonusPoints} onChange={(e) => setBonusPoints(e.target.value)}
+                    placeholder="F.eks. 10" className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Årsag (påkrævet)</label>
+                  <input value={bonusReason} onChange={(e) => setBonusReason(e.target.value)}
+                    placeholder="F.eks. Ekstra hjælp til stævne" className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
+                </div>
+                {bonusError && <p className="text-[12px] text-red-600">{bonusError}</p>}
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={closeBonus} disabled={bonusSaving} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
+              <button onClick={confirmBonus} disabled={bonusSaving || !bonusPoints || !bonusReason.trim()} className="flex-1 py-2.5 rounded-xl text-white text-[14px] font-semibold disabled:opacity-40" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                {bonusSaving ? "Gemmer…" : "Tildel point"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Promote to admin modal */}
       {promoteTarget && (
