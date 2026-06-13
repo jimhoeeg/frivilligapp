@@ -25,109 +25,6 @@ const theme = {
   muted: "#6B7F77",
 };
 
-const mockUser = {
-  id: "u_01",
-  name: "Mette Sørensen",
-  initials: "MS",
-  email: "mette.sorensen@email.dk",
-  phone: "+45 22 45 87 91",
-  team: "Damer 2",
-  memberSince: "August 2023",
-  pointsEarned: 42,
-  pointsGoal: 75,
-  role: "user",
-  upcomingTasks: 2,
-  tasksCompleted: 3,
-  seasonRank: 12,
-  responsibilities: [
-    { id: "r1", title: "Kioskansvarlig", team: "Damer 2", since: "Jan 2025", icon: "coffee", color: "pink" },
-    { id: "r2", title: "Holdleder-assistent", team: "Damer 2", since: "Aug 2024", icon: "users", color: "purple" },
-  ],
-  earnedBadges: [
-    { id: "b1", name: "Ildsjæl", desc: "5 opgaver i træk", icon: "flame", unlocked: true, earnedOn: "15. mar 2026" },
-    { id: "b2", name: "Redningsmand", desc: "Tog opgave under 24t varsel", icon: "shield", unlocked: true, earnedOn: "2. feb 2026" },
-    { id: "b3", name: "Morgen-duks", desc: "3 morgenvagter før kl 8", icon: "sun", unlocked: true, earnedOn: "10. jan 2026" },
-    { id: "b4", name: "Kiosk-konge", desc: "10 vagter i kiosken", icon: "coffee", unlocked: false, progress: 6, total: 10 },
-    { id: "b5", name: "Dommer-pro", desc: "15 dommerbord-vagter", icon: "whistle", unlocked: false, progress: 4, total: 15 },
-    { id: "b6", name: "Stævne-helt", desc: "Deltaget i 5 stævner", icon: "trophy", unlocked: false, progress: 2, total: 5 },
-  ],
-};
-
-const mockMembers = [
-  { id: "m_01", name: "Sofie Lindgaard", initials: "SL", team: "Damer Elite", points: 128, tasksDone: 9, badges: 5, streak: 4, isCurrentUser: false, role: "super_admin", roleSince: "Aug 2024" },
-  { id: "m_02", name: "Jonas Bruun", initials: "JB", team: "Herrer 1", points: 115, tasksDone: 8, badges: 4, streak: 2, isCurrentUser: false, role: "admin", roleSince: "Jan 2025" },
-  { id: "m_03", name: "Anne Kærgaard", initials: "AK", team: "Damer Elite", points: 104, tasksDone: 7, badges: 4, streak: 3, isCurrentUser: false, role: "admin", roleSince: "Sep 2024" },
-  { id: "m_04", name: "Martin Holm", initials: "MH", team: "Herrer 1", points: 98, tasksDone: 7, badges: 3, streak: 1, isCurrentUser: false, role: "user" },
-  { id: "m_05", name: "Lise Brandt", initials: "LB", team: "U17 Piger", points: 92, tasksDone: 6, badges: 3, streak: 2, isCurrentUser: false, role: "user" },
-  { id: "m_06", name: "Peter Johansen", initials: "PJ", team: "Herrer 2", points: 87, tasksDone: 6, badges: 3, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_07", name: "Camilla Vang", initials: "CV", team: "Damer 2", points: 81, tasksDone: 5, badges: 2, streak: 1, isCurrentUser: false, role: "user" },
-  { id: "m_08", name: "Thomas Madsen", initials: "TM", team: "U17 Drenge", points: 76, tasksDone: 5, badges: 2, streak: 3, isCurrentUser: false, role: "user" },
-  { id: "m_09", name: "Rikke Sandberg", initials: "RS", team: "Damer Elite", points: 71, tasksDone: 5, badges: 2, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_10", name: "Christian Østergaard", initials: "CØ", team: "Herrer 1", points: 65, tasksDone: 4, badges: 2, streak: 1, isCurrentUser: false, role: "user" },
-  { id: "m_11", name: "Louise Frandsen", initials: "LF", team: "U15 Piger", points: 58, tasksDone: 4, badges: 1, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_12", name: "Mette Sørensen", initials: "MS", team: "Damer 2", points: 42, tasksDone: 3, badges: 3, streak: 2, isCurrentUser: true, role: "user" },
-  { id: "m_13", name: "Anders Krogh", initials: "AK", team: "Herrer 2", points: 38, tasksDone: 3, badges: 1, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_14", name: "Sara Bjerregaard", initials: "SB", team: "U17 Piger", points: 35, tasksDone: 2, badges: 1, streak: 1, isCurrentUser: false, role: "user" },
-  { id: "m_15", name: "Mikkel Thomsen", initials: "MT", team: "U15 Drenge", points: 31, tasksDone: 2, badges: 1, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_16", name: "Kirsten Dyhr", initials: "KD", team: "Damer Elite", points: 27, tasksDone: 2, badges: 1, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_17", name: "Henrik Blom", initials: "HB", team: "Herrer 1", points: 22, tasksDone: 2, badges: 0, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_18", name: "Ida Lerche", initials: "IL", team: "U17 Piger", points: 18, tasksDone: 1, badges: 0, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_19", name: "Frederik Nygaard", initials: "FN", team: "Herrer 2", points: 14, tasksDone: 1, badges: 0, streak: 0, isCurrentUser: false, role: "user" },
-  { id: "m_20", name: "Trine Aagaard", initials: "TA", team: "Damer 2", points: 9, tasksDone: 1, badges: 0, streak: 0, isCurrentUser: false, role: "user" },
-];
-
-const mockAuditLog = [
-  { id: "a1", actor: "Sofie Lindgaard", action: "Gjorde Jonas Bruun til Admin", type: "role_change", date: "15. jan 2025", icon: "shield" },
-  { id: "a2", actor: "Jonas Bruun", action: "Oprettede opgave: Kiosk – Lørdagsstævne", type: "task", date: "23. apr 2026", icon: "task" },
-  { id: "a3", actor: "Anne Kærgaard", action: "Godkendte nyt medlem: Trine Aagaard", type: "member", date: "21. apr 2026", icon: "user" },
-  { id: "a4", actor: "Sofie Lindgaard", action: "Ændrede sæsonens pointmål til 75", type: "settings", date: "1. aug 2025", icon: "settings" },
-  { id: "a5", actor: "Jonas Bruun", action: "Slettede opgave: Oprydning (dublet)", type: "task", date: "18. apr 2026", icon: "task" },
-];
-
-const mockPendingMembers = [
-  { id: "p_01", name: "Kasper Winther", initials: "KW", email: "kasper.winther@email.dk", phone: "+45 26 84 11 92", team: "Herrer 2", appliedOn: "I dag, 14:23", motivation: "Har netop meldt min søn ind på U15. Vil gerne bidrage med kiosk og kørsel.", referredBy: "Peter Johansen" },
-  { id: "p_02", name: "Line Vestergaard", initials: "LV", email: "line.v@email.dk", phone: "+45 20 14 55 73", team: "Damer 3", appliedOn: "I går, 19:45", motivation: "Ny spiller på Damer 3 fra denne sæson.", referredBy: null },
-  { id: "p_03", name: "Morten Dahl", initials: "MD", email: "morten.dahl@email.dk", phone: "+45 28 91 04 17", team: "Herrer 1", appliedOn: "2 dage siden", motivation: "Tidligere spiller, ønsker at komme tilbage som frivillig.", referredBy: "Jonas Bruun" },
-];
-
-const mockTaskComments = {
-  t_001: [
-    { id: "c1", author: "Jonas Bruun", authorInitials: "JB", authorRole: "admin", text: "Husk at hente nøglerne i kasse 4 inden kampen. Bip på min mobil hvis noget.", timestamp: "I går, 10:32", isOfficial: true },
-    { id: "c2", author: "Anne Kærgaard", authorInitials: "AK", authorRole: "admin", text: "Jeg er til stede hele formiddagen, hvis I har spørgsmål til pointtavlen.", timestamp: "I dag, 08:15", isOfficial: true },
-  ],
-  t_002: [
-    { id: "c3", author: "Jonas Bruun", authorInitials: "JB", authorRole: "admin", text: "OBS: Kaffemaskinen har været lunefuld – tjek at den er tændt 15 min før.", timestamp: "I dag, 09:01", isOfficial: true },
-  ],
-  t_003: [
-    { id: "c4", author: "Thomas Madsen", authorInitials: "TM", authorRole: "user", text: "Jeg kommer 10 min senere – sidder i kø på motorvejen.", timestamp: "I dag, 07:15", isOfficial: false },
-  ],
-};
-
-const mockNotifications = [
-  { id: "n_01", type: "task_reminder", title: "Tjans i morgen kl. 10:00", body: "Dommerbord – U15 kamp på bane 1. Husk at møde 15 min før.", timestamp: "2 timer siden", read: false, icon: "clock", actionTaskId: "t_001" },
-  { id: "n_02", type: "admin_message", title: "Ny besked fra Jonas Bruun", body: "OBS: Kaffemaskinen har været lunefuld – tjek at den er tændt 15 min før.", timestamp: "5 timer siden", read: false, icon: "message", actionTaskId: "t_002" },
-  { id: "n_03", type: "badge_unlocked", title: "🎉 Ny badge låst op!", body: "Du har optjent 'Morgen-duks' for 3 morgenvagter før kl. 8.", timestamp: "I går", read: false, icon: "badge" },
-  { id: "n_04", type: "swap_offer", title: "Camilla vil bytte tjans", body: "Camilla tilbyder 'Kiosk – Søndag' i bytte for din 'Kiosk – Lørdag'.", timestamp: "I går, 18:42", read: true, icon: "swap", actionSwapId: "s_01" },
-  { id: "n_05", type: "new_task", title: "Ny haster-opgave", body: "Hal-opsætning lørdag morgen – kun 1 plads tilbage. +12 point.", timestamp: "2 dage siden", read: true, icon: "flame", actionTaskId: "t_003" },
-  { id: "n_06", type: "points", title: "+15 point!", body: "Du har fuldført 'Dommerbord – Senior serie'. Du er nu på 42 point.", timestamp: "3 dage siden", read: true, icon: "zap" },
-  { id: "n_07", type: "task_reminder", title: "Husk dit forkort til fredag", body: "Kagebagning – aflever inden 14:00 på fredag.", timestamp: "4 dage siden", read: true, icon: "clock", actionTaskId: "t_004" },
-];
-
-const mockSwapOffers = [
-  { id: "s_01", status: "incoming", from: { name: "Camilla Vang", initials: "CV", team: "Damer 2" }, offering: { id: "t_off_01", title: "Kiosk – Søndag stævne", date: "Søn 27. apr", time: "13:00 – 17:00", location: "Kiosken, foyer", points: 20, icon: "coffee" }, wants: { id: "t_002", title: "Kiosk – Lørdagsstævne", date: "Lør 26. apr", time: "13:00 – 17:00", location: "Kiosken, foyer", points: 20, icon: "coffee" }, message: "Hej! Jeg kan ikke lørdag pga. barnedåb. Vil du bytte?", sentAt: "I går, 18:42" },
-  { id: "s_02", status: "available", from: { name: "Thomas Madsen", initials: "TM", team: "U17 Drenge" }, offering: { id: "t_off_02", title: "Hal-opsætning søndag", date: "Søn 27. apr", time: "07:30 – 09:00", location: "Arena Randers", points: 12, icon: "setup" }, message: "Søger nogen der kan tage tidlig morgenvagt mod byttemulighed.", sentAt: "2 timer siden", openForOffers: true },
-  { id: "s_03", status: "available", from: { name: "Louise Frandsen", initials: "LF", team: "U15 Piger" }, offering: { id: "t_off_03", title: "Dommerbord – U15", date: "Fre 2. maj", time: "18:00 – 20:00", location: "Bane 2", points: 15, icon: "whistle" }, message: "Uforudset – skal på arbejdsrejse. Hjælp søges!", sentAt: "5 timer siden", openForOffers: true, urgent: true },
-];
-
-const mockTasks = [
-  { id: "t_001", title: "Dommerbord – U15 kamp", category: "Dommerbord", date: "Lør 26. apr", dateFull: "Lørdag 26. april 2026", time: "10:00 – 12:00", location: "Bane 1, Arena Randers", points: 15, difficulty: "Medium", urgent: false, spotsLeft: 1, spotsTotal: 2, description: ["Mød op 15 min før kampstart ved dommerbordet på bane 1.", "Tjek at elektronisk pointtavle og kampur er opsat.", "Registrer holdopstilling før kampstart (ark udleveres).", "Før point og time-outs løbende under kampen.", "Aflever udfyldt kampskema til turneringsleder efter kampen."], icon: "whistle" },
-  { id: "t_002", title: "Kiosk – Lørdagsstævne", category: "Kiosk", date: "Lør 26. apr", dateFull: "Lørdag 26. april 2026", time: "13:00 – 17:00", location: "Kiosken, foyer", points: 20, difficulty: "Let", urgent: false, spotsLeft: 2, spotsTotal: 3, description: ["Mød ved kiosken kl. 12:45 – nøgle ligger i boks 4.", "Tænd kaffemaskine og opvarm pølser i rister.", "Tag imod betaling via MobilePay-boks 28481 eller kontant.", "Fyld varer op fra lager bag disken efter behov.", "Tæl kasse op og lås af ved vagtens slutning."], icon: "coffee" },
-  { id: "t_003", title: "Hal-opsætning inden stævne", category: "Opsætning", date: "Lør 26. apr", dateFull: "Lørdag 26. april 2026", time: "07:30 – 09:00", location: "Arena Randers", points: 12, difficulty: "Let", urgent: true, spotsLeft: 1, spotsTotal: 4, description: ["Mød ved hovedindgang kl. 07:30 – Thomas låser op.", "Sæt 4 baner op iht. banevognsdiagram i redskabsrum.", "Spænd net til rette højde (damer/herrer – se skilt).", "Placer dommerstole og pointtavler ved hver bane.", "Stil tilskuerstole frem langs bane 1 og 2."], icon: "setup" },
-  { id: "t_004", title: "Kagebagning til forældrekaffe", category: "Bagning", date: "Søn 27. apr", dateFull: "Søndag 27. april 2026", time: "Aflever inden 14:00", location: "Caféområdet", points: 8, difficulty: "Let", urgent: false, spotsLeft: 3, spotsTotal: 5, description: ["Bag en kage eller boller til ca. 12 personer.", "Undgå nødder (allergi blandt ungdomshold).", "Medbring gerne egen tallerken/fad – mærk med navn.", "Aflever i caféen senest kl. 14:00 søndag.", "Kontakt Lise på 22 33 44 55 hvis du bliver forsinket."], icon: "cake" },
-  { id: "t_005", title: "Dommerbord – Senior serie", category: "Dommerbord", date: "Søn 27. apr", dateFull: "Søndag 27. april 2026", time: "15:00 – 17:00", location: "Bane 2, Arena Randers", points: 15, difficulty: "Medium", urgent: false, spotsLeft: 2, spotsTotal: 2, description: ["Mød op 15 min før kampstart ved dommerbordet på bane 2.", "Tjek at elektronisk pointtavle og kampur er opsat.", "Registrer holdopstilling før kampstart.", "Før point og time-outs løbende under kampen.", "Aflever udfyldt kampskema til turneringsleder."], icon: "whistle" },
-  { id: "t_006", title: "Oprydning efter stævne", category: "Opsætning", date: "Søn 27. apr", dateFull: "Søndag 27. april 2026", time: "18:00 – 19:30", location: "Arena Randers", points: 10, difficulty: "Let", urgent: false, spotsLeft: 3, spotsTotal: 4, description: ["Mød ved hovedindgang kl. 18:00.", "Pak net og stolper ned iht. procedure i redskabsrum.", "Stil banevogne tilbage på plads.", "Fej og tør baner af hvis nødvendigt.", "Sluk lys og lås af med Thomas."], icon: "setup" },
-];
-
 const CategoryIcon = ({ type, className = "w-5 h-5" }) => {
   const icons = {
     whistle: <svg viewBox="0 0 24 24" fill="none" className={className} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="13" r="5" /><path d="M14 13h8" /><path d="M22 10v6" /><circle cx="9" cy="13" r="1" fill="currentColor" /></svg>,
@@ -707,7 +604,7 @@ const ScoreboardScreen = ({ currentUserId }) => {
 
 const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
   const [viewMode, setViewMode] = useState("month");
-  const [current, setCurrent] = useState(new Date(2026, 3)); // April 2026
+  const [current, setCurrent] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth()); });
 
   const monthNames = ["januar","februar","marts","april","maj","juni","juli","august","september","oktober","november","december"];
   const dayNames = ["Man","Tir","Ons","Tor","Fre","Lør","Søn"];
@@ -1119,7 +1016,7 @@ const AdminOverview = ({ onNavigate, tasks }) => {
       {/* Stats grid */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: "Aktive medlemmer", value: totalMembers,          icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
+          { label: "Aktive medlemmer", value: stats.total,            icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
           { label: "Nået sæsonmål",    value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
           { label: "Gns. point",       value: `${stats.avg} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
           { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
