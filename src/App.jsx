@@ -447,10 +447,14 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 };
 
 const Dashboard = ({ claimedTasks, currentUser }) => {
-  const earned = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
-  const goal = 75;
-  const pct = Math.min(100, Math.round((earned / goal) * 100));
-  const remaining = Math.max(0, goal - earned);
+  const earned    = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+  const halfGoal  = 100;
+  const fullGoal  = 200;
+  const pct       = Math.min(100, Math.round((earned / fullGoal) * 100));
+  const halfPct   = Math.min(50, Math.round((Math.min(earned, halfGoal) / fullGoal) * 100));
+  const restPct   = Math.max(0, Math.min(50, Math.round(((earned - halfGoal) / fullGoal) * 100)));
+  const halfDone  = earned >= halfGoal;
+  const fullDone  = earned >= fullGoal;
 
   return (
     <div className="pb-24">
@@ -465,18 +469,28 @@ const Dashboard = ({ claimedTasks, currentUser }) => {
                 <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-200">Sæsonens point</div>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className="text-4xl font-black">{earned}</span>
-                  <span className="text-lg text-white/70">/ {goal}</span>
+                  <span className="text-lg text-white/70">/ {fullGoal}</span>
                 </div>
+                <div className="text-[10px] text-white/60 mt-0.5">Halvt sæsonmål: {halfGoal} pt</div>
               </div>
-              <div className="px-3 py-1.5 rounded-full text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{pct}%</div>
+              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${fullDone ? "bg-emerald-400/80" : ""}`} style={!fullDone ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{pct}%</div>
             </div>
 
-            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-2 relative">
-              <div className="h-full rounded-full transition-all duration-700 relative overflow-hidden" style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${theme.pinkLight} 0%, ${theme.pink} 50%, ${theme.purple} 100%)`, boxShadow: `0 0 12px ${theme.pink}80` }} />
+            {/* Two-segment progress bar: first half (0-100) + second half (100-200) */}
+            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-1 relative flex">
+              <div className="h-full rounded-l-full transition-all duration-700 relative overflow-hidden" style={{ width: `${halfPct}%`, background: `linear-gradient(90deg, ${theme.pinkLight}, ${theme.pink})`, boxShadow: `0 0 8px ${theme.pink}80` }} />
+              {restPct > 0 && <div className="h-full transition-all duration-700" style={{ width: `${restPct}%`, background: `linear-gradient(90deg, ${theme.purple}, #7c3aed)` }} />}
+            </div>
+            <div className="flex justify-between text-[9px] text-white/50 mb-2">
+              <span>0</span><span>{halfGoal}</span><span>{fullGoal}</span>
             </div>
 
-            <div className="flex items-center justify-between text-xs text-white/80">
-              {remaining > 0 ? <span><strong className="text-white">{remaining} point</strong> til du slipper for frivillighedsbidraget</span> : <span className="text-emerald-100 font-semibold">🎉 Du har nået sæsonens mål!</span>}
+            <div className="text-xs text-white/80">
+              {fullDone
+                ? <span className="text-emerald-100 font-semibold">🎉 Hele sæsonens mål nået!</span>
+                : halfDone
+                  ? <span>✓ 1. halvsmål nået · <strong className="text-white">{fullGoal - earned} pt</strong> til hele sæsonen</span>
+                  : <span><strong className="text-white">{halfGoal - earned} pt</strong> til 1. halvsmål – fritaget bidrag</span>}
             </div>
           </div>
         </div>
@@ -1036,8 +1050,8 @@ const AdminOverview = ({ onNavigate, tasks }) => {
     supabase.from("profiles").select("points").then(({ data }) => {
       if (data && data.length > 0) {
         const total = data.length;
-        const goalReached = data.filter((m) => m.points >= 75).length;
-        const behind = data.filter((m) => m.points < 30).length;
+        const goalReached = data.filter((m) => m.points >= 100).length;
+        const behind = data.filter((m) => m.points < 50).length;
         const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
         setStats({ total, goalReached, behind, avg });
       }
@@ -1053,7 +1067,7 @@ const AdminOverview = ({ onNavigate, tasks }) => {
       <div className="grid grid-cols-2 gap-3">
         {[
           { label: "Aktive medlemmer", value: stats.total,            icon: <Users className="w-4 h-4" />,        accent: "#ECFDF5", color: theme.greenDark },
-          { label: "Nået sæsonmål",    value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
+          { label: "Nået halvsmål",     value: `${stats.goalReached}/${stats.total}`, icon: <CheckCircle2 className="w-4 h-4" />, accent: "#FCE7F3", color: "#BE185D" },
           { label: "Gns. point",       value: `${stats.avg} pt`,     icon: <TrendingUp className="w-4 h-4" />,   accent: "#EDE9FE", color: theme.purpleDark },
           { label: "Ledige pladser",   value: openSpots,             icon: <ListChecks className="w-4 h-4" />,  accent: "#ECFDF5", color: theme.greenDark },
         ].map((s, i) => (
@@ -1072,9 +1086,9 @@ const AdminOverview = ({ onNavigate, tasks }) => {
           <AlertTriangle className="w-5 h-5 text-pink-500" />
         </div>
         {[
-          { label: "🎉 Har nået målet", count: stats.goalReached,                                         color: theme.greenMid },
-          { label: "🟣 På vej (30–74 pt)", count: stats.total - stats.goalReached - stats.behind,       color: theme.purple },
-          { label: "⚠️ Bagud (under 30 pt)", count: stats.behind,                                       color: theme.pink },
+          { label: "🎉 Nået halvsmål (≥100 pt)", count: stats.goalReached,                                          color: theme.greenMid },
+          { label: "🟣 På vej (50–99 pt)",      count: stats.total - stats.goalReached - stats.behind,        color: theme.purple },
+          { label: "⚠️ Bagud (under 50 pt)",    count: stats.behind,                                           color: theme.pink },
         ].map((row, i) => {
           const pct = stats.total > 0 ? Math.round((row.count / stats.total) * 100) : 0;
           return (
@@ -1313,7 +1327,88 @@ const AdminTasks = ({ tasks, setTasks }) => {
   );
 };
 
+const TASK_TEMPLATES = [
+  {
+    label: "Kampafvikling & Sekretærbord", icon: "whistle",
+    templates: [
+      { title: "Dømme kampe som klubdommer (lokalrækker)", points: 15, difficulty: "Medium", description: "Døm en kamp i lokalrækkerne som klubdommer.\nMød op 15 min. før kampstart.\nAflever kampskema til halsoveren efter kampen." },
+      { title: "Sekretærbordet – elektronisk holdkort/point", points: 10, difficulty: "Let", description: "Sid ved sekretærbordet og før elektronisk holdkort.\nVær på plads senest 20 min. før kampstart.\nKontakt kampansvarlig ved tvivl." },
+      { title: "Halspeaker til divisions-/hjemmekamp", points: 10, difficulty: "Let", description: "Vær halspeaker ved hjemmekampe.\nAnnoncér hold, spillerskift og resultater.\nBrug klubbens speaker-udstyr." },
+      { title: "Linjedommer til stor kamp", points: 10, difficulty: "Let", description: "Vær linjedommer ved en større kamp.\nMød op 30 min. før kampstart til briefing.\nFølg dommernes anvisninger under kampen." },
+      { title: "Opsætning/nedtagning af bane og net", points: 5, difficulty: "Let", description: "Opsæt eller tag baner og net ned ved kampdag.\nTjek at net er i korrekt højde.\nLæg alt udstyr tilbage på rette plads." },
+      { title: "Kampansvarlig/Halsover", points: 15, difficulty: "Medium", description: "Mød op som den første og lås hallen op.\nSørg for at alt er klar til kampen.\nLuk hallen og aflevér nøgler til rette vedkommende." },
+    ],
+  },
+  {
+    label: "Hygge og Socialt", icon: "cake",
+    templates: [
+      { title: "Formand for festudvalget (Sæson)", points: 75, difficulty: "Hård", description: "Vær formand for festudvalget hele sæsonen.\nPlanlæg og koordinér alle sociale arrangementer.\nRapportér til bestyrelsen." },
+      { title: "Udvalgsmedlem i festudvalget (Sæson)", points: 40, difficulty: "Medium", description: "Deltag aktivt i festudvalgets arbejde hele sæsonen.\nHjælp med planlægning og praktisk afholdelse af arrangementer." },
+      { title: "Klargøring og madlavning til fællesspisning", points: 15, difficulty: "Let", description: "Hjælp med at klargøre og lave mad til fællesspisning.\nMød op 1 time før arrangementet starter.\nRyd op bagefter." },
+      { title: "Kioskvagt til alm. hjemmekamp (ca. 2-3 timer)", points: 10, difficulty: "Let", description: "Bemand kiosken under en hjemmekamp.\nSørg for at varer er fyldt op.\nAflever kassen til kassereren efter kampen." },
+      { title: "Bage kage / lave madpakker til et hold", points: 5, difficulty: "Let", description: "Bag kage eller lav madpakker til et hold.\nAftaler omfang med holdleder." },
+      { title: "Oprydning/Rengøring efter klubfest", points: 15, difficulty: "Let", description: "Hjælp med oprydning og rengøring efter klubfest eller arrangement.\nBliv til alt er ryddet op og hallen er klar til næste brug." },
+      { title: "Indkøber til kiosken (Sæson)", points: 50, difficulty: "Medium", description: "Stå for indkøb til klubkiosken hele sæsonen.\nHold styr på lagerstatus og bestil varer.\nSørg for at priser er opdaterede." },
+    ],
+  },
+  {
+    label: "Holdleder & Transport", icon: "setup",
+    templates: [
+      { title: "Fast holdleder for et ungdoms- eller seniorhold (Sæson)", points: 75, difficulty: "Hård", description: "Vær fast holdleder for et hold hele sæsonen.\nKommunikér med forældre, spillere og trænere.\nSørg for tilmelding, kørsel og praktiske forhold." },
+      { title: "Kørsel til udekamp inkl. heppekor", points: 15, difficulty: "Let", description: "Kør spillere til udekamp og hep holdet under kampen.\nAftaler mødested og tidspunkt med holdleder.\nSørg for at alle kommer sikkert hjem." },
+      { title: "Kørsel til udekamp – kun aflevering/afhentning", points: 5, difficulty: "Let", description: "Kør spillere til eller fra udekamp.\nAftaler tidspunkt og sted med holdleder." },
+      { title: "Fast vaskemaskine – holdets trøjer hele sæsonen", points: 50, difficulty: "Medium", description: "Vask holdets spillertøj efter samtlige kampe og stævner hele sæsonen.\nAftaler afhentning og aflevering med holdleder." },
+      { title: "Vask af spillertøj efter én kamp/stævne", points: 5, difficulty: "Let", description: "Vask holdets spillertøj efter én kamp eller et stævne.\nAftaler afhentning og aflevering med holdleder." },
+    ],
+  },
+  {
+    label: "Stævneplanlægning og Afholdelse", icon: "whistle",
+    templates: [
+      { title: "Stævneleder/Hovedansvarlig for klubbens eget stævne", points: 75, difficulty: "Hård", description: "Vær overordnet ansvarlig for afviklingen af et klubstævne.\nKoordinér alle frivillige og leverandører.\nSørg for at stævneprogrammet følges." },
+      { title: "Medlem af stævneudvalg (planlægning)", points: 40, difficulty: "Medium", description: "Deltag i planlægningen af klubbens stævne.\nMød til udvalgets møder og tag ansvar for aftalte opgaver." },
+      { title: "Natvagt/Halsover ved overnatningsstævne", points: 30, difficulty: "Medium", description: "Vær halsover om natten ved overnatningsstævne (ca. kl. 23–07).\nSørg for ro og tryghed for de deltagende unge." },
+      { title: "Stævnesekretariatet – registrér resultater (halvdags)", points: 20, difficulty: "Let", description: "Sid i stævnesekretariatet og registrér resultater og tider.\nStyr kampuret og koordinér med dommerne." },
+      { title: "Kioskvagt ved stort weekendstævne (vagt á 3 timer)", points: 15, difficulty: "Let", description: "Bemand kiosken i 3 timer under weekendstævnet.\nSørg for at varer er fyldt op løbende." },
+      { title: "Opsætning fredag aften inden stævne / Hovedrengøring søndag", points: 15, difficulty: "Let", description: "Hjælp med at sætte hallen op fredag aften eller stå for hovedrengøring søndag.\nFølg stævnelederens anvisninger." },
+    ],
+  },
+  {
+    label: "Kommunikation & PR", icon: "coffee",
+    templates: [
+      { title: "Webmaster / Hovedansvarlig for SoMe (Sæson)", points: 75, difficulty: "Hård", description: "Vær ansvarlig for klubbens hjemmeside og sociale medier hele sæsonen.\nPost regelmæssige opdateringer og resultater.\nKoordinér indhold med bestyrelsen." },
+      { title: "Sponsorudvalg (Sæson – indhente sponsorer)", points: 75, difficulty: "Hård", description: "Vær en del af sponsorudvalget og indhent sponsorer til klubben hele sæsonen.\nKontakt lokale virksomheder og lav sponsoraftaler." },
+      { title: "Fotograf til kampdag/stævne inkl. redigering og deling", points: 15, difficulty: "Let", description: "Tag billeder ved en kampdag eller stævne.\nRedigér udvalgte billeder og del med klubben.\nBrug klubbens fotokanaler til deling." },
+      { title: "Skrive kampreferater / artikler til hjemmeside/Facebook", points: 10, difficulty: "Let", description: "Skriv et kort kampreferat eller en artikel til hjemmeside eller Facebook.\nAflever tekst til SoMe-ansvarlig senest dagen efter kampen." },
+      { title: "Lave grafisk materiale (plakater, opslag, stævneprogram)", points: 10, difficulty: "Let", description: "Lav grafisk materiale til klubbens aktiviteter.\nBrug klubbens farver og logo.\nAflever filer til SoMe-ansvarlig i aftalt format." },
+      { title: "Dele flyers / hænge plakater op i lokalområdet", points: 5, difficulty: "Let", description: "Del flyers eller hæng plakater op i lokalområdet.\nFå materiale udleveret af SoMe-ansvarlig.\nIndmeld hvilke steder du har besøgt." },
+    ],
+  },
+  {
+    label: "Faciliteter & Materialer", icon: "setup",
+    templates: [
+      { title: "Materialeansvarlig (Sæson)", points: 75, difficulty: "Hård", description: "Hold overblik over bolde, tøj, net og øvrigt udstyr hele sæsonen.\nRegistrér slitage og bestil nyt ved behov.\nRapportér til bestyrelsen." },
+      { title: "Klargøring af beachvolleyball-baner (arbejdsdag)", points: 20, difficulty: "Medium", description: "Hjælp med at klargøre beachvolleyball-banerne til sæsonen.\nMød op til den aftalte arbejdsdag.\nMedtag egnet fodtøj og arbejdstøj." },
+      { title: "Vedligehold af beach-baner (luge ukrudt, rive baner)", points: 10, difficulty: "Let", description: "Vedligehold beachbanerne ved at luge ukrudt og rive sand.\nCa. 2 timers arbejde pr. gang." },
+      { title: "Hovedoprydning og organisering af boldrum", points: 15, difficulty: "Let", description: "Ryd op og organiser klubbens boldrum.\nSørg for at alt udstyr er på rette plads og mærket." },
+      { title: "Småreparationer (sy net, fikse boldvogne, pumpe bolde)", points: 10, difficulty: "Let", description: "Foretag småreparationer på klubbens udstyr.\nSy net, reparer boldvogne eller pump bolde.\nRapportér større skader til materialeansvarlig." },
+    ],
+  },
+  {
+    label: "Klubadministration", icon: "setup",
+    templates: [
+      { title: "Bestyrelsesmedlem (Formand, Kasserer m.fl.)", points: 100, difficulty: "Hård", description: "Sidder i klubbens bestyrelse hele sæsonen.\nDeltager i bestyrelsesmøder og varetager bestyrelsespost.\nRapporterer til generalforsamlingen." },
+      { title: "Revisor / Økonomisk hjælp (Sæson)", points: 40, difficulty: "Medium", description: "Hjælp med revision eller økonomi hele sæsonen.\nGennemgå regnskab og bilag.\nRapportér til kassereren." },
+      { title: "Børneattest-ansvarlig (Sæson)", points: 40, difficulty: "Medium", description: "Indhent og tjek børneattester for alle relevante frivillige.\nHold register opdateret hele sæsonen.\nRapportér mangler til formanden." },
+      { title: "Hjælp til medlemsregistrering og kontingentkørsel", points: 25, difficulty: "Let", description: "Hjælp med at registrere nye medlemmer og køre kontingentopkrævning.\nAftaler opgaveomfang med kassereren." },
+      { title: "Fonds-ansøger (skrive og sende fondansøgninger)", points: 25, difficulty: "Medium", description: "Skriv og send ansøgninger til fonde og puljer på vegne af klubben.\nKoordinér med bestyrelsen om behovsområder.\nRapportér svar og tildelinger." },
+    ],
+  },
+];
+
 const TaskFormModal = ({ task, onClose, onSave }) => {
+  const isNew = !task;
+  const [step, setStep]         = useState(isNew ? "pick" : "form");
+  const [tplCat, setTplCat]     = useState(TASK_TEMPLATES[0].label);
   const [title, setTitle]       = useState(task?.title || "");
   const [category, setCategory] = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]         = useState(task?.icon || "whistle");
@@ -1325,6 +1420,12 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
   const [urgent, setUrgent]     = useState(task?.urgent || false);
   const [description, setDesc]  = useState(task?.description?.join("\n") || "");
+
+  const applyTemplate = (tpl, catLabel, catIcon) => {
+    setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
+    setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
+    setStep("form");
+  };
 
   const categories = [
     { label: "Kampafvikling & Sekretærbord",      icon: "whistle" },
@@ -1341,12 +1442,61 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
     onSave({ title, category, icon, date, dateFull: date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
   };
 
+  const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
+
+  if (step === "pick") {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+        <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[92vh] flex flex-col animate-slideup" onClick={(e) => e.stopPropagation()}>
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between z-10 shrink-0">
+            <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
+            <h3 className="text-lg font-bold mt-2">Vælg skabelon</h3>
+            <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
+          </div>
+          {/* Category tabs */}
+          <div className="shrink-0 flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
+            {TASK_TEMPLATES.map((g) => (
+              <button key={g.label} onClick={() => setTplCat(g.label)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === g.label ? "text-white" : "bg-stone-100 text-stone-700"}`}
+                style={tplCat === g.label ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+                {g.label}
+              </button>
+            ))}
+          </div>
+          {/* Template list */}
+          <div className="overflow-y-auto flex-1 p-4 space-y-2 pb-24">
+            {activeTplGroup.templates.map((tpl) => (
+              <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label, activeTplGroup.icon)}
+                className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
+                  <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full whitespace-nowrap">{tpl.points} pt</span>
+                </div>
+                <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${tpl.difficulty === "Hård" ? "bg-pink-100 text-pink-700" : tpl.difficulty === "Medium" ? "bg-violet-100 text-violet-700" : "bg-stone-200 text-stone-600"}`}>{tpl.difficulty}</span>
+              </button>
+            ))}
+          </div>
+          {/* Footer: start from scratch */}
+          <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 shrink-0">
+            <button onClick={() => setStep("form")} className="w-full py-3 rounded-xl border border-stone-200 text-stone-700 font-semibold text-[14px] hover:bg-stone-50">
+              Start fra bunden (ingen skabelon)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[92vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-stone-100 px-5 pt-3 pb-3 flex items-center justify-between z-10">
           <div className="w-12 h-1 bg-stone-200 rounded-full absolute top-2 left-1/2 -translate-x-1/2" />
-          <h3 className="text-lg font-bold mt-2">{task ? "Rediger opgave" : "Ny opgave"}</h3>
+          <div className="flex items-center gap-2 mt-2">
+            {isNew && <button onClick={() => setStep("pick")} className="p-1.5 hover:bg-stone-100 rounded-lg"><ChevronLeft className="w-5 h-5" /></button>}
+            <h3 className="text-lg font-bold">{task ? "Rediger opgave" : "Ny opgave"}</h3>
+          </div>
           <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
         </div>
 
@@ -1416,6 +1566,24 @@ const AdminMembers = ({ currentUserRole }) => {
   const [menuOpen, setMenuOpen] = useState(null);
   const [allMembers, setAllMembers] = useState([]);
   const isSuperAdmin = currentUserRole === "super_admin";
+  const [deleteTarget, setDeleteTarget] = useState(null); // member to delete
+  const [deleteStep, setDeleteStep] = useState(1);        // 1 = confirm, 2 = reason
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const openDelete = (member) => { setDeleteTarget(member); setDeleteStep(1); setDeleteReason(""); setDeleteError(null); setMenuOpen(null); };
+  const closeDelete = () => { if (deleting) return; setDeleteTarget(null); setDeleteReason(""); setDeleteError(null); };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true); setDeleteError(null);
+    const { error: err } = await supabase.from("profiles").delete().eq("id", deleteTarget.id);
+    setDeleting(false);
+    if (err) { setDeleteError("Fejl: " + err.message); return; }
+    setAllMembers((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+    setDeleteTarget(null);
+  };
 
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
@@ -1431,8 +1599,8 @@ const AdminMembers = ({ currentUserRole }) => {
 
   const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
-    if (filter === "behind"  && m.points >= 30)  return false;
-    if (filter === "reached" && m.points < 75)   return false;
+    if (filter === "behind"  && m.points >= 50)  return false;
+    if (filter === "reached" && m.points < 100)  return false;
     return true;
   });
 
@@ -1447,10 +1615,10 @@ const AdminMembers = ({ currentUserRole }) => {
           <button key={id} onClick={() => setFilter(id)} className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === id ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`} style={filter === id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>{label}</button>
         ))}
       </div>
-      <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm">
         {filtered.map((m) => {
-          const reached = m.points >= 75;
-          const behind  = m.points < 30;
+          const reached = m.points >= 100;
+          const behind  = m.points < 50;
           return (
             <div key={m.id} className="flex items-center gap-3 px-4 py-3 relative">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
@@ -1458,7 +1626,7 @@ const AdminMembers = ({ currentUserRole }) => {
                 <div className="flex items-center gap-1.5"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><RoleBadge role={m.role} /></div>
                 <div className="text-[11px] text-stone-500 truncate">{m.team} · {m.tasksDone} opgaver</div>
               </div>
-              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 75</div></div>
+              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 100</div></div>
               <div className="relative">
                 <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                 {menuOpen === m.id && (
@@ -1466,7 +1634,7 @@ const AdminMembers = ({ currentUserRole }) => {
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => setMenuOpen(null)} />
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => setMenuOpen(null)} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => setMenuOpen(null)} /></>}
-                    {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => setMenuOpen(null)} /></>}
+                    {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
                 )}
               </div>
@@ -1474,6 +1642,49 @@ const AdminMembers = ({ currentUserRole }) => {
           );
         })}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={closeDelete}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {deleteStep === 1 ? (
+              <>
+                <div className="px-5 pt-6 pb-4 text-center">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-6 h-6 text-red-600" /></div>
+                  <h3 className="font-bold text-[16px] text-stone-900 mb-1">Slet medlem?</h3>
+                  <p className="text-[13px] text-stone-500">Du er ved at slette <span className="font-semibold text-stone-800">{deleteTarget.name}</span> permanent. Alle data fjernes (GDPR).</p>
+                </div>
+                <div className="px-5 pb-5 flex gap-2">
+                  <button onClick={closeDelete} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700">Annuller</button>
+                  <button onClick={() => setDeleteStep(2)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold">Ja, fortsæt</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 pt-6 pb-4">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-6 h-6 text-red-600" /></div>
+                  <h3 className="font-bold text-[16px] text-stone-900 mb-1 text-center">Bekræft sletning</h3>
+                  <p className="text-[13px] text-stone-500 mb-4 text-center">Angiv årsag til sletning af <span className="font-semibold text-stone-800">{deleteTarget.name}</span>. Dette kan ikke fortrydes.</p>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    placeholder="Årsag til sletning (påkrævet)..."
+                    rows={3}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-red-300 resize-none"
+                  />
+                  {deleteError && <p className="text-[12px] text-red-600 mt-1">{deleteError}</p>}
+                </div>
+                <div className="px-5 pb-5 flex gap-2">
+                  <button onClick={closeDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
+                  <button onClick={confirmDelete} disabled={deleting || deleteReason.trim().length < 5} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold disabled:opacity-40">
+                    {deleting ? "Sletter…" : "Slet permanent"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1748,7 +1959,7 @@ const AdminRoles = () => {
 
 // ---- INDSTILLINGER (kun Super Admin) ----
 const AdminSettings = () => {
-  const [pointGoal, setPointGoal]     = useState("75");
+  const [pointGoal, setPointGoal]     = useState("100");
   const [contribution, setContrib]    = useState("1500");
   const [seasonStart, setStart]       = useState("2025-08-01");
   const [seasonEnd, setEnd]           = useState("2026-06-30");
@@ -1785,7 +1996,8 @@ const AdminSettings = () => {
 
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-4">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Pointsystem</div>
-        <AdminInput label="Sæsonens pointmål" type="number" placeholder="75" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <AdminInput label="Halvt sæsonmål (pr. halvsæson)" type="number" placeholder="100" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <p className="text-[11px] text-stone-400 -mt-2">Dobbelt giver fuldt sæsonmål ({pointGoal ? parseInt(pointGoal) * 2 : 200} pt). Point nulstilles kun af admin efter begge halvsæsoner.</p>
         <AdminInput label="Frivillighedsbidrag (kr)" type="number" placeholder="1500" icon={<DollarSign className="w-4 h-4" />} value={contribution} onChange={(e) => setContrib(e.target.value)} />
         <div>
           <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sæsonperiode</label>
