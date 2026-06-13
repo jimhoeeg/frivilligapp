@@ -204,7 +204,8 @@ const AuthScreen = ({ onAuthenticated }) => {
 
   useEffect(() => {
     supabase.from("teams").select("name").order("name").then(({ data }) => {
-      if (data) setTeams(data.map((t) => t.name));
+      if (data && data.length > 0) setTeams(data.map((t) => t.name));
+      else setTeams(["Ny"]);
     });
   }, []);
 
