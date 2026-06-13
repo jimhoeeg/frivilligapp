@@ -56,46 +56,37 @@ const TaskCard = ({ task, onClick }) => {
   return (
     <button
       onClick={() => onClick(task)}
-      className="w-full text-left bg-white rounded-2xl p-4 border border-stone-200/70 hover:border-emerald-300 active:scale-[0.99] transition-all shadow-sm hover:shadow-md group relative overflow-hidden"
+      className="w-full text-left bg-white rounded-xl px-3 py-2.5 border border-stone-200/70 hover:border-emerald-300 active:scale-[0.99] transition-all shadow-sm hover:shadow-md group relative overflow-hidden flex items-center gap-3"
     >
-      {task.urgent && !isLong && (
-        <div className="absolute top-0 right-0 bg-gradient-to-br from-pink-500 to-pink-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wide flex items-center gap-1">
-          <Flame className="w-3 h-3" />HASTER
+      {/* Icon */}
+      <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-white shadow-sm" style={{ background: isLong ? `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+        <CategoryIcon type={task.icon} className="w-4.5 h-4.5" />
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          {task.urgent && !isLong && <Flame className="w-3 h-3 text-pink-500 shrink-0" />}
+          {isLong && <CalendarDays className="w-3 h-3 text-violet-500 shrink-0" />}
+          <span className="font-semibold text-[13px] leading-tight text-stone-900 truncate">{task.title}</span>
         </div>
-      )}
-      {isLong && (
-        <div className="absolute top-0 right-0 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wide flex items-center gap-1" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-          <CalendarDays className="w-3 h-3" />SÆSONOPGAVE
-        </div>
-      )}
-      <div className="flex items-start gap-3">
-        <div className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: isLong ? `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
-          <CategoryIcon type={task.icon} className="w-6 h-6" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-semibold text-[15px] leading-tight text-stone-900 pr-12">{task.title}</h3>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-stone-600 mb-2.5">
-            <span className="inline-flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{task.date}</span>
-            {!isLong && task.time && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{task.time}</span>}
-          </div>
-          <div className="flex items-center gap-1.5 text-[12px] text-stone-500 mb-3">
-            <MapPin className="w-3.5 h-3.5" />
-            <span className="truncate">{task.location}</span>
-          </div>
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <DifficultyPill level={task.difficulty} />
-              <span className="text-[11px] text-stone-500 font-medium">{task.spotsLeft}/{task.spotsTotal} ledige</span>
-            </div>
-            <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-white text-[12px] font-bold shadow-sm" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
-              <Zap className="w-3.5 h-3.5" fill="white" />
-              +{task.points}
-            </div>
-          </div>
+        <div className="flex items-center gap-2 text-[11px] text-stone-500">
+          <span className="inline-flex items-center gap-0.5"><Calendar className="w-3 h-3" />{task.date}</span>
+          {!isLong && task.time && <span className="inline-flex items-center gap-0.5"><Clock className="w-3 h-3" />{task.time}</span>}
+          <span className="inline-flex items-center gap-0.5 truncate"><MapPin className="w-3 h-3 shrink-0" /><span className="truncate">{task.location}</span></span>
         </div>
       </div>
+
+      {/* Right side: points + spots */}
+      <div className="shrink-0 flex flex-col items-end gap-1">
+        <div className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-white text-[11px] font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
+          <Zap className="w-3 h-3" fill="white" />+{task.points}
+        </div>
+        <span className={`text-[10px] font-semibold ${isFull ? "text-red-400" : "text-stone-400"}`}>
+          {isFull ? "Fuldt" : `${task.spotsLeft} ledig`}
+        </span>
+      </div>
+
       <div className="absolute bottom-0 left-0 right-0 h-0.5 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(90deg, ${theme.greenMid}, ${theme.purple}, ${theme.pink})` }} />
     </button>
   );
@@ -392,13 +383,21 @@ const parseTaskDate = (task) => {
 };
 
 const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOpenSwaps, onOpenCalendar, unreadCount }) => {
-  const [catFilter,    setCatFilter]    = useState("Alle");
-  const [dateFilter,   setDateFilter]   = useState("Alle");
-  const [query,        setQuery]        = useState("");
+  const [catFilter,     setCatFilter]     = useState("Alle");
+  const [dateFilter,    setDateFilter]    = useState("Alle");
+  const [sortOrder,     setSortOrder]     = useState("date");   // "date" | "points_desc" | "points_asc"
+  const [query,         setQuery]         = useState("");
   const [showLongTasks, setShowLongTasks] = useState(false);
+  const [showFilters,   setShowFilters]   = useState(false);
 
   const catFilters  = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
   const dateFilters = ["Alle", "Denne måned", "Næste måned", "Halvt sæson"];
+
+  const sortOptions = [
+    { id: "date",        label: "Dato ↑" },
+    { id: "points_desc", label: "Point ↓" },
+    { id: "points_asc",  label: "Point ↑" },
+  ];
 
   const visible = useMemo(() => {
     const today = new Date();
@@ -410,7 +409,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 
     return tasks
       .filter((t) => {
-        if (t.durationType && t.durationType !== "single") return false; // long-running excluded from main list
+        if (t.durationType && t.durationType !== "single") return false;
         if (claimedIds.has(t.id)) return false;
         if (catFilter === "Haster" && !t.urgent) return false;
         if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
@@ -425,13 +424,15 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
         return true;
       })
       .sort((a, b) => {
+        if (sortOrder === "points_desc") return b.points - a.points;
+        if (sortOrder === "points_asc")  return a.points - b.points;
         const da = parseTaskDate(a), db = parseTaskDate(b);
         if (!da && !db) return 0;
         if (!da) return 1;
         if (!db) return -1;
         return da - db;
       });
-  }, [tasks, catFilter, dateFilter, query, claimedIds]);
+  }, [tasks, catFilter, dateFilter, sortOrder, query, claimedIds]);
 
   // Group by month for display
   const grouped = useMemo(() => {
@@ -476,40 +477,101 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
       </div>
 
       <div className="px-5 -mt-12 relative z-10">
-        <div className="bg-white rounded-2xl shadow-lg border border-stone-100 p-3 mb-4">
-          <div className="flex items-center gap-2 bg-stone-50 rounded-xl px-3 py-2.5 border border-stone-100">
-            <Search className="w-4 h-4 text-stone-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søg i opgaver..." className="flex-1 bg-transparent outline-none text-sm placeholder:text-stone-400" />
-            {query && <button onClick={() => setQuery("")}><X className="w-4 h-4 text-stone-400" /></button>}
+        {/* Søg + filterknap */}
+        <div className="bg-white rounded-2xl shadow-lg border border-stone-100 p-3 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 bg-stone-50 rounded-xl px-3 py-2 border border-stone-100 flex-1">
+              <Search className="w-4 h-4 text-stone-400 shrink-0" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søg i opgaver..." className="flex-1 bg-transparent outline-none text-sm placeholder:text-stone-400" />
+              {query && <button onClick={() => setQuery("")}><X className="w-4 h-4 text-stone-400" /></button>}
+            </div>
+            <button
+              onClick={() => setShowFilters((v) => !v)}
+              className={`shrink-0 w-9 h-9 rounded-xl border flex items-center justify-center transition-all ${showFilters || dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date" ? "text-white border-transparent shadow-md" : "bg-stone-50 border-stone-200 text-stone-500"}`}
+              style={showFilters || dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date" ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}
+            >
+              <Filter className="w-4 h-4" />
+            </button>
           </div>
+
+          {showFilters && (
+            <div className="mt-3 space-y-3 border-t border-stone-100 pt-3">
+              {/* Dato */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">Periode</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {dateFilters.map((f) => {
+                    const active = dateFilter === f;
+                    return (
+                      <button key={f} onClick={() => setDateFilter(f)} className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${active ? "text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`} style={active ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>
+                        {f}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sortering */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">Sortering</div>
+                <div className="flex gap-1.5">
+                  {sortOptions.map((s) => {
+                    const active = sortOrder === s.id;
+                    return (
+                      <button key={s.id} onClick={() => setSortOrder(s.id)} className={`px-3 py-1 rounded-full text-[12px] font-semibold transition-all ${active ? "text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`} style={active ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+                        {s.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Kategori */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">Kategori</div>
+                <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                  {catFilters.map((f) => {
+                    const active = catFilter === f;
+                    const isUrgent = f === "Haster";
+                    return (
+                      <button key={f} onClick={() => setCatFilter(f)} className={`shrink-0 px-3 py-1 rounded-full text-[12px] font-semibold transition-all flex items-center gap-1 ${active ? "text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`} style={active ? { background: isUrgent ? `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+                        {isUrgent && <Flame className="w-3 h-3" />}{f}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nulstil */}
+              {(dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date") && (
+                <button onClick={() => { setDateFilter("Alle"); setCatFilter("Alle"); setSortOrder("date"); }} className="text-[11px] text-stone-400 hover:text-stone-600 underline">
+                  Nulstil filtre
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Dato-filter */}
-        <div className="flex gap-2 overflow-x-auto pb-1 -mx-5 px-5 scrollbar-hide">
-          {dateFilters.map((f) => {
-            const active = dateFilter === f;
-            return (
-              <button key={f} onClick={() => setDateFilter(f)} className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition-all flex items-center gap-1 ${active ? "text-white shadow-md" : "bg-white text-stone-700 border border-stone-200"}`} style={active ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>
-                {f === "Alle" && <CalendarDays className="w-3 h-3" />}
-                {f}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Kategori-filter */}
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
-          {catFilters.map((f) => {
-            const active = catFilter === f;
-            const isUrgent = f === "Haster";
-            return (
-              <button key={f} onClick={() => setCatFilter(f)} className={`shrink-0 px-4 py-2 rounded-full text-[13px] font-semibold transition-all ${active ? "text-white shadow-md" : "bg-white text-stone-700 border border-stone-200 hover:border-stone-300"}`} style={active ? { background: isUrgent ? `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
-                {isUrgent && <Flame className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />}
-                {f}
-              </button>
-            );
-          })}
-        </div>
+        {/* Aktive filter-chips (vises kun når filtermenuen er lukket) */}
+        {!showFilters && (dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date") && (
+          <div className="flex gap-1.5 flex-wrap mb-2">
+            {dateFilter !== "Alle" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                {dateFilter}<button onClick={() => setDateFilter("Alle")}><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {catFilter !== "Alle" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                {catFilter}<button onClick={() => setCatFilter("Alle")}><X className="w-3 h-3" /></button>
+              </span>
+            )}
+            {sortOrder !== "date" && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-stone-200 text-stone-700">
+                {sortOptions.find(s => s.id === sortOrder)?.label}<button onClick={() => setSortOrder("date")}><X className="w-3 h-3" /></button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="px-5 mt-2">
@@ -520,18 +582,24 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
           </div>
         ) : (
           <>
-            {grouped.map((group) => (
-              <div key={group.label} className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">{group.label}</span>
-                  <div className="flex-1 h-px bg-stone-200" />
-                  <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+            {sortOrder === "date" ? (
+              grouped.map((group) => (
+                <div key={group.label} className="mb-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">{group.label}</span>
+                    <div className="flex-1 h-px bg-stone-200" />
+                    <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+                  </div>
                 </div>
-                <div className="space-y-3">
-                  {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
-                </div>
+              ))
+            ) : (
+              <div className="space-y-1.5 mb-3">
+                {visible.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
               </div>
-            ))}
+            )}
 
             {/* Long-running / season tasks */}
             {longTasks.length > 0 && (
