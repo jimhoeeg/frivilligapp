@@ -1484,6 +1484,8 @@ const AdminTeams = () => {
   const [newName, setNewName] = useState("");
   const [editing, setEditing] = useState(null);
   const [editValue, setEditValue] = useState("");
+  const [error, setError] = useState(null);
+  const [adding, setAdding] = useState(false);
 
   const reload = () => {
     supabase.from("teams").select("*").order("name").then(({ data }) => {
@@ -1496,15 +1498,20 @@ const AdminTeams = () => {
   const addTeam = async () => {
     const name = newName.trim();
     if (!name) return;
-    const { error } = await supabase.from("teams").insert({ name });
-    if (!error) { setNewName(""); reload(); }
+    setAdding(true);
+    setError(null);
+    const { error: err } = await supabase.from("teams").insert({ name });
+    setAdding(false);
+    if (err) { setError("Kunne ikke tilføje: " + err.message); return; }
+    setNewName("");
+    reload();
   };
 
   const saveEdit = async (id, oldName) => {
     const name = editValue.trim();
     if (!name || name === oldName) { setEditing(null); return; }
-    await supabase.from("teams").update({ name }).eq("id", id);
-    // Opdater også alle profiler der bruger det gamle navn
+    const { error: err } = await supabase.from("teams").update({ name }).eq("id", id);
+    if (err) { setError("Kunne ikke omdøbe: " + err.message); return; }
     await supabase.from("profiles").update({ team: name }).eq("team", oldName);
     setEditing(null);
     reload();
@@ -1512,7 +1519,8 @@ const AdminTeams = () => {
 
   const deleteTeam = async (id) => {
     if (!confirm("Er du sikker? Hold kan ikke gendannes.")) return;
-    await supabase.from("teams").delete().eq("id", id);
+    const { error: err } = await supabase.from("teams").delete().eq("id", id);
+    if (err) { setError("Kunne ikke slette: " + err.message); return; }
     reload();
   };
 
@@ -1534,15 +1542,16 @@ const AdminTeams = () => {
         <div className="flex gap-2">
           <input
             value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            onChange={(e) => { setNewName(e.target.value); setError(null); }}
             onKeyDown={(e) => e.key === "Enter" && addTeam()}
             placeholder="F.eks. Damer 4"
             className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:bg-white"
           />
-          <button onClick={addTeam} disabled={!newName.trim()} className="px-4 rounded-xl text-white text-sm font-bold disabled:opacity-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-            <Plus className="w-4 h-4 inline mr-1" />Tilføj
+          <button onClick={addTeam} disabled={!newName.trim() || adding} className="px-4 py-2.5 rounded-xl text-white text-sm font-bold disabled:opacity-50 flex items-center gap-1.5" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            {adding ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Plus className="w-4 h-4" />}Tilføj
           </button>
         </div>
+        {error && <p className="text-[12px] text-pink-600 mt-2 font-medium">{error}</p>}
       </div>
 
       {/* Liste over hold */}
