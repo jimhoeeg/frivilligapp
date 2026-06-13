@@ -2984,28 +2984,35 @@ export default function App() {
         ) : showSwaps ? (
           <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} />
         ) : selectedTask ? (
-          <div className="pb-24">
-            <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
-              <button onClick={() => setSelectedTask(null)} className="inline-flex items-center gap-1.5 text-white/90 text-sm mb-5"><ArrowLeft className="w-4 h-4" />Tilbage til opgaver</button>
-              <div className="flex items-center gap-2 mb-2"><span className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">{selectedTask.category}</span>{selectedTask.urgent && <span className="inline-flex items-center gap-1 bg-pink-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><Flame className="w-3 h-3" />HASTER</span>}</div>
-              <h1 className="text-2xl font-bold mb-4">{selectedTask.title}</h1>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Dato</div><div className="text-sm font-semibold">{selectedTask.dateFull}</div></div>
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Tidsrum</div><div className="text-sm font-semibold">{selectedTask.time}</div></div>
-                <div className="bg-white/10 rounded-xl p-3 border border-white/10 col-span-2"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Lokation</div><div className="text-sm font-semibold flex items-center gap-1.5"><MapPin className="w-4 h-4" />{selectedTask.location}</div></div>
+          <div className="flex flex-col" style={{ height: "100dvh" }}>
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto">
+              <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+                <button onClick={() => setSelectedTask(null)} className="inline-flex items-center gap-1.5 text-white/90 text-sm mb-5"><ArrowLeft className="w-4 h-4" />Tilbage til opgaver</button>
+                <div className="flex items-center gap-2 mb-2"><span className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">{selectedTask.category}</span>{selectedTask.urgent && <span className="inline-flex items-center gap-1 bg-pink-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><Flame className="w-3 h-3" />HASTER</span>}</div>
+                <h1 className="text-2xl font-bold mb-4">{selectedTask.title}</h1>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Dato</div><div className="text-sm font-semibold">{selectedTask.dateFull || selectedTask.date}</div></div>
+                  {selectedTask.durationType === "single" && <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Tidsrum</div><div className="text-sm font-semibold">{selectedTask.time}</div></div>}
+                  <div className={`bg-white/10 rounded-xl p-3 border border-white/10 ${selectedTask.durationType === "single" ? "col-span-2" : ""}`}><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Lokation</div><div className="text-sm font-semibold flex items-center gap-1.5"><MapPin className="w-4 h-4" />{selectedTask.location}</div></div>
+                </div>
+              </div>
+
+              <div className="px-5 -mt-5 relative z-10 mb-4">
+                <div className="rounded-2xl p-4 flex items-center justify-between text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
+                  <div><div className="text-[11px] uppercase tracking-widest font-bold text-white/80">Du optjener</div><div className="text-2xl font-black flex items-center gap-1"><Zap className="w-6 h-6" fill="white" />{selectedTask.points} point</div></div>
+                  <DifficultyPill level={selectedTask.difficulty} />
+                </div>
+              </div>
+
+              <div className="px-5 pb-6">
+                <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Sådan løser du opgaven</h2>
+                <ol className="space-y-3">{selectedTask.description.map((step, i) => <li key={i} className="flex gap-3"><div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{i + 1}</div><p className="text-[14px] text-stone-700 leading-relaxed pt-0.5">{step}</p></li>)}</ol>
               </div>
             </div>
-            <div className="px-5 -mt-5 relative z-10 mb-4">
-              <div className="rounded-2xl p-4 flex items-center justify-between text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
-                <div><div className="text-[11px] uppercase tracking-widest font-bold text-white/80">Du optjener</div><div className="text-2xl font-black flex items-center gap-1"><Zap className="w-6 h-6" fill="white" />{selectedTask.points} point</div></div>
-                <DifficultyPill level={selectedTask.difficulty} />
-              </div>
-            </div>
-            <div className="px-5">
-              <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Sådan løser du opgaven</h2>
-              <ol className="space-y-3">{selectedTask.description.map((step, i) => <li key={i} className="flex gap-3"><div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{i + 1}</div><p className="text-[14px] text-stone-700 leading-relaxed pt-0.5">{step}</p></li>)}</ol>
-            </div>
-            <div className="fixed bottom-16 left-0 right-0 p-4 bg-gradient-to-t from-white via-white to-white/80 border-t border-stone-100 max-w-md mx-auto">
+
+            {/* Sticky button — never overlaps content */}
+            <div className="shrink-0 p-4 bg-white border-t border-stone-100 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
               {claimedIds.has(selectedTask.id)
                 ? <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
                 : <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
