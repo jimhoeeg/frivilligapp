@@ -1416,6 +1416,24 @@ const AdminMembers = ({ currentUserRole }) => {
   const [menuOpen, setMenuOpen] = useState(null);
   const [allMembers, setAllMembers] = useState([]);
   const isSuperAdmin = currentUserRole === "super_admin";
+  const [deleteTarget, setDeleteTarget] = useState(null); // member to delete
+  const [deleteStep, setDeleteStep] = useState(1);        // 1 = confirm, 2 = reason
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
+  const openDelete = (member) => { setDeleteTarget(member); setDeleteStep(1); setDeleteReason(""); setDeleteError(null); setMenuOpen(null); };
+  const closeDelete = () => { if (deleting) return; setDeleteTarget(null); setDeleteReason(""); setDeleteError(null); };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true); setDeleteError(null);
+    const { error: err } = await supabase.from("profiles").delete().eq("id", deleteTarget.id);
+    setDeleting(false);
+    if (err) { setDeleteError("Fejl: " + err.message); return; }
+    setAllMembers((prev) => prev.filter((m) => m.id !== deleteTarget.id));
+    setDeleteTarget(null);
+  };
 
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
@@ -1466,7 +1484,7 @@ const AdminMembers = ({ currentUserRole }) => {
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => setMenuOpen(null)} />
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => setMenuOpen(null)} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => setMenuOpen(null)} /></>}
-                    {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => setMenuOpen(null)} /></>}
+                    {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
                 )}
               </div>
@@ -1474,6 +1492,49 @@ const AdminMembers = ({ currentUserRole }) => {
           );
         })}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={closeDelete}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            {deleteStep === 1 ? (
+              <>
+                <div className="px-5 pt-6 pb-4 text-center">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-6 h-6 text-red-600" /></div>
+                  <h3 className="font-bold text-[16px] text-stone-900 mb-1">Slet medlem?</h3>
+                  <p className="text-[13px] text-stone-500">Du er ved at slette <span className="font-semibold text-stone-800">{deleteTarget.name}</span> permanent. Alle data fjernes (GDPR).</p>
+                </div>
+                <div className="px-5 pb-5 flex gap-2">
+                  <button onClick={closeDelete} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700">Annuller</button>
+                  <button onClick={() => setDeleteStep(2)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold">Ja, fortsæt</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="px-5 pt-6 pb-4">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-6 h-6 text-red-600" /></div>
+                  <h3 className="font-bold text-[16px] text-stone-900 mb-1 text-center">Bekræft sletning</h3>
+                  <p className="text-[13px] text-stone-500 mb-4 text-center">Angiv årsag til sletning af <span className="font-semibold text-stone-800">{deleteTarget.name}</span>. Dette kan ikke fortrydes.</p>
+                  <textarea
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    placeholder="Årsag til sletning (påkrævet)..."
+                    rows={3}
+                    className="w-full border border-stone-200 rounded-xl px-3 py-2.5 text-[13px] outline-none focus:ring-2 focus:ring-red-300 resize-none"
+                  />
+                  {deleteError && <p className="text-[12px] text-red-600 mt-1">{deleteError}</p>}
+                </div>
+                <div className="px-5 pb-5 flex gap-2">
+                  <button onClick={closeDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
+                  <button onClick={confirmDelete} disabled={deleting || deleteReason.trim().length < 5} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[14px] font-semibold disabled:opacity-40">
+                    {deleting ? "Sletter…" : "Slet permanent"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
