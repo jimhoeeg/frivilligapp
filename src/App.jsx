@@ -52,28 +52,33 @@ const DifficultyPill = ({ level }) => {
 
 const TaskCard = ({ task, onClick }) => {
   const isFull = task.spotsLeft === 0;
+  const isLong = task.durationType && task.durationType !== "single";
   return (
     <button
       onClick={() => onClick(task)}
       className="w-full text-left bg-white rounded-2xl p-4 border border-stone-200/70 hover:border-emerald-300 active:scale-[0.99] transition-all shadow-sm hover:shadow-md group relative overflow-hidden"
     >
-      {task.urgent && (
+      {task.urgent && !isLong && (
         <div className="absolute top-0 right-0 bg-gradient-to-br from-pink-500 to-pink-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wide flex items-center gap-1">
-          <Flame className="w-3 h-3" />
-          HASTER
+          <Flame className="w-3 h-3" />HASTER
+        </div>
+      )}
+      {isLong && (
+        <div className="absolute top-0 right-0 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl tracking-wide flex items-center gap-1" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+          <CalendarDays className="w-3 h-3" />SÆSONOPGAVE
         </div>
       )}
       <div className="flex items-start gap-3">
-        <div className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+        <div className="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-sm" style={{ background: isLong ? `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
           <CategoryIcon type={task.icon} className="w-6 h-6" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2 mb-1">
-            <h3 className="font-semibold text-[15px] leading-tight text-stone-900 pr-4">{task.title}</h3>
+            <h3 className="font-semibold text-[15px] leading-tight text-stone-900 pr-12">{task.title}</h3>
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-stone-600 mb-2.5">
             <span className="inline-flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{task.date}</span>
-            <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{task.time}</span>
+            {!isLong && task.time && <span className="inline-flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{task.time}</span>}
           </div>
           <div className="flex items-center gap-1.5 text-[12px] text-stone-500 mb-3">
             <MapPin className="w-3.5 h-3.5" />
@@ -387,9 +392,10 @@ const parseTaskDate = (task) => {
 };
 
 const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOpenSwaps, onOpenCalendar, unreadCount }) => {
-  const [catFilter,  setCatFilter]  = useState("Alle");
-  const [dateFilter, setDateFilter] = useState("Alle");
-  const [query, setQuery] = useState("");
+  const [catFilter,    setCatFilter]    = useState("Alle");
+  const [dateFilter,   setDateFilter]   = useState("Alle");
+  const [query,        setQuery]        = useState("");
+  const [showLongTasks, setShowLongTasks] = useState(false);
 
   const catFilters  = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
   const dateFilters = ["Alle", "Denne måned", "Næste måned", "Halvt sæson"];
@@ -404,6 +410,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 
     return tasks
       .filter((t) => {
+        if (t.durationType && t.durationType !== "single") return false; // long-running excluded from main list
         if (claimedIds.has(t.id)) return false;
         if (catFilter === "Haster" && !t.urgent) return false;
         if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
@@ -438,6 +445,12 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
     });
     return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v);
   }, [visible]);
+
+  const longTasks = useMemo(() =>
+    tasks.filter((t) => t.durationType && t.durationType !== "single" && !claimedIds.has(t.id) &&
+      (catFilter === "Alle" || t.category === catFilter) &&
+      (!query || t.title.toLowerCase().includes(query.toLowerCase()))),
+  [tasks, catFilter, query, claimedIds]);
 
   return (
     <div className="pb-24">
@@ -500,24 +513,47 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
       </div>
 
       <div className="px-5 mt-2">
-        {visible.length === 0 ? (
+        {visible.length === 0 && longTasks.length === 0 ? (
           <div className="text-center py-12 text-stone-500">
             <AlertCircle className="w-10 h-10 mx-auto mb-2 text-stone-300" />
             <p className="text-sm">Ingen opgaver matcher lige nu</p>
           </div>
         ) : (
-          grouped.map((group) => (
-            <div key={group.label} className="mb-4">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">{group.label}</span>
-                <div className="flex-1 h-px bg-stone-200" />
-                <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+          <>
+            {grouped.map((group) => (
+              <div key={group.label} className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-stone-500">{group.label}</span>
+                  <div className="flex-1 h-px bg-stone-200" />
+                  <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+                </div>
+                <div className="space-y-3">
+                  {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+                </div>
               </div>
-              <div className="space-y-3">
-                {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+            ))}
+
+            {/* Long-running / season tasks */}
+            {longTasks.length > 0 && (
+              <div className="mt-2 mb-4">
+                <button onClick={() => setShowLongTasks((v) => !v)}
+                  className="w-full flex items-center gap-2 py-2 mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-violet-600">Sæsonopgaver & langvarige</span>
+                  <div className="flex-1 h-px bg-violet-200" />
+                  <span className="text-[10px] text-violet-500 font-semibold">{longTasks.length}</span>
+                  <ChevronDown className={`w-4 h-4 text-violet-500 transition-transform ${showLongTasks ? "rotate-180" : ""}`} />
+                </button>
+                {!showLongTasks && (
+                  <p className="text-[11px] text-stone-400 text-center pb-1">Tryk for at se sæson- og årsopgaver</p>
+                )}
+                {showLongTasks && (
+                  <div className="space-y-3">
+                    {longTasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            )}
+          </>
         )}
       </div>
     </div>
@@ -1401,7 +1437,8 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
     setMenuOpen(null);
     const { data } = await supabase.from("tasks").insert({
       title: copy.title, category: copy.category, icon: copy.icon, date: copy.date,
-      date_full: copy.dateFull, time: copy.time, location: copy.location,
+      date_full: copy.dateFull, date_end: copy.dateEnd || null, duration_type: copy.durationType || "single",
+      time: copy.time, location: copy.location,
       points: copy.points, difficulty: copy.difficulty, urgent: copy.urgent,
       spots_total: copy.spotsTotal, spots_left: copy.spotsTotal,
     }).select().single();
@@ -1415,7 +1452,8 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
     if (editTask) {
       await supabase.from("tasks").update({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
-        date_full: data.dateFull, time: data.time, location: data.location,
+        date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
+        time: data.time, location: data.location,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
         spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
       }).eq("id", editTask.id);
@@ -1428,7 +1466,8 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
     } else {
       const { data: row } = await supabase.from("tasks").insert({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
-        date_full: data.dateFull, time: data.time, location: data.location,
+        date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
+        time: data.time, location: data.location,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
         spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
       }).select().single();
@@ -1583,6 +1622,41 @@ const TaskDatePicker = ({ value, onChange }) => {
   );
 };
 
+const DURATION_OPTIONS = [
+  { id: "single",      label: "Enkelt dag",   desc: "Én bestemt dato" },
+  { id: "week",        label: "En uge",       desc: "7 dage fra startdato" },
+  { id: "month",       label: "En måned",     desc: "Hele startmåneden" },
+  { id: "half_season", label: "Halvt sæson",  desc: "6 måneder fra startdato" },
+  { id: "year",        label: "Helt år",      desc: "12 måneder (sæson)" },
+];
+
+const computeDateDisplay = (startISO, durationType) => {
+  if (!startISO) return { date: "", dateEnd: "" };
+  const s = new Date(startISO + "T12:00:00");
+  switch (durationType) {
+    case "week": {
+      const e = new Date(s); e.setDate(e.getDate() + 6);
+      return { date: `${formatDateDanish(s)} – ${formatDateDanish(e)}`, dateEnd: e.toISOString().slice(0, 10) };
+    }
+    case "month":
+      return { date: `${DA_MONTHS_LONG[s.getMonth()]} ${s.getFullYear()}`, dateEnd: "" };
+    case "half_season": {
+      const e = new Date(s); e.setMonth(e.getMonth() + 6);
+      return {
+        date: `${DA_MONTHS_SHORT[s.getMonth()]}. ${s.getFullYear()} – ${DA_MONTHS_SHORT[e.getMonth()]}. ${e.getFullYear()}`,
+        dateEnd: e.toISOString().slice(0, 10),
+      };
+    }
+    case "year": {
+      const e = new Date(s); e.setFullYear(e.getFullYear() + 1);
+      return { date: `Sæson ${s.getFullYear()}/${String(e.getFullYear()).slice(2)}`, dateEnd: e.toISOString().slice(0, 10) };
+    }
+    default:
+      return { date: formatDateDanish(s), dateEnd: "" };
+  }
+};
+
+
 const TASK_TEMPLATES = [
   {
     label: "Kampafvikling & Sekretærbord", icon: "whistle",
@@ -1663,15 +1737,17 @@ const TASK_TEMPLATES = [
 
 const TaskFormModal = ({ task, onClose, onSave }) => {
   const isNew = !task;
-  const [step, setStep]         = useState(isNew ? "pick" : "form");
-  const [tplCat, setTplCat]     = useState(TASK_TEMPLATES[0].label);
-  const [title, setTitle]       = useState(task?.title || "");
-  const [category, setCategory] = useState(task?.category || "Kampafvikling & Sekretærbord");
-  const [icon, setIcon]         = useState(task?.icon || "whistle");
-  const [date, setDate]         = useState(task?.date || "");
-  const [dateISO, setDateISO]   = useState(task?.dateFull || "");
-  const [time, setTime]         = useState(task?.time || "");
-  const [location, setLocation] = useState(task?.location || "");
+  const [step, setStep]             = useState(isNew ? "pick" : "form");
+  const [tplCat, setTplCat]         = useState(TASK_TEMPLATES[0].label);
+  const [title, setTitle]           = useState(task?.title || "");
+  const [category, setCategory]     = useState(task?.category || "Kampafvikling & Sekretærbord");
+  const [icon, setIcon]             = useState(task?.icon || "whistle");
+  const [date, setDate]             = useState(task?.date || "");
+  const [dateISO, setDateISO]       = useState(task?.dateFull || "");
+  const [durationType, setDuration] = useState(task?.durationType || "single");
+  const [dateEnd, setDateEnd]       = useState(task?.dateEnd || "");
+  const [time, setTime]             = useState(task?.time || "");
+  const [location, setLocation]     = useState(task?.location || "");
   const [points, setPoints]     = useState(task?.points || 15);
   const [spots, setSpots]       = useState(task?.spotsTotal || 2);
   const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
@@ -1695,8 +1771,8 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   ];
 
   const handleSave = () => {
-    if (!title.trim() || !date.trim()) return;
-    onSave({ title, category, icon, date, dateFull: dateISO || date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
+    if (!title.trim() || !dateISO) return;
+    onSave({ title, category, icon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
   };
 
   const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
@@ -1772,9 +1848,35 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             </div>
           </div>
 
-          <TaskDatePicker value={dateISO} onChange={(iso, display) => { setDateISO(iso); setDate(display); }} />
+          <TaskDatePicker value={dateISO} onChange={(iso, display) => {
+            setDateISO(iso);
+            const { date: d, dateEnd: de } = computeDateDisplay(iso, durationType);
+            setDate(d); setDateEnd(de);
+          }} />
 
-          <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />
+          {/* Varighed */}
+          {dateISO && (
+            <div>
+              <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Varighed</label>
+              <div className="grid grid-cols-2 gap-2">
+                {DURATION_OPTIONS.map((opt) => (
+                  <button key={opt.id} type="button"
+                    onClick={() => {
+                      setDuration(opt.id);
+                      const { date: d, dateEnd: de } = computeDateDisplay(dateISO, opt.id);
+                      setDate(d); setDateEnd(de);
+                    }}
+                    className={`px-3 py-2.5 rounded-xl border text-left transition-all ${durationType === opt.id ? "border-violet-400 bg-violet-50" : "border-stone-200 bg-stone-50 hover:border-stone-300"}`}>
+                    <div className={`text-[12px] font-bold ${durationType === opt.id ? "text-violet-700" : "text-stone-800"}`}>{opt.label}</div>
+                    <div className="text-[10px] text-stone-400 mt-0.5">{opt.desc}</div>
+                  </button>
+                ))}
+              </div>
+              {date && <p className="text-[11px] text-emerald-700 font-semibold mt-2 px-1">{date}</p>}
+            </div>
+          )}
+
+          {durationType === "single" && <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />}
 
           <AdminInput label="Lokation" placeholder="Bane 1, Arena Randers" icon={<MapPin className="w-4 h-4" />} value={location} onChange={(e) => setLocation(e.target.value)} />
 
@@ -2742,6 +2844,8 @@ export default function App() {
           icon: t.icon || "setup",
           date: t.date,
           dateFull: t.date_full || t.date,
+          dateEnd: t.date_end || "",
+          durationType: t.duration_type || "single",
           time: t.time,
           location: t.location,
           points: t.points,
