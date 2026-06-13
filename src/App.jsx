@@ -1404,6 +1404,100 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
   );
 };
 
+// ---- DATO-VÆLGER TIL OPGAVEFORMULAR ----
+const DA_MONTHS_SHORT = ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"];
+const DA_MONTHS_LONG  = ["Januar","Februar","Marts","April","Maj","Juni","Juli","August","September","Oktober","November","December"];
+const DA_DAYS_SHORT   = ["Man","Tir","Ons","Tor","Fre","Lør","Søn"];
+const DA_WEEKDAY      = ["søn","man","tir","ons","tor","fre","lør"];
+
+const formatDateDanish = (d) => {
+  const day  = DA_WEEKDAY[d.getDay()];
+  const date = d.getDate();
+  const mon  = DA_MONTHS_SHORT[d.getMonth()];
+  return `${day.charAt(0).toUpperCase() + day.slice(1)} ${date}. ${mon}`;
+};
+
+const TaskDatePicker = ({ value, onChange }) => {
+  const today = new Date();
+  const [current, setCurrent] = useState(() => {
+    if (value) { const d = new Date(value); return new Date(d.getFullYear(), d.getMonth()); }
+    return new Date(today.getFullYear(), today.getMonth());
+  });
+
+  const year  = current.getFullYear();
+  const month = current.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay  = new Date(year, month + 1, 0);
+  const startPad = (firstDay.getDay() + 6) % 7;
+
+  const days = [];
+  for (let i = startPad - 1; i >= 0; i--) days.push({ d: new Date(year, month, -i), cur: false });
+  for (let i = 1; i <= lastDay.getDate(); i++) days.push({ d: new Date(year, month, i), cur: true });
+  const rem = 7 - (days.length % 7);
+  if (rem < 7) for (let i = 1; i <= rem; i++) days.push({ d: new Date(year, month + 1, i), cur: false });
+
+  const selectedISO = value || "";
+  const todayISO    = today.toISOString().slice(0, 10);
+
+  const pick = (d) => {
+    const iso = d.toISOString().slice(0, 10);
+    onChange(iso, formatDateDanish(d));
+  };
+
+  return (
+    <div>
+      <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Dato</label>
+      <div className="bg-stone-50 border border-stone-200 rounded-xl overflow-hidden">
+        {/* Month navigation */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-stone-200">
+          <button type="button" onClick={() => setCurrent(new Date(year, month - 1))} className="p-1.5 rounded-lg hover:bg-stone-200 transition-colors"><ChevronLeft className="w-4 h-4 text-stone-600" /></button>
+          <span className="text-[13px] font-bold text-stone-800">{DA_MONTHS_LONG[month]} {year}</span>
+          <button type="button" onClick={() => setCurrent(new Date(year, month + 1))} className="p-1.5 rounded-lg hover:bg-stone-200 transition-colors"><ChevronRight className="w-4 h-4 text-stone-600" /></button>
+        </div>
+        {/* Day headers */}
+        <div className="grid grid-cols-7 px-2 pt-2 pb-1">
+          {DA_DAYS_SHORT.map((d) => (
+            <div key={d} className="text-center text-[10px] font-bold text-stone-400 pb-1">{d}</div>
+          ))}
+        </div>
+        {/* Day grid */}
+        <div className="grid grid-cols-7 px-2 pb-2 gap-y-0.5">
+          {days.map(({ d, cur }, i) => {
+            const iso      = d.toISOString().slice(0, 10);
+            const selected = iso === selectedISO;
+            const isToday  = iso === todayISO;
+            const past     = iso < todayISO;
+            return (
+              <button
+                key={i} type="button"
+                onClick={() => cur && !past && pick(d)}
+                disabled={!cur || past}
+                className={`h-8 w-full rounded-lg text-[12px] font-semibold transition-all
+                  ${selected ? "text-white shadow-sm" : ""}
+                  ${!selected && cur && !past ? "hover:bg-emerald-100 hover:text-emerald-800" : ""}
+                  ${!cur || past ? "opacity-30 cursor-default" : ""}
+                  ${isToday && !selected ? "ring-1 ring-emerald-400 text-emerald-700" : ""}
+                  ${!selected ? "text-stone-800" : ""}
+                `}
+                style={selected ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}
+              >
+                {d.getDate()}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {selectedISO && (
+        <div className="flex items-center justify-between mt-1.5 px-1">
+          <span className="text-[12px] text-emerald-700 font-semibold">{formatDateDanish(new Date(selectedISO + "T12:00:00"))}</span>
+          <button type="button" onClick={() => onChange("", "")} className="text-[11px] text-stone-400 hover:text-stone-600">Ryd</button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TASK_TEMPLATES = [
   {
     label: "Kampafvikling & Sekretærbord", icon: "whistle",
@@ -1490,6 +1584,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const [category, setCategory] = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]         = useState(task?.icon || "whistle");
   const [date, setDate]         = useState(task?.date || "");
+  const [dateISO, setDateISO]   = useState(task?.dateFull || "");
   const [time, setTime]         = useState(task?.time || "");
   const [location, setLocation] = useState(task?.location || "");
   const [points, setPoints]     = useState(task?.points || 15);
@@ -1516,7 +1611,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
 
   const handleSave = () => {
     if (!title.trim() || !date.trim()) return;
-    onSave({ title, category, icon, date, dateFull: date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
+    onSave({ title, category, icon, date, dateFull: dateISO || date, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
   };
 
   const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
@@ -1592,10 +1687,9 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <AdminInput label="Dato" placeholder="Lør 26. apr" value={date} onChange={(e) => setDate(e.target.value)} />
-            <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />
-          </div>
+          <TaskDatePicker value={dateISO} onChange={(iso, display) => { setDateISO(iso); setDate(display); }} />
+
+          <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />
 
           <AdminInput label="Lokation" placeholder="Bane 1, Arena Randers" icon={<MapPin className="w-4 h-4" />} value={location} onChange={(e) => setLocation(e.target.value)} />
 
@@ -1627,7 +1721,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
 
         <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
-          <button onClick={handleSave} disabled={!title.trim()} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+          <button onClick={handleSave} disabled={!title.trim() || !dateISO} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
             <Save className="w-4 h-4" />{task ? "Gem ændringer" : "Opret opgave"}
           </button>
         </div>
