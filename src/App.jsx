@@ -1192,6 +1192,7 @@ const AdminApprovals = () => {
   const [expanded, setExpanded] = useState(null);
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason]    = useState("");
+  const [approvalError, setApprovalError] = useState(null);
 
   useEffect(() => {
     // Show members who joined in the last 30 days
@@ -1201,12 +1202,24 @@ const AdminApprovals = () => {
     });
   }, []);
 
-  const approve = (a) => { setPending((p) => p.filter((x) => x.id !== a.id)); setDone((d) => [{ ...a, action: "approved" }, ...d]); setExpanded(null); };
+  const approve = async (a) => {
+    // Mark as reviewed in DB (no functional gate yet — all signed-up users have access)
+    await supabase.from("profiles").update({ admin_requested: false }).eq("id", a.id);
+    setPending((p) => p.filter((x) => x.id !== a.id));
+    setDone((d) => [{ ...a, action: "approved" }, ...d]);
+    setExpanded(null);
+    setApprovalError(null);
+  };
   const reject  = async (a) => {
-    await supabase.from("profiles").delete().eq("id", a.id);
+    const { error } = await supabase.from("profiles").delete().eq("id", a.id);
+    if (error) {
+      setApprovalError(`Kunne ikke slette: ${error.message} – kør supabase_profiles_rls.sql i Supabase SQL Editor.`);
+      return;
+    }
     setPending((p) => p.filter((x) => x.id !== a.id));
     setDone((d) => [{ ...a, action: "rejected", reason }, ...d]);
     setRejecting(null); setReason("");
+    setApprovalError(null);
   };
 
   return (
@@ -1215,6 +1228,13 @@ const AdminApprovals = () => {
         <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
         <p className="text-[11px] text-violet-900 leading-relaxed">Nye medlemmer får adgang til appen når du godkender dem. De modtager automatisk e-mail med resultatet.</p>
       </div>
+
+      {approvalError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-red-900">{approvalError}</p>
+        </div>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Afventer ({pending.length})</div>
@@ -1962,6 +1982,7 @@ const AdminTeams = () => {
 // ---- ROLLER (kun Super Admin) ----
 const AdminRoles = ({ currentUser }) => {
   const [members, setMembers] = useState([]);
+  const [roleError, setRoleError] = useState(null);
 
   const reload = () => {
     supabase.from("profiles").select("id,name,initials,team,role,admin_requested,admin_requested_at,email").order("points", { ascending: false }).then(({ data }) => {
@@ -1985,21 +2006,27 @@ const AdminRoles = ({ currentUser }) => {
 
   const promote = async (id, role) => {
     const target = members.find((m) => m.id === id);
+    const { error } = await supabase.from("profiles").update({ role, admin_requested: false }).eq("id", id);
+    if (error) { setRoleError(`Kunne ikke tildele rolle: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role, adminRequested: false } : m));
-    await supabase.from("profiles").update({ role, admin_requested: false }).eq("id", id);
     logAction("role_change", `Gav ${target?.name} rollen "${role}"`, currentUser);
+    setRoleError(null);
   };
   const demote = async (id) => {
     const target = members.find((m) => m.id === id);
+    const { error } = await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+    if (error) { setRoleError(`Kunne ikke fjerne rolle: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
-    await supabase.from("profiles").update({ role: "user" }).eq("id", id);
     logAction("role_change", `Fjernede admin-rolle fra ${target?.name}`, currentUser);
+    setRoleError(null);
   };
   const rejectRequest = async (id) => {
     const target = members.find((m) => m.id === id);
+    const { error } = await supabase.from("profiles").update({ admin_requested: false }).eq("id", id);
+    if (error) { setRoleError(`Fejl: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, adminRequested: false } : m));
-    await supabase.from("profiles").update({ admin_requested: false }).eq("id", id);
     logAction("role_change", `Afslog admin-anmodning fra ${target?.name}`, currentUser);
+    setRoleError(null);
   };
 
   return (
@@ -2010,6 +2037,16 @@ const AdminRoles = ({ currentUser }) => {
           <div><div className="font-bold text-[14px]">Du er Super Admin</div><p className="text-[12px] text-white/90 mt-0.5 leading-relaxed">Udnæv og fjern Admins. Alle ændringer logges permanent i audit-loggen.</p></div>
         </div>
       </div>
+
+      {roleError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-[12px] text-red-900 font-semibold">{roleError}</p>
+            <p className="text-[11px] text-red-700 mt-0.5">Kør <strong>supabase_profiles_rls.sql</strong> i Supabase SQL Editor for at give admins rettigheder til at ændre profiler.</p>
+          </div>
+        </div>
+      )}
 
       {/* Pending admin requests */}
       {pending.length > 0 && (
