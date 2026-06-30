@@ -1638,21 +1638,16 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
 
   const assignMember = async (member) => {
     setSaving(true); setError(null);
+    // on_task_claimed-triggeren giver point og tæller pladser ned ved insert.
+    // Derfor må vi IKKE opdatere points/spots_left manuelt her (ellers dobbelttælles).
     const { error: e1 } = await supabase.from("task_claims").insert({ task_id: task.id, user_id: member.id });
     if (e1) { setError("Kunne ikke tildele: " + e1.message); setSaving(false); return; }
 
-    const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", member.id).single();
-    if (prof) {
-      await supabase.from("profiles").update({
-        points: (prof.points || 0) + task.points,
-        tasks_done: (prof.tasks_done || 0) + 1,
-      }).eq("id", member.id);
+    const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", task.id).single();
+    if (updated) {
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: updated.spots_left } : t));
+      setSpotsLeft(updated.spots_left);
     }
-
-    const newSpots = Math.max(0, (spotsLeft || 0) - 1);
-    await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
-    setSpotsLeft(newSpots);
 
     setSignups((prev) => [...prev, { user_id: member.id, profiles: member }]);
     setAssignSearch(""); setSaving(false);
@@ -3336,40 +3331,55 @@ export default function App() {
   };
 
   const handleClaim = async (taskId) => {
-    const next = new Set(claimedIds);
-    next.add(taskId);
-    setClaimedIds(next);
     const task = tasks.find((t) => t.id === taskId);
+    if (!currentUser?.id) return;
+
+    // Optimistisk UI — rul tilbage hvis serveren afviser (fx ingen ledige pladser)
+    const prevClaimed = claimedIds;
+    setClaimedIds((prev) => new Set(prev).add(taskId));
     setToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
+
+    const { data: spotsLeft, error } = await supabase.rpc("claim_task", { p_task_id: taskId });
+
+    if (error) {
+      setClaimedIds(prevClaimed);
+      setToast(error.message?.includes("NO_SPOTS_LEFT")
+        ? "Beklager – der er ikke flere ledige pladser"
+        : "Kunne ikke tage tjansen – prøv igen");
+      setTimeout(() => setToast(null), 2800);
+      return;
+    }
+
+    if (typeof spotsLeft === "number") {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft } : t));
+    }
+    setCurrentUser((prev) => ({ ...prev, pointsEarned: (prev.pointsEarned || 0) + (task?.points || 0), tasksCompleted: (prev.tasksCompleted || 0) + 1 }));
     setTimeout(() => setToast(null), 2500);
     setTimeout(() => setTab("dashboard"), 900);
-    if (currentUser?.id) {
-      await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
-      const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", taskId).single();
-      if (updated) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
-      }
-      setCurrentUser((prev) => ({ ...prev, pointsEarned: (prev.pointsEarned || 0) + (task?.points || 0), tasksCompleted: (prev.tasksCompleted || 0) + 1 }));
-    }
   };
 
   const handleUnclaim = async (taskId) => {
     const task = tasks.find((t) => t.id === taskId);
-    const next = new Set(claimedIds);
-    next.delete(taskId);
-    setClaimedIds(next);
+    if (!currentUser?.id) return;
+
+    const prevClaimed = claimedIds;
+    setClaimedIds((prev) => { const next = new Set(prev); next.delete(taskId); return next; });
     setToast("Tjans frameldt");
-    setTimeout(() => setToast(null), 2500);
-    if (currentUser?.id) {
-      await supabase.from("task_claims").delete().eq("task_id", taskId).eq("user_id", currentUser.id);
-      await supabase.from("profiles").update({
-        points: Math.max(0, (currentUser.pointsEarned || 0) - (task?.points || 0)),
-        tasks_done: Math.max(0, (currentUser.tasksCompleted || 0) - 1),
-      }).eq("id", currentUser.id);
-      const { data: updated } = await supabase.from("tasks").update({ spots_left: (task?.spotsLeft || 0) + 1 }).eq("id", taskId).select("spots_left").single();
-      if (updated) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
-      setCurrentUser((prev) => ({ ...prev, pointsEarned: Math.max(0, (prev.pointsEarned || 0) - (task?.points || 0)), tasksCompleted: Math.max(0, (prev.tasksCompleted || 0) - 1) }));
+
+    const { data: spotsLeft, error } = await supabase.rpc("unclaim_task", { p_task_id: taskId });
+
+    if (error) {
+      setClaimedIds(prevClaimed);
+      setToast("Kunne ikke framelde – prøv igen");
+      setTimeout(() => setToast(null), 2800);
+      return;
     }
+
+    if (typeof spotsLeft === "number") {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft } : t));
+    }
+    setCurrentUser((prev) => ({ ...prev, pointsEarned: Math.max(0, (prev.pointsEarned || 0) - (task?.points || 0)), tasksCompleted: Math.max(0, (prev.tasksCompleted || 0) - 1) }));
+    setTimeout(() => setToast(null), 2500);
   };
 
   if (authLoading) {

@@ -57,8 +57,13 @@ Kør SQL-filerne i Supabase Dashboard → SQL Editor i denne rækkefølge:
 7. `supabase_approvals.sql`
 8. `supabase_admin_requests.sql`
 9. `supabase_audit_log.sql`
+10. `supabase_point_integrity.sql` — atomiske `claim_task`/`unclaim_task` RPC'er (mod overbooking + sikkert point-fratræk)
+11. `supabase_notifications.sql` — notifikationer via triggers (velkomst + opgavetildeling)
 
 Gør derefter din egen bruger til super_admin (se bunden af `supabase_setup.sql`).
+
+> **Bemærk:** Frontend'en kalder `claim_task`/`unclaim_task`. Kør
+> `supabase_point_integrity.sql` før (eller samtidig med) deploy af frontend.
 
 ### Build for Production
 
@@ -101,7 +106,8 @@ supabase_*.sql        # Database-migrationer
 
 ## Features Roadmap
 
-- [ ] Notifikationer (oprettelse + INSERT-policy på `notifications`)
+- [x] Notifikationer ved signup + opgavetildeling (via DB-triggers)
+- [ ] Flere notifikationstyper (påmindelser via pg_cron, byttebesked)
 - [ ] Email-notifikationer
 - [ ] PWA offline-mode
 - [ ] Dark mode
