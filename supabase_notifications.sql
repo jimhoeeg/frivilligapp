@@ -93,3 +93,7 @@ begin
   return new;
 end;
 $$;
+
+-- Trigger-funktioner skal aldrig kunne kaldes via REST API
+revoke all on function public.handle_new_user()   from public, anon, authenticated;
+revoke all on function public.handle_task_claim() from public, anon, authenticated;

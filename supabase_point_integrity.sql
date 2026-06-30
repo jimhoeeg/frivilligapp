@@ -81,5 +81,8 @@ begin
 end;
 $$;
 
+-- Kun indloggede brugere må kalde RPC'erne (fjern anon/public default-grant)
+revoke all on function public.claim_task(uuid)   from public, anon;
+revoke all on function public.unclaim_task(uuid) from public, anon;
 grant execute on function public.claim_task(uuid)   to authenticated;
 grant execute on function public.unclaim_task(uuid) to authenticated;
