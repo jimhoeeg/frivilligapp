@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
-  Check, X, Filter, Search, Flame, Shield, Coffee, AlertCircle, ArrowLeft,
-  Info, Crown, Medal, Users, TrendingUp, Eye, EyeOff, Camera, Mail, Phone,
-  Award, Bell, LogOut, Trash2, ChevronDown, Lock, Briefcase, Edit3, Download,
-  HelpCircle, Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
-  ShieldCheck, UserPlus, Repeat, DollarSign, AlertTriangle, Activity, FileText,
-  Pencil, Copy, MessageCircle, Send, UserCheck, UserX, ThumbsUp, BellRing,
-  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft, Dot
+  Check, X, Filter, Search, Flame, Coffee, AlertCircle, ArrowLeft,
+  Info, Crown, Users, TrendingUp, Eye, EyeOff, Camera, Mail, Phone,
+  LogOut, Trash2, ChevronDown, Lock, Download,
+  Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
+  ShieldCheck, UserPlus, DollarSign, AlertTriangle, Activity, FileText,
+  Pencil, Copy, UserCheck, UserX, ThumbsUp, BellRing,
+  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft
 } from "lucide-react";
 
 const theme = {
@@ -253,7 +253,7 @@ const AuthScreen = ({ onAuthenticated }) => {
         if (error) { setErrors({ email: error.message }); setLoading(false); return; }
         onAuthenticated({ email: data.user?.email || email, userId: data.user?.id, name, team, phone, isNew: true });
       }
-    } catch (err) {
+    } catch {
       setErrors({ email: "Noget gik galt – prøv igen" });
     }
     setLoading(false);
@@ -629,7 +629,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 };
 
 const BADGE_DEFS = [
-  { id: "signup",    emoji: "🌱", label: "Frivillig",      desc: "Tilmeldt som frivillig",     req: (e, t) => true },
+  { id: "signup",    emoji: "🌱", label: "Frivillig",      desc: "Tilmeldt som frivillig",     req: () => true },
   { id: "first",     emoji: "⭐", label: "Første tjans",   desc: "Gennemført første opgave",   req: (e, t) => t >= 1 },
   { id: "halfway",   emoji: "🔥", label: "Halvvejs",       desc: "50 point optjent",           req: (e) => e >= 50 },
   { id: "halfgoal",  emoji: "🏅", label: "Halvsmål nået",  desc: "100 point – bidragsfri",     req: (e) => e >= 100 },
@@ -978,8 +978,6 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
     }
   });
 
-  const allByDate = [...tasks, ...claimedTasks];
-
   return (
     <div className="pb-24 bg-stone-50 min-h-screen">
       <div className="px-5 pt-12 pb-5 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
@@ -1075,6 +1073,9 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
     }));
   };
 
+  // loadOffers loader bytte-tilbud når brugeren skifter; setState sker efter await (ikke synkront),
+  // og vi vil bevidst kun køre den når bruger-id ændrer sig.
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { loadOffers(); }, [currentUser?.id]);
 
   const incoming  = offers.filter((o) => o.status === "incoming");
@@ -1282,9 +1283,6 @@ const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
 
 // ============ ADMIN CENTER ============
 
-// Bootstrap: disse e-mails får automatisk super_admin
-const SUPER_ADMIN_EMAILS = ["formand@randersVK.dk", "admin@randersVK.dk"];
-
 const logAction = (type, action, actor) =>
   supabase.from("audit_log").insert({
     type,
@@ -1381,7 +1379,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
 };
 
 // ---- OVERSIGT ----
-const AdminOverview = ({ onNavigate, tasks }) => {
+const AdminOverview = ({ tasks }) => {
   const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
 
   useEffect(() => {
@@ -1598,6 +1596,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState(null);
+  const [spotsLeft,    setSpotsLeft]    = useState(task.spotsLeft);
 
   useEffect(() => {
     (async () => {
@@ -1627,10 +1626,10 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
       }).eq("id", profile.id);
     }
 
-    const newSpots = (task.spotsLeft || 0) + 1;
+    const newSpots = (spotsLeft || 0) + 1;
     await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
-    task.spotsLeft = newSpots;
+    setSpotsLeft(newSpots);
 
     setSignups((prev) => prev.filter((s) => s.user_id !== profile.id));
     setConfirmRemove(null); setSaving(false);
@@ -1650,10 +1649,10 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
       }).eq("id", member.id);
     }
 
-    const newSpots = Math.max(0, (task.spotsLeft || 0) - 1);
+    const newSpots = Math.max(0, (spotsLeft || 0) - 1);
     await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
     setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
-    task.spotsLeft = newSpots;
+    setSpotsLeft(newSpots);
 
     setSignups((prev) => [...prev, { user_id: member.id, profiles: member }]);
     setAssignSearch(""); setSaving(false);
@@ -1664,7 +1663,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
     (m) => !signedUpIds.has(m.id) && (m.name || "").toLowerCase().includes(assignSearch.toLowerCase())
   );
 
-  const canAssign = (task.spotsLeft || 0) > 0;
+  const canAssign = (spotsLeft || 0) > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1673,7 +1672,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
         <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><ArrowLeft className="w-4 h-4 text-stone-500" /></button>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-[14px] text-stone-900 truncate">{task.title}</div>
-          <div className="text-[11px] text-stone-500">{task.date} · {task.spotsLeft}/{task.spotsTotal} ledige pladser</div>
+          <div className="text-[11px] text-stone-500">{task.date} · {spotsLeft}/{task.spotsTotal} ledige pladser</div>
         </div>
       </div>
 
@@ -2250,7 +2249,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             </div>
           </div>
 
-          <TaskDatePicker value={dateISO} onChange={(iso, display) => {
+          <TaskDatePicker value={dateISO} onChange={(iso) => {
             setDateISO(iso);
             const { date: d, dateEnd: de } = computeDateDisplay(iso, durationType);
             setDate(d); setDateEnd(de);
@@ -3164,8 +3163,11 @@ const BottomNav = ({ active, onChange }) => {
 };
 
 export default function App() {
+  // Detect password recovery from the URL hash up-front so we never flash the
+  // spinner/login screen before showing the reset form (set once, not in an effect).
+  const initialRecovery = typeof window !== "undefined" && window.location.hash.includes("type=recovery");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(!initialRecovery);
   const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab] = useState("tasks");
   const [claimedIds, setClaimedIds] = useState(new Set());
@@ -3185,7 +3187,7 @@ export default function App() {
   );
 
   // Detect password recovery flow (when user clicks email link)
-  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(initialRecovery);
 
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
@@ -3219,13 +3221,6 @@ export default function App() {
   // Initial session check + auth state listener
   useEffect(() => {
     let mounted = true;
-
-    // Detect password recovery from URL hash — show reset screen immediately
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setRecoveryMode(true);
-      setAuthLoading(false);
-    }
 
     // Safety net: never stay on loading screen for more than 6 seconds
     const safety = setTimeout(() => {

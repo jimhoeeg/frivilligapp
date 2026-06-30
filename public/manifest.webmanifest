@@ -1,0 +1,20 @@
+{
+  "name": "RVK Frivillig",
+  "short_name": "RVK Frivillig",
+  "description": "Tilmeld dig opgaver, optjen point og hjælp Randers Volleyballklub.",
+  "lang": "da",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAFAF7",
+  "theme_color": "#0F3D2E",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}
