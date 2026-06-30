@@ -55,8 +55,10 @@ drop policy if exists "Users can upload own avatar" on storage.objects;
 drop policy if exists "Users can update own avatar" on storage.objects;
 drop policy if exists "Users can delete own avatar" on storage.objects;
 
-create policy "Avatars publicly readable" on storage.objects for select
-  using (bucket_id = 'avatars');
+-- Bevidst INGEN bred SELECT-policy: bucket'en er public, så billeder vises
+-- via getPublicUrl (/object/public/...) uden en SELECT-policy. En bred
+-- "select using (bucket_id='avatars')" ville kun give mulighed for at LISTE
+-- alle filer i bucket'en (flaget af Supabase security-advisor).
 
 create policy "Users can upload own avatar" on storage.objects for insert
   with check (bucket_id = 'avatars' and auth.uid()::text = (storage.foldername(name))[1]);
