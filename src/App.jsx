@@ -1052,25 +1052,31 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
 
 // ============ BYTTE-MARKED ============
 
-const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
+const SwapScreen = ({ onBack, claimedTasks, currentUser, onSwapAccepted }) => {
   const [tab, setTab] = useState("available");
   const [offers, setOffers] = useState([]);
   const [showNewOffer, setShowNewOffer] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState(null);
+
   const loadOffers = async () => {
     if (!currentUser?.id) return;
     const { data } = await supabase
       .from("swap_offers")
-      .select(`*, offering_task:tasks!offering_task_id(id,title,date,time,location,points,icon), wants_task:tasks!wants_task_id(id,title,date), from_user:profiles!from_user_id(id,name,initials,team)`)
-      .not("status", "in", '("accepted","declined")')
+      .select(`*, offering_task:tasks!offering_task_id(id,title,date,time,location,points,icon), from_user:profiles!from_user_id(id,name,initials,team)`)
+      .eq("status", "available")
       .order("created_at", { ascending: false });
     if (!data) return;
-    const claimedSet = new Set(claimedTasks.map((t) => t.id));
-    setOffers(data.map((o) => {
-      let status = o.from_user_id === currentUser.id ? "outgoing" : (o.wants_task_id && claimedSet.has(o.wants_task_id)) ? "incoming" : "available";
-      return { id: o.id, status, from: o.from_user, offering: o.offering_task, wants: o.wants_task, message: o.message, sentAt: new Date(o.created_at).toLocaleDateString("da-DK") };
-    }));
+    setOffers(data.map((o) => ({
+      id: o.id,
+      mine: o.from_user_id === currentUser.id,
+      from: o.from_user,
+      offering: o.offering_task,
+      message: o.message,
+      sentAt: new Date(o.created_at).toLocaleDateString("da-DK"),
+    })));
   };
 
   // loadOffers loader bytte-tilbud når brugeren skifter; setState sker efter await (ikke synkront),
@@ -1078,13 +1084,32 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
   // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
   useEffect(() => { loadOffers(); }, [currentUser?.id]);
 
-  const incoming  = offers.filter((o) => o.status === "incoming");
-  const available = offers.filter((o) => o.status === "available");
-  const outgoing  = offers.filter((o) => o.status === "outgoing");
+  const available = offers.filter((o) => !o.mine);
+  const outgoing  = offers.filter((o) => o.mine);
 
-  const remove = async (id) => {
+  const withdrawOffer = async (id) => {
     setOffers((prev) => prev.filter((o) => o.id !== id));
+    setSelected(null);
     await supabase.from("swap_offers").update({ status: "declined" }).eq("id", id);
+  };
+
+  const acceptSwap = async (offer) => {
+    setBusy(true); setActionError(null);
+    const { error } = await supabase.rpc("accept_swap", { p_offer_id: offer.id });
+    setBusy(false);
+    if (error) {
+      const messages = {
+        SWAP_UNAVAILABLE: "Tjansen er allerede overtaget af en anden.",
+        CANNOT_ACCEPT_OWN: "Du kan ikke overtage dit eget tilbud.",
+        ALREADY_CLAIMED: "Du har allerede denne tjans.",
+      };
+      const key = Object.keys(messages).find((k) => error.message?.includes(k));
+      setActionError(key ? messages[key] : "Kunne ikke overtage tjansen – prøv igen.");
+      return;
+    }
+    setSelected(null);
+    await loadOffers();
+    onSwapAccepted?.();
   };
 
   return (
@@ -1098,7 +1123,6 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
           <div className="bg-white/10 rounded-xl p-1 flex border border-white/10">
             {[
               { id: "available", label: `Tilgængelige (${available.length})` },
-              { id: "incoming",  label: `Til mig`, badge: incoming.length },
               { id: "outgoing",  label: `Mine (${outgoing.length})` },
             ].map((t) => (
               <button key={t.id} onClick={() => setTab(t.id)} className={`flex-1 py-1.5 rounded-lg text-[12px] font-bold inline-flex items-center justify-center gap-1 ${tab === t.id ? "bg-white text-emerald-900 shadow-sm" : "text-white/80"}`}>
@@ -1120,22 +1144,7 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
             </button>
             {available.length === 0
               ? <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Ingen tilgængelige bytter</p></div>
-              : available.map((o) => <SwapCard key={o.id} offer={o} onClick={() => setSelected(o)} />)
-            }
-          </>
-        )}
-
-        {tab === "incoming" && (
-          <>
-            <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5"><Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" /><p className="text-[11px] text-violet-900">Accepter eller afslå bytte-tilbud herunder.</p></div>
-            {incoming.length === 0
-              ? <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Ingen indkommende tilbud</p></div>
-              : incoming.map((o) => (
-                  <IncomingSwapCard key={o.id} offer={o}
-                    onAccept={() => remove(o.id)}
-                    onDecline={() => remove(o.id)}
-                  />
-                ))
+              : available.map((o) => <SwapCard key={o.id} offer={o} onClick={() => { setActionError(null); setSelected(o); }} />)
             }
           </>
         )}
@@ -1144,7 +1153,7 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
           outgoing.length === 0
             ? <><div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Du har ingen aktive tilbud</p></div>
                 <button onClick={() => setShowNewOffer(true)} className="w-full py-3 rounded-xl text-white font-bold mt-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Tilbyd en tjans</button></>
-            : outgoing.map((o) => <SwapCard key={o.id} offer={o} onClick={() => setSelected(o)} />)
+            : outgoing.map((o) => <SwapCard key={o.id} offer={o} onClick={() => { setActionError(null); setSelected(o); }} />)
         )}
       </div>
 
@@ -1166,15 +1175,16 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
               <div className="ml-auto px-2 py-1 rounded-full text-white text-[11px] font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{selected.offering.points}</div>
             </div>
             {selected.message && <div className="mb-4 bg-violet-50 border border-violet-200 rounded-xl p-3"><p className="text-[13px] text-stone-700 italic">"{selected.message}"</p></div>}
+            {actionError && <div className="mb-3 bg-pink-50 border border-pink-200 rounded-xl p-2.5"><p className="text-[12px] text-pink-800">{actionError}</p></div>}
             <div className="flex gap-2">
-              <button onClick={() => setSelected(null)} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Luk</button>
-              <button onClick={async () => {
-                if (!currentUser?.id || !selected) return;
-                await supabase.from("task_claims").insert({ task_id: selected.offering.id, user_id: currentUser.id });
-                await supabase.from("swap_offers").update({ status: "accepted" }).eq("id", selected.id);
-                setSelected(null);
-                loadOffers();
-              }} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Overtag tjansen (+{selected.offering.points} pt)</button>
+              <button onClick={() => { setSelected(null); setActionError(null); }} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Luk</button>
+              {selected.mine ? (
+                <button onClick={() => withdrawOffer(selected.id)} className="flex-[2] py-3 rounded-xl bg-white border border-pink-200 text-pink-700 font-bold">Træk tilbud tilbage</button>
+              ) : (
+                <button disabled={busy} onClick={() => acceptSwap(selected)} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                  {busy ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Overtager...</> : `Overtag tjansen (+${selected.offering.points} pt)`}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1199,37 +1209,6 @@ const SwapCard = ({ offer, onClick }) => (
       <div className="px-2 py-1 rounded-full text-white text-[11px] font-black shrink-0" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{offer.offering.points}</div>
     </div>
   </button>
-);
-
-const IncomingSwapCard = ({ offer, onAccept, onDecline }) => (
-  <div className="bg-white rounded-2xl border border-violet-200 shadow-md overflow-hidden">
-    <div className="px-4 py-2.5 text-white flex items-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-      <ArrowLeftRight className="w-4 h-4" />
-      <span className="text-[12px] font-bold">Bytte-tilbud fra {offer.from.name}</span>
-    </div>
-    <div className="p-4">
-      <div className="flex items-stretch gap-2 mb-3">
-        <div className="flex-1 bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-          <div className="text-[9px] uppercase tracking-wider font-bold text-emerald-700 mb-1.5 flex items-center gap-1"><ArrowRight className="w-2.5 h-2.5" />De tager</div>
-          <div className="font-bold text-[12px] text-stone-900 leading-tight">{offer.offering.title}</div>
-          <div className="text-[10px] text-stone-600 mt-1">{offer.offering.date}</div>
-        </div>
-        <div className="flex items-center">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}><ArrowLeftRight className="w-4 h-4" /></div>
-        </div>
-        <div className="flex-1 bg-pink-50 border border-pink-200 rounded-xl p-3">
-          <div className="text-[9px] uppercase tracking-wider font-bold text-pink-700 mb-1.5 flex items-center gap-1"><ArrowLeft className="w-2.5 h-2.5" />Du giver</div>
-          <div className="font-bold text-[12px] text-stone-900 leading-tight">{offer.wants.title}</div>
-          <div className="text-[10px] text-stone-600 mt-1">{offer.wants.date}</div>
-        </div>
-      </div>
-      {offer.message && <div className="mb-3 bg-stone-50 rounded-xl p-2.5 border border-stone-100"><p className="text-[12px] text-stone-700 italic">"{offer.message}"</p></div>}
-      <div className="flex gap-2">
-        <button onClick={onDecline} className="flex-1 py-2.5 rounded-xl bg-white border border-stone-200 text-[12px] font-semibold text-stone-700">Afslå</button>
-        <button onClick={onAccept} className="flex-[2] py-2.5 rounded-xl text-white text-[12px] font-bold shadow-md flex items-center justify-center gap-1.5" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><Check className="w-3.5 h-3.5" />Accepter bytte</button>
-      </div>
-    </div>
-  </div>
 );
 
 const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
@@ -3306,6 +3285,15 @@ export default function App() {
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   };
 
+  // Efter en overtagelse via bytte-markedet: opdatér modtagerens claims og
+  // point (pladsantallet er netto uændret, så tasks behøver ikke genindlæses).
+  const refreshAfterSwap = async () => {
+    if (!currentUser?.id) return;
+    const { data } = await supabase.from("task_claims").select("task_id").eq("user_id", currentUser.id);
+    if (data) setClaimedIds(new Set(data.map((c) => c.task_id)));
+    await loadProfile(currentUser.id);
+  };
+
   const handleAuth = (authData) => {
     // Show global spinner while profile loads in the background.
     // loadProfile will set authLoading=false in its finally block.
@@ -3422,7 +3410,7 @@ export default function App() {
         ) : showCalendar ? (
           <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
-          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} />
+          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} onSwapAccepted={refreshAfterSwap} />
         ) : selectedTask ? (
           <div className="flex flex-col" style={{ height: "100dvh" }}>
             {/* Scrollable content */}
