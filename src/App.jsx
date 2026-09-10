@@ -1,14 +1,14 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
-  Check, X, Filter, Search, Flame, Shield, Coffee, AlertCircle, ArrowLeft,
-  Info, Crown, Medal, Users, TrendingUp, Eye, EyeOff, Camera, Mail, Phone,
-  Award, Bell, LogOut, Trash2, ChevronDown, Lock, Briefcase, Edit3, Download,
-  HelpCircle, Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
-  ShieldCheck, UserPlus, Repeat, DollarSign, AlertTriangle, Activity, FileText,
-  Pencil, Copy, MessageCircle, Send, UserCheck, UserX, ThumbsUp, BellRing,
-  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft, Dot
+  Check, X, Filter, Search, Flame, Coffee, AlertCircle, ArrowLeft,
+  Info, Crown, Users, TrendingUp, Eye, EyeOff, Camera, Mail, Phone,
+  LogOut, Trash2, ChevronDown, Lock, Download,
+  Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
+  ShieldCheck, UserPlus, DollarSign, AlertTriangle, Activity, FileText,
+  Pencil, Copy, UserCheck, UserX, ThumbsUp, BellRing,
+  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft
 } from "lucide-react";
 
 const theme = {
@@ -132,6 +132,113 @@ const RoleBadge = ({ role, large = false }) => {
   return null;
 };
 
+// ============ VILKÅR OG PRIVATLIVSPOLITIK ============
+//
+// UDKAST. Skrevet ud fra hvad appen faktisk gemmer og gør, men det er
+// klubbens ansvar at læse teksterne igennem og godkende dem, før appen
+// sendes ud til medlemmerne. Ret navn, kontaktadresse og opbevaringsfrist
+// til, så de passer til RVK's øvrige praksis.
+
+const LEGAL_UPDATED = "10. september 2026";
+const LEGAL_CONTACT = "kontakt@randersvk.dk";
+
+const LEGAL_DOCS = {
+  terms: {
+    title: "Vilkår for brug",
+    intro: "RVK Frivillig er Randers Volleyballklubs værktøj til at fordele frivillige opgaver blandt klubbens medlemmer.",
+    sections: [
+      { h: "Hvem kan bruge appen", p: [
+        "Appen er for medlemmer af Randers Volleyballklub og deres pårørende, der hjælper til i klubben.",
+        "Når du opretter en profil, skal en administrator godkende dig, før du kan tage opgaver. Det er for at sikre, at vi ved, hvem der står på vagtplanen.",
+      ]},
+      { h: "Når du tager en tjans", p: [
+        "Når du melder dig til en opgave, regner klubben med dig. Kan du alligevel ikke, så meld fra i god tid eller tilbyd tjansen på bytte-markedet, så en anden kan overtage den.",
+        "Du optjener point, når du melder dig til en opgave. Melder du fra igen, trækkes pointene tilbage.",
+      ]},
+      { h: "Point og frivillighedsbidrag", p: [
+        "Point bruges til at vise, hvor meget den enkelte bidrager, og kan indgå i klubbens ordning om frivillighedsbidrag. De aktuelle pointmål og beløb fastsættes af bestyrelsen og fremgår i appen.",
+        "En administrator kan regulere point manuelt, hvis noget er registreret forkert. Det bliver noteret i klubbens log.",
+      ]},
+      { h: "God tone", p: [
+        "Beskeder du skriver i appen — for eksempel når du tilbyder en tjans til bytte — kan læses af andre medlemmer. Skriv, som du ville tale til hinanden i hallen.",
+      ]},
+      { h: "Hvis noget går galt", p: [
+        `Oplever du fejl i appen, eller mener du at dine point er registreret forkert, så skriv til ${LEGAL_CONTACT}.`,
+        "Klubben kan lukke en profil, hvis appen bruges til noget, den ikke er tænkt til.",
+      ]},
+    ],
+  },
+  privacy: {
+    title: "Privatlivspolitik",
+    intro: "Randers Volleyballklub er dataansvarlig for de oplysninger, du giver os i RVK Frivillig. Her står, hvad vi gemmer, hvorfor, og hvordan du får det slettet igen.",
+    sections: [
+      { h: "Hvad vi gemmer om dig", p: [
+        "Navn, e-mailadresse, telefonnummer (hvis du oplyser det), hvilket hold du hører til, og et profilbillede hvis du uploader et.",
+        "Hvilke opgaver du har meldt dig til, hvor mange point du har optjent, og hvornår du oprettede din profil.",
+        "Din adgangskode gemmes aldrig i klar tekst — den håndteres krypteret af vores databaseleverandør.",
+      ]},
+      { h: "Hvorfor vi gemmer det", p: [
+        "For at kunne fordele frivillige opgaver og vide, hvem der står på hvilken vagt.",
+        "For at kunne gøre op, hvem der har bidraget, i forbindelse med klubbens ordning om frivillighedsbidrag.",
+        "Grundlaget er klubbens legitime interesse i at drive foreningen, og for kontaktoplysninger dit eget samtykke, som du giver ved oprettelsen.",
+      ]},
+      { h: "Hvem kan se hvad", p: [
+        "Andre medlemmer kan se dit navn, dit hold, dine point og hvilke opgaver du står på. Det er hele pointen med en fælles vagtplan.",
+        "Din e-mail og dit telefonnummer kan kun ses af dig selv og af klubbens administratorer. De er ikke tilgængelige for andre medlemmer.",
+        "Vi sælger ikke dine oplysninger og deler dem ikke med nogen uden for klubben.",
+      ]},
+      { h: "Hvor længe", p: [
+        "Vi gemmer dine oplysninger, så længe du er aktiv i klubben, og i op til 12 måneder efter du er meldt ud — så vi kan gøre sæsonen op. Derefter slettes de.",
+      ]},
+      { h: "Hvor det ligger", p: [
+        "Appen kører hos Vercel, og oplysningerne ligger i en database hos Supabase på servere i EU.",
+      ]},
+      { h: "Dine rettigheder", p: [
+        "Du kan altid se og rette dine egne oplysninger under \"Min profil\".",
+        "Du har ret til at få udleveret, rettet eller slettet dine oplysninger, og til at gøre indsigelse mod at vi behandler dem.",
+        `Skriv til ${LEGAL_CONTACT}, så ordner vi det. Er du ikke tilfreds med vores svar, kan du klage til Datatilsynet.`,
+      ]},
+    ],
+  },
+};
+
+const LegalScreen = ({ doc, onBack }) => {
+  const d = LEGAL_DOCS[doc];
+  if (!d) return null;
+  return (
+    <div className="min-h-screen bg-stone-50 pb-16">
+      <div className="px-5 pt-12 pb-6 text-white" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+        <button onClick={onBack} className="inline-flex items-center gap-1.5 text-white/90 text-[13px] mb-4"><ArrowLeft className="w-4 h-4" />Tilbage</button>
+        <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">Randers Volleyballklub</div>
+        <h1 className="text-2xl font-bold mt-1">{d.title}</h1>
+        <p className="text-[13px] text-white/80 mt-2 leading-relaxed">{d.intro}</p>
+      </div>
+
+      <div className="px-5 mt-5">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5 mb-4">
+          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-900 leading-relaxed">
+            <strong>Udkast.</strong> Teksten skal godkendes af bestyrelsen, før appen sendes ud til medlemmerne.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-stone-100 shadow-sm divide-y divide-stone-100">
+          {d.sections.map((sec) => (
+            <div key={sec.h} className="p-4">
+              <h2 className="text-[13px] font-bold text-stone-900 mb-2">{sec.h}</h2>
+              {sec.p.map((para, i) => (
+                <p key={i} className="text-[13px] text-stone-600 leading-relaxed mb-2 last:mb-0">{para}</p>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        <p className="text-[11px] text-stone-400 mt-4 text-center">Senest opdateret {LEGAL_UPDATED}</p>
+      </div>
+    </div>
+  );
+};
+
 const ResetPasswordScreen = ({ onDone }) => {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -183,7 +290,7 @@ const ResetPasswordScreen = ({ onDone }) => {
   );
 };
 
-const AuthScreen = ({ onAuthenticated }) => {
+const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -195,6 +302,7 @@ const AuthScreen = ({ onAuthenticated }) => {
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
   const [teams, setTeams] = useState([]);
 
@@ -248,12 +356,22 @@ const AuthScreen = ({ onAuthenticated }) => {
       } else {
         const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { data: { name, team } },
+          options: { data: { name, team, phone: phone.trim() } },
         });
         if (error) { setErrors({ email: error.message }); setLoading(false); return; }
+
+        // Kræver projektet e-mailbekræftelse, får man ingen session med det
+        // samme. Så skal brugeren i indbakken – ikke sendes videre ind i
+        // appen, hvor alting ville fejle uden en gyldig session.
+        if (!data.session) {
+          setLoading(false);
+          setConfirmEmailSent(true);
+          return;
+        }
+
         onAuthenticated({ email: data.user?.email || email, userId: data.user?.id, name, team, phone, isNew: true });
       }
-    } catch (err) {
+    } catch {
       setErrors({ email: "Noget gik galt – prøv igen" });
     }
     setLoading(false);
@@ -291,7 +409,23 @@ const AuthScreen = ({ onAuthenticated }) => {
           <h2 className="text-xl font-bold text-stone-900 mb-1">{mode === "login" ? "Velkommen tilbage" : mode === "signup" ? "Bliv frivillig" : "Nulstil adgangskode"}</h2>
           <p className="text-[13px] text-stone-500 mb-5">{mode === "login" ? "Log ind for at se dine opgaver og point" : mode === "signup" ? "Opret en profil og kom i gang med at samle point" : "Indtast din e-mail, så sender vi dig et link til at nulstille din adgangskode"}</p>
 
-          {mode === "forgot" && resetSent ? (
+          {confirmEmailSent ? (
+            <div className="space-y-4">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                <Mail className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-900 text-sm">Bekræft din e-mail</div>
+                  <p className="text-[12px] text-emerald-800 mt-1 leading-relaxed">
+                    Vi har sendt et link til <strong>{email}</strong>. Klik på det for at aktivere din profil.
+                    Derefter kan du logge ind – og så mangler kun en administrators godkendelse.
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => { setConfirmEmailSent(false); setMode("login"); setErrors({}); }} className="w-full py-3 rounded-xl bg-stone-100 text-stone-700 text-sm font-bold">
+                Tilbage til login
+              </button>
+            </div>
+          ) : mode === "forgot" && resetSent ? (
             <div className="space-y-4">
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -333,7 +467,10 @@ const AuthScreen = ({ onAuthenticated }) => {
               </div>
               <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
                 <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="mt-0.5 w-4 h-4 accent-pink-500" />
-                <span className="text-[12px] text-stone-600 leading-relaxed">Jeg accepterer klubbens <a className="text-emerald-700 font-semibold underline">vilkår</a> og <a className="text-emerald-700 font-semibold underline">privatlivspolitik (GDPR)</a></span>
+                <span className="text-[12px] text-stone-600 leading-relaxed">Jeg accepterer klubbens{" "}
+                  <button type="button" onClick={(e) => { e.preventDefault(); onShowLegal("terms"); }} className="text-emerald-700 font-semibold underline">vilkår</button>{" "}og{" "}
+                  <button type="button" onClick={(e) => { e.preventDefault(); onShowLegal("privacy"); }} className="text-emerald-700 font-semibold underline">privatlivspolitik (GDPR)</button>
+                </span>
               </label>
               {errors.terms && <p className="text-[11px] text-pink-600 -mt-2">{errors.terms}</p>}
             </>}
@@ -389,6 +526,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   const [query,         setQuery]         = useState("");
   const [showLongTasks, setShowLongTasks] = useState(false);
   const [showFilters,   setShowFilters]   = useState(false);
+  const [showPast,      setShowPast]      = useState(false);
 
   const catFilters  = ["Alle", "Haster", "Kampafvikling & Sekretærbord", "Hygge og Socialt", "Holdleder & Transport", "Stævneplanlægning og Afholdelse", "Kommunikation & PR", "Faciliteter & Materialer", "Klubadministration"];
   const dateFilters = ["Alle", "Denne måned", "Næste måned", "Halvt sæson"];
@@ -406,11 +544,18 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
     const nextMonth = (thisMonth + 1) % 12;
     const nextYear  = thisMonth === 11 ? thisYear + 1 : thisYear;
     const halfEnd   = new Date(thisYear, thisMonth + 6, 1);
+    // Dagen i dag tæller stadig med – en tjans kl. 19 er ikke overstået kl. 08.
+    const cutoff    = new Date(thisYear, thisMonth, today.getDate(), 0, 0, 0);
 
     return tasks
       .filter((t) => {
         if (t.durationType && t.durationType !== "single") return false;
         if (claimedIds.has(t.id)) return false;
+        // Overståede opgaver skal ud af feedet, ellers vokser listen bare.
+        if (!showPast) {
+          const d = parseTaskDate(t);
+          if (d && d < cutoff) return false;
+        }
         if (catFilter === "Haster" && !t.urgent) return false;
         if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
         if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
@@ -432,7 +577,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
         if (!db) return -1;
         return da - db;
       });
-  }, [tasks, catFilter, dateFilter, sortOrder, query, claimedIds]);
+  }, [tasks, catFilter, dateFilter, sortOrder, query, claimedIds, showPast]);
 
   // Group by month for display
   const grouped = useMemo(() => {
@@ -542,9 +687,18 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
                 </div>
               </div>
 
+              {/* Tidligere opgaver */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">Overstået</div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" id="vis-tidligere" checked={showPast} onChange={(e) => setShowPast(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                  <span className="text-[12px] text-stone-600">Vis også opgaver der er overstået</span>
+                </label>
+              </div>
+
               {/* Nulstil */}
-              {(dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date") && (
-                <button onClick={() => { setDateFilter("Alle"); setCatFilter("Alle"); setSortOrder("date"); }} className="text-[11px] text-stone-400 hover:text-stone-600 underline">
+              {(dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date" || showPast) && (
+                <button onClick={() => { setDateFilter("Alle"); setCatFilter("Alle"); setSortOrder("date"); setShowPast(false); }} className="text-[11px] text-stone-400 hover:text-stone-600 underline">
                   Nulstil filtre
                 </button>
               )}
@@ -553,8 +707,13 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
         </div>
 
         {/* Aktive filter-chips (vises kun når filtermenuen er lukket) */}
-        {!showFilters && (dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date") && (
+        {!showFilters && (dateFilter !== "Alle" || catFilter !== "Alle" || sortOrder !== "date" || showPast) && (
           <div className="flex gap-1.5 flex-wrap mb-2">
+            {showPast && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-stone-200 text-stone-700">
+                Inkl. overståede<button onClick={() => setShowPast(false)}><X className="w-3 h-3" /></button>
+              </span>
+            )}
             {dateFilter !== "Alle" && (
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold text-white" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
                 {dateFilter}<button onClick={() => setDateFilter("Alle")}><X className="w-3 h-3" /></button>
@@ -628,20 +787,24 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   );
 };
 
-const BADGE_DEFS = [
-  { id: "signup",    emoji: "🌱", label: "Frivillig",      desc: "Tilmeldt som frivillig",     req: (e, t) => true },
-  { id: "first",     emoji: "⭐", label: "Første tjans",   desc: "Gennemført første opgave",   req: (e, t) => t >= 1 },
-  { id: "halfway",   emoji: "🔥", label: "Halvvejs",       desc: "50 point optjent",           req: (e) => e >= 50 },
-  { id: "halfgoal",  emoji: "🏅", label: "Halvsmål nået",  desc: "100 point – bidragsfri",     req: (e) => e >= 100 },
-  { id: "veteran",   emoji: "🎯", label: "Veteran",        desc: "5 tjanser gennemført",       req: (e, t) => t >= 5 },
-  { id: "fullgoal",  emoji: "🏆", label: "Sæsonmål",       desc: "200 point – hele sæsonen",   req: (e) => e >= 200 },
+// Mærkerne følger klubbens pointmål, som sættes i admin-panelet.
+const badgeDefs = (halfGoal) => [
+  { id: "signup",   emoji: "🌱", label: "Frivillig",     desc: "Tilmeldt som frivillig",                      req: () => true },
+  { id: "first",    emoji: "⭐", label: "Første tjans",  desc: "Taget sin første opgave",                     req: (e, t) => t >= 1 },
+  { id: "halfway",  emoji: "🔥", label: "Halvvejs",      desc: `${Math.round(halfGoal / 2)} point optjent`,   req: (e) => e >= halfGoal / 2 },
+  { id: "halfgoal", emoji: "🏅", label: "Halvsmål nået", desc: `${halfGoal} point – bidragsfri`,              req: (e) => e >= halfGoal },
+  { id: "veteran",  emoji: "🎯", label: "Veteran",       desc: "5 tjanser taget",                             req: (e, t) => t >= 5 },
+  { id: "fullgoal", emoji: "🏆", label: "Sæsonmål",      desc: `${halfGoal * 2} point – hele sæsonen`,        req: (e) => e >= halfGoal * 2 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick }) => {
-  const earned    = (currentUser?.pointsEarned || 0) + claimedTasks.reduce((s, t) => s + t.points, 0);
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
+  // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
+  // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
+  // dashboardet og scoreboardet forskellige tal for den samme frivillige.
+  const earned    = currentUser?.pointsEarned || 0;
   const tasks     = currentUser?.tasksCompleted || 0;
-  const halfGoal  = 100;
-  const fullGoal  = 200;
+  const halfGoal  = pointGoal || 100;
+  const fullGoal  = halfGoal * 2;
   const pct       = Math.min(100, Math.round((earned / fullGoal) * 100));
   const halfPct   = Math.min(50, Math.round((Math.min(earned, halfGoal) / fullGoal) * 100));
   const restPct   = Math.max(0, Math.min(50, Math.round(((earned - halfGoal) / fullGoal) * 100)));
@@ -656,7 +819,8 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick }) => {
       .then(({ count }) => setRank((count ?? 0) + 1));
   }, [currentUser?.id, currentUser?.pointsEarned]);
 
-  const earnedBadges = BADGE_DEFS.filter((b) => b.req(earned, tasks));
+  const badges       = useMemo(() => badgeDefs(halfGoal), [halfGoal]);
+  const earnedBadges = badges.filter((b) => b.req(earned, tasks));
 
   return (
     <div className="pb-24">
@@ -715,7 +879,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick }) => {
         <div className="px-5 mt-5">
           <h2 className="text-sm font-bold text-stone-900 mb-2">Mine badges</h2>
           <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
-            {BADGE_DEFS.map((b) => {
+            {badges.map((b) => {
               const unlocked = b.req(earned, tasks);
               return (
                 <div key={b.id} className={`shrink-0 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border text-center min-w-[72px] transition-all ${unlocked ? "bg-white border-stone-200 shadow-sm" : "bg-stone-100 border-stone-100 opacity-40"}`}>
@@ -978,8 +1142,6 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
     }
   });
 
-  const allByDate = [...tasks, ...claimedTasks];
-
   return (
     <div className="pb-24 bg-stone-50 min-h-screen">
       <div className="px-5 pt-12 pb-5 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
@@ -1054,11 +1216,13 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
 
 // ============ BYTTE-MARKED ============
 
-const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
+const SwapScreen = ({ onBack, claimedTasks, currentUser, onSwapAccepted }) => {
   const [tab, setTab] = useState("available");
   const [offers, setOffers] = useState([]);
   const [showNewOffer, setShowNewOffer] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [swapError, setSwapError] = useState(null);
+  const [accepting, setAccepting] = useState(false);
 
   const loadOffers = async () => {
     if (!currentUser?.id) return;
@@ -1082,8 +1246,23 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
   const outgoing  = offers.filter((o) => o.status === "outgoing");
 
   const remove = async (id) => {
+    const { error } = await supabase.rpc("decline_swap", { p_offer_id: id });
+    if (error) { setSwapError(error.message); return; }
     setOffers((prev) => prev.filter((o) => o.id !== id));
-    await supabase.from("swap_offers").update({ status: "declined" }).eq("id", id);
+    setSwapError(null);
+  };
+
+  // Hele byttet – flyt tilmelding, flyt point, luk tilbuddet – sker i én
+  // databasefunktion. Ellers kunne begge parter ende med at stå på opgaven.
+  const acceptOffer = async (offer) => {
+    setAccepting(true);
+    const { error } = await supabase.rpc("accept_swap", { p_offer_id: offer.id });
+    setAccepting(false);
+    if (error) { setSwapError(error.message); return; }
+    setSwapError(null);
+    setSelected(null);
+    await loadOffers();
+    onSwapAccepted?.();
   };
 
   return (
@@ -1110,6 +1289,13 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
       </div>
 
       <div className="px-5 mt-4 space-y-3">
+        {swapError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <p className="text-[12px] text-red-900 flex-1">{swapError}</p>
+            <button onClick={() => setSwapError(null)} className="text-red-400"><X className="w-4 h-4" /></button>
+          </div>
+        )}
         {tab === "available" && (
           <>
             <button onClick={() => setShowNewOffer(true)} className="w-full rounded-2xl p-3.5 text-white flex items-center gap-3 shadow-lg active:scale-[0.99] transition-transform" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
@@ -1131,7 +1317,7 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
               ? <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center"><ArrowLeftRight className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[12px] text-stone-500">Ingen indkommende tilbud</p></div>
               : incoming.map((o) => (
                   <IncomingSwapCard key={o.id} offer={o}
-                    onAccept={() => remove(o.id)}
+                    onAccept={() => acceptOffer(o)}
                     onDecline={() => remove(o.id)}
                   />
                 ))
@@ -1167,13 +1353,11 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser }) => {
             {selected.message && <div className="mb-4 bg-violet-50 border border-violet-200 rounded-xl p-3"><p className="text-[13px] text-stone-700 italic">"{selected.message}"</p></div>}
             <div className="flex gap-2">
               <button onClick={() => setSelected(null)} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Luk</button>
-              <button onClick={async () => {
-                if (!currentUser?.id || !selected) return;
-                await supabase.from("task_claims").insert({ task_id: selected.offering.id, user_id: currentUser.id });
-                await supabase.from("swap_offers").update({ status: "accepted" }).eq("id", selected.id);
-                setSelected(null);
-                loadOffers();
-              }} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>Overtag tjansen (+{selected.offering.points} pt)</button>
+              {selected.status === "outgoing" ? (
+                <button onClick={() => { remove(selected.id); setSelected(null); }} className="flex-[2] py-3 rounded-xl bg-stone-800 text-white font-bold shadow-md">Træk tilbuddet tilbage</button>
+              ) : (
+                <button onClick={() => acceptOffer(selected)} disabled={accepting} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{accepting ? "Overtager..." : `Overtag tjansen (+${selected.offering.points} pt)`}</button>
+              )}
             </div>
           </div>
         </div>
@@ -1235,6 +1419,7 @@ const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
   const [selected, setSelected] = useState(null);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white rounded-t-3xl w-full max-w-md max-h-[85vh] overflow-y-auto animate-slideup" onClick={(e) => e.stopPropagation()}>
@@ -1262,14 +1447,16 @@ const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
             <textarea value={message} onChange={(e) => setMessage(e.target.value)} rows={3} placeholder="F.eks. Jeg er blevet syg..." className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none resize-none" />
           </div>
           <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5"><Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" /><p className="text-[11px] text-violet-900">Tjansen vises på bytte-markedet til alle klubbens medlemmer.</p></div>
+          {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-[12px] text-red-900">{error}</div>}
         </div>
         <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
           <button onClick={async () => {
             if (!selected || !currentUser?.id) return;
             setSaving(true);
-            await supabase.from("swap_offers").insert({ from_user_id: currentUser.id, offering_task_id: selected, message: message || null, status: "available" });
+            const { error } = await supabase.from("swap_offers").insert({ from_user_id: currentUser.id, offering_task_id: selected, message: message || null, status: "available" });
             setSaving(false);
+            if (error) { setError("Kunne ikke oprette tilbuddet: " + error.message); return; }
             onClose();
           }} disabled={!selected || saving} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-md disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
             {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sender...</> : "Tilbyd til bytte"}
@@ -1283,8 +1470,6 @@ const NewSwapModal = ({ claimedTasks, currentUser, onClose }) => {
 // ============ ADMIN CENTER ============
 
 // Bootstrap: disse e-mails får automatisk super_admin
-const SUPER_ADMIN_EMAILS = ["formand@randersVK.dk", "admin@randersVK.dk"];
-
 const logAction = (type, action, actor) =>
   supabase.from("audit_log").insert({
     type,
@@ -1367,7 +1552,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
       </div>
 
       <div className="px-5 mt-5">
-        {section === "overview"  && <AdminOverview onNavigate={setSection} tasks={tasks} />}
+        {section === "overview"  && <AdminOverview tasks={tasks} />}
         {section === "approvals" && <AdminApprovals />}
         {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} />}
         {section === "members"   && <AdminMembers currentUserRole={currentUserRole} currentUser={currentUser} />}
@@ -1381,7 +1566,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
 };
 
 // ---- OVERSIGT ----
-const AdminOverview = ({ onNavigate, tasks }) => {
+const AdminOverview = ({ tasks }) => {
   const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
 
   useEffect(() => {
@@ -1479,33 +1664,40 @@ const AdminApprovals = () => {
   const [reason, setReason]    = useState("");
   const [approvalError, setApprovalError] = useState(null);
 
-  useEffect(() => {
-    // Show members not yet reviewed (reviewed_at IS NULL)
-    supabase.from("profiles")
-      .select("id,name,initials,email,phone,team,created_at")
-      .is("reviewed_at", null)
-      .order("created_at", { ascending: false })
-      .then(({ data }) => {
-        if (data) setPending(data.map((m) => ({
-          id: m.id, name: m.name, initials: m.initials || "?",
-          email: m.email || "–", phone: m.phone || "–", team: m.team || "–",
-          appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null,
-        })));
-      });
-  }, []);
+  const load = async () => {
+    // Kontaktoplysninger hentes gennem admin_list_members(), fordi selve
+    // tabellen ikke længere udleverer e-mail og telefon til klienten.
+    const { data, error } = await supabase.rpc("admin_list_members");
+    if (error) { setApprovalError(`Kunne ikke hente medlemmer: ${error.message}`); return; }
+    setPending((data || []).filter((m) => !m.approved).map((m) => ({
+      id: m.id, name: m.name, initials: m.initials || "?",
+      email: m.email || "–", phone: m.phone || "–", team: m.team || "–",
+      appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null,
+    })));
+  };
+
+  useEffect(() => { load(); }, []);
 
   const approve = async (a) => {
-    const { error } = await supabase.from("profiles").update({ reviewed_at: new Date().toISOString() }).eq("id", a.id);
-    if (error) { setApprovalError(`Fejl: ${error.message} – kør supabase_approvals.sql i Supabase SQL Editor.`); return; }
+    const { error } = await supabase.rpc("admin_set_approval", { p_user: a.id, p_approved: true });
+    if (error) { setApprovalError(`Kunne ikke godkende: ${error.message}`); return; }
     setPending((p) => p.filter((x) => x.id !== a.id));
     setDone((d) => [{ ...a, action: "approved" }, ...d]);
     setExpanded(null);
     setApprovalError(null);
   };
+
   const reject  = async (a) => {
-    const { error } = await supabase.from("profiles").delete().eq("id", a.id);
-    if (error) {
-      setApprovalError(`Kunne ikke slette: ${error.message} – kør supabase_profiles_rls.sql i Supabase SQL Editor.`);
+    // Afvisning sletter både profilen og selve login'et, så personen ikke
+    // efterlades med en konto uden profil.
+    const { data, error } = await supabase.functions.invoke("delete-member", {
+      body: { user_id: a.id, reason: reason || "Afvist ved godkendelse" },
+    });
+    if (error || data?.error) {
+      setApprovalError(
+        `Kunne ikke afvise: ${data?.error || error.message}. ` +
+        "Er delete-member-funktionen rullet ud? (supabase functions deploy delete-member)"
+      );
       return;
     }
     setPending((p) => p.filter((x) => x.id !== a.id));
@@ -1518,7 +1710,7 @@ const AdminApprovals = () => {
     <div className="space-y-4">
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
         <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
-        <p className="text-[11px] text-violet-900 leading-relaxed">Nye medlemmer får adgang til appen når du godkender dem. De modtager automatisk e-mail med resultatet.</p>
+        <p className="text-[11px] text-violet-900 leading-relaxed">Nye medlemmer kan logge ind, men kan først tage tjanser når du godkender dem. Godkendte medlemmer får en besked i appen med det samme. Afviser du, slettes profilen og login'et helt.</p>
       </div>
 
       {approvalError && (
@@ -1598,6 +1790,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
   const [confirmRemove, setConfirmRemove] = useState(null);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState(null);
+  const [spotsLeft,    setSpotsLeft]    = useState(task.spotsLeft ?? 0);
 
   useEffect(() => {
     (async () => {
@@ -1614,24 +1807,23 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
 
   const signedUpIds = new Set(signups.map((s) => s.user_id));
 
+  // Point og ledige pladser reguleres af databasen, ikke her. Tidligere lagde
+  // admin-panelet selv point til OVENI databasens egen optælling, så en
+  // tildelt opgave gav dobbelt point i forhold til en, medlemmet selv tog.
+  const syncSpots = async () => {
+    const { data } = await supabase.from("tasks").select("spots_left").eq("id", task.id).single();
+    if (data) {
+      setSpotsLeft(data.spots_left);
+      setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: data.spots_left } : t));
+    }
+  };
+
   const removeSignup = async (profile) => {
     setSaving(true); setError(null);
     const { error: e1 } = await supabase.from("task_claims").delete().eq("task_id", task.id).eq("user_id", profile.id);
     if (e1) { setError("Kunne ikke fjerne tilmelding: " + e1.message); setSaving(false); return; }
 
-    const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", profile.id).single();
-    if (prof) {
-      await supabase.from("profiles").update({
-        points: Math.max(0, (prof.points || 0) - task.points),
-        tasks_done: Math.max(0, (prof.tasks_done || 0) - 1),
-      }).eq("id", profile.id);
-    }
-
-    const newSpots = (task.spotsLeft || 0) + 1;
-    await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
-    task.spotsLeft = newSpots;
-
+    await syncSpots();
     setSignups((prev) => prev.filter((s) => s.user_id !== profile.id));
     setConfirmRemove(null); setSaving(false);
     logAction("task", `Fjernede ${profile.name} fra "${task.title}"`, currentUser);
@@ -1640,21 +1832,16 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
   const assignMember = async (member) => {
     setSaving(true); setError(null);
     const { error: e1 } = await supabase.from("task_claims").insert({ task_id: task.id, user_id: member.id });
-    if (e1) { setError("Kunne ikke tildele: " + e1.message); setSaving(false); return; }
-
-    const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", member.id).single();
-    if (prof) {
-      await supabase.from("profiles").update({
-        points: (prof.points || 0) + task.points,
-        tasks_done: (prof.tasks_done || 0) + 1,
-      }).eq("id", member.id);
+    if (e1) {
+      const msg = /fuldt besat/i.test(e1.message || "")
+        ? "Opgaven er allerede fuldt besat"
+        : /ikke godkendt/i.test(e1.message || "")
+          ? `${member.name} er ikke godkendt endnu`
+          : "Kunne ikke tildele: " + e1.message;
+      setError(msg); setSaving(false); await syncSpots(); return;
     }
 
-    const newSpots = Math.max(0, (task.spotsLeft || 0) - 1);
-    await supabase.from("tasks").update({ spots_left: newSpots }).eq("id", task.id);
-    setTasks((prev) => prev.map((t) => t.id === task.id ? { ...t, spotsLeft: newSpots } : t));
-    task.spotsLeft = newSpots;
-
+    await syncSpots();
     setSignups((prev) => [...prev, { user_id: member.id, profiles: member }]);
     setAssignSearch(""); setSaving(false);
     logAction("task", `Tildelte "${task.title}" til ${member.name}`, currentUser);
@@ -1664,7 +1851,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
     (m) => !signedUpIds.has(m.id) && (m.name || "").toLowerCase().includes(assignSearch.toLowerCase())
   );
 
-  const canAssign = (task.spotsLeft || 0) > 0;
+  const canAssign = spotsLeft > 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -1673,7 +1860,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
         <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><ArrowLeft className="w-4 h-4 text-stone-500" /></button>
         <div className="flex-1 min-w-0">
           <div className="font-bold text-[14px] text-stone-900 truncate">{task.title}</div>
-          <div className="text-[11px] text-stone-500">{task.date} · {task.spotsLeft}/{task.spotsTotal} ledige pladser</div>
+          <div className="text-[11px] text-stone-500">{task.date} · {spotsLeft}/{task.spotsTotal} ledige pladser</div>
         </div>
       </div>
 
@@ -1792,33 +1979,18 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
   const [editTask, setEditTask]     = useState(null);
   const [menuOpen, setMenuOpen]     = useState(null);
   const [signupsTask, setSignupsTask] = useState(null);
+  const [saveError, setSaveError]     = useState(null);
 
   const deleteTask = async (id) => {
     const task = tasks.find((t) => t.id === id);
-    setTasks((prev) => prev.filter((t) => t.id !== id));
     setMenuOpen(null);
 
-    // Deduct points from all enrolled members before deleting
-    if (task) {
-      const { data: claims } = await supabase
-        .from("task_claims")
-        .select("user_id")
-        .eq("task_id", id);
-      if (claims && claims.length > 0) {
-        for (const claim of claims) {
-          const { data: prof } = await supabase.from("profiles").select("points, tasks_done").eq("id", claim.user_id).single();
-          if (prof) {
-            await supabase.from("profiles").update({
-              points: Math.max(0, (prof.points || 0) - task.points),
-              tasks_done: Math.max(0, (prof.tasks_done || 0) - 1),
-            }).eq("id", claim.user_id);
-          }
-        }
-        await supabase.from("task_claims").delete().eq("task_id", id);
-      }
-    }
+    // Databasen trækker selv pointene tilbage fra alle tilmeldte og sender
+    // dem besked om aflysningen, når opgaven slettes.
+    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    if (error) { setSaveError("Kunne ikke slette opgaven: " + error.message); return; }
 
-    await supabase.from("tasks").delete().eq("id", id);
+    setTasks((prev) => prev.filter((t) => t.id !== id));
     logAction("task", `Slettede opgave: "${task?.title || id}" – point fratrukket alle tilmeldte`, currentUser);
   };
 
@@ -1840,27 +2012,41 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
   const saveTask = async (data) => {
     const steps = data.description.split("\n").filter(Boolean);
     if (editTask) {
-      await supabase.from("tasks").update({
+      // Ledige pladser må IKKE nulstilles ved redigering – så ville en rettet
+      // titel få opgaven til at se fri ud, selvom folk allerede stod på den.
+      // Ændrer admin antal pladser, flyttes det ledige antal med forskellen.
+      const newTotal  = parseInt(data.spots);
+      const oldTotal  = editTask.spotsTotal ?? newTotal;
+      const taken     = Math.max(0, oldTotal - (editTask.spotsLeft ?? oldTotal));
+      const newLeft   = Math.max(0, newTotal - taken);
+
+      const { error: updErr } = await supabase.from("tasks").update({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
         date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
         time: data.time, location: data.location,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
-        spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
+        spots_total: newTotal, spots_left: newLeft,
       }).eq("id", editTask.id);
+
+      if (updErr) { setSaveError("Kunne ikke gemme opgaven: " + updErr.message); return; }
+
       await supabase.from("task_steps").delete().eq("task_id", editTask.id);
       if (steps.length > 0) {
         await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: editTask.id, step_order: i + 1, text })));
       }
-      setTasks((prev) => prev.map((t) => t.id === editTask.id ? { ...t, ...data, description: steps, spotsLeft: parseInt(data.spots), spotsTotal: parseInt(data.spots) } : t));
+      setTasks((prev) => prev.map((t) => t.id === editTask.id
+        ? { ...t, ...data, description: steps, spotsLeft: newLeft, spotsTotal: newTotal }
+        : t));
       logAction("task", `Redigerede opgave: "${data.title}"`, currentUser);
     } else {
-      const { data: row } = await supabase.from("tasks").insert({
+      const { data: row, error: insErr } = await supabase.from("tasks").insert({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
         date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
         time: data.time, location: data.location,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
         spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
       }).select().single();
+      if (insErr) { setSaveError("Kunne ikke oprette opgaven: " + insErr.message); return; }
       if (row && steps.length > 0) {
         await supabase.from("task_steps").insert(steps.map((text, i) => ({ task_id: row.id, step_order: i + 1, text })));
       }
@@ -1869,6 +2055,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
         logAction("task", `Oprettede opgave: "${data.title}" (${data.points} pt)`, currentUser);
       }
     }
+    setSaveError(null);
     setShowNew(false); setEditTask(null);
   };
 
@@ -1881,6 +2068,14 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
       <button onClick={() => setShowNew(true)} className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
         <Plus className="w-4 h-4" />Opret ny opgave
       </button>
+
+      {saveError && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-[12px] text-red-900 flex-1">{saveError}</p>
+          <button onClick={() => setSaveError(null)} className="text-red-400"><X className="w-4 h-4" /></button>
+        </div>
+      )}
 
       <div className="space-y-2.5">
         {tasks.map((t) => {
@@ -2250,7 +2445,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             </div>
           </div>
 
-          <TaskDatePicker value={dateISO} onChange={(iso, display) => {
+          <TaskDatePicker value={dateISO} onChange={(iso) => {
             setDateISO(iso);
             const { date: d, dateEnd: de } = computeDateDisplay(iso, durationType);
             setDate(d); setDateEnd(de);
@@ -2341,10 +2536,23 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
   const confirmDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true); setDeleteError(null);
-    const { error: err } = await supabase.from("profiles").delete().eq("id", deleteTarget.id);
+
+    // Sletter BÅDE profilen og login'et. Før blev kun profilrækken fjernet,
+    // så e-mailen blev liggende i Supabase Auth, og personen kunne hverken
+    // bruge appen eller oprette sig igen.
+    const { data, error } = await supabase.functions.invoke("delete-member", {
+      body: { user_id: deleteTarget.id, reason: deleteReason },
+    });
     setDeleting(false);
-    if (err) { setDeleteError("Fejl: " + err.message); return; }
-    logAction("member", `Slettede (GDPR) ${deleteTarget.name} – årsag: ${deleteReason}`, currentUser);
+
+    if (error || data?.error) {
+      setDeleteError(
+        (data?.error || error.message) +
+        " – er delete-member-funktionen rullet ud? (supabase functions deploy delete-member)"
+      );
+      return;
+    }
+
     setAllMembers((prev) => prev.filter((m) => m.id !== deleteTarget.id));
     setDeleteTarget(null);
   };
@@ -2352,16 +2560,17 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
   // Promote flow
   const [promoteTarget, setPromoteTarget] = useState(null);
   const [promoting, setPromoting] = useState(false);
+  const [promoteError, setPromoteError] = useState(null);
 
   const openPromote = (member) => { setPromoteTarget(member); setMenuOpen(null); };
   const closePromote = () => { if (promoting) return; setPromoteTarget(null); };
 
   const confirmPromote = async () => {
     if (!promoteTarget) return;
-    setPromoting(true);
-    const { error: err } = await supabase.from("profiles").update({ role: "admin" }).eq("id", promoteTarget.id);
+    setPromoting(true); setPromoteError(null);
+    const { error: err } = await supabase.rpc("admin_set_role", { p_user: promoteTarget.id, p_role: "admin" });
     setPromoting(false);
-    if (err) return;
+    if (err) { setPromoteError(err.message); return; }
     logAction("role_change", `Gav ${promoteTarget.name} admin-rolle`, currentUser);
     setAllMembers((prev) => prev.map((m) => m.id === promoteTarget.id ? { ...m, role: "admin" } : m));
     setPromoteTarget(null);
@@ -2382,9 +2591,12 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
     const pts = parseInt(bonusPoints);
     if (!bonusTarget || isNaN(pts) || pts <= 0) return;
     setBonusSaving(true); setBonusError(null);
-    const current = bonusTarget.points || 0;
-    const newTotal = bonusMode === "add" ? current + pts : Math.max(0, current - pts);
-    const { error: err } = await supabase.from("profiles").update({ points: newTotal }).eq("id", bonusTarget.id);
+    // Bonuspoint holdes adskilt fra opgavepoint i databasen, så regnskabet
+    // kan genberegnes fra tilmeldingerne uden at bonusser går tabt.
+    const { data: newTotal, error: err } = await supabase.rpc("admin_adjust_points", {
+      p_user: bonusTarget.id,
+      p_delta: bonusMode === "add" ? pts : -pts,
+    });
     setBonusSaving(false);
     if (err) { setBonusError("Fejl: " + err.message); return; }
     const actionText = bonusMode === "add"
@@ -2396,7 +2608,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
   };
 
   useEffect(() => {
-    supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role,email").order("points", { ascending: false }).then(({ data }) => {
+    supabase.rpc("admin_list_members").then(({ data }) => {
       if (data && data.length > 0) {
         setAllMembers(data.map((p) => ({
           id: p.id, name: p.name, email: p.email || "",
@@ -2520,6 +2732,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
               <div className="w-12 h-12 rounded-full bg-violet-100 flex items-center justify-center mx-auto mb-3"><ShieldCheck className="w-6 h-6 text-violet-600" /></div>
               <h3 className="font-bold text-[16px] text-stone-900 mb-1">Gør til Admin?</h3>
               <p className="text-[13px] text-stone-500"><span className="font-semibold text-stone-800">{promoteTarget.name}</span> får adgang til admin-panelet og kan oprette/slette opgaver og godkende medlemmer.</p>
+              {promoteError && <p className="text-[12px] text-red-600 mt-3 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{promoteError}</p>}
             </div>
             <div className="px-5 pb-5 flex gap-2">
               <button onClick={closePromote} disabled={promoting} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700 disabled:opacity-50">Annuller</button>
@@ -2540,7 +2753,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                 <div className="px-5 pt-6 pb-4 text-center">
                   <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-3"><Trash2 className="w-6 h-6 text-red-600" /></div>
                   <h3 className="font-bold text-[16px] text-stone-900 mb-1">Slet medlem?</h3>
-                  <p className="text-[13px] text-stone-500">Du er ved at slette <span className="font-semibold text-stone-800">{deleteTarget.name}</span> permanent. Alle data fjernes (GDPR).</p>
+                  <p className="text-[13px] text-stone-500">Du er ved at slette <span className="font-semibold text-stone-800">{deleteTarget.name}</span> permanent. Både profil, login, tilmeldinger og beskeder fjernes (GDPR).</p>
                 </div>
                 <div className="px-5 pb-5 flex gap-2">
                   <button onClick={closeDelete} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[14px] font-semibold text-stone-700">Annuller</button>
@@ -2701,7 +2914,7 @@ const AdminRoles = ({ currentUser }) => {
   const [roleError, setRoleError] = useState(null);
 
   const reload = () => {
-    supabase.from("profiles").select("id,name,initials,team,role,admin_requested,admin_requested_at,email").order("points", { ascending: false }).then(({ data }) => {
+    supabase.rpc("admin_list_members").then(({ data }) => {
       if (data && data.length > 0) {
         setMembers(data.map((p) => ({
           id: p.id, name: p.name,
@@ -2720,9 +2933,11 @@ const AdminRoles = ({ currentUser }) => {
   const users       = members.filter((m) => m.role === "user" && !m.adminRequested);
   const pending     = members.filter((m) => m.role === "user" && m.adminRequested);
 
+  // Rolleændringer går gennem admin_set_role(), der både tjekker at kalderen
+  // er super admin, og at klubben aldrig ender uden én.
   const promote = async (id, role) => {
     const target = members.find((m) => m.id === id);
-    const { error } = await supabase.from("profiles").update({ role, admin_requested: false }).eq("id", id);
+    const { error } = await supabase.rpc("admin_set_role", { p_user: id, p_role: role });
     if (error) { setRoleError(`Kunne ikke tildele rolle: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role, adminRequested: false } : m));
     logAction("role_change", `Gav ${target?.name} rollen "${role}"`, currentUser);
@@ -2730,7 +2945,7 @@ const AdminRoles = ({ currentUser }) => {
   };
   const demote = async (id) => {
     const target = members.find((m) => m.id === id);
-    const { error } = await supabase.from("profiles").update({ role: "user" }).eq("id", id);
+    const { error } = await supabase.rpc("admin_set_role", { p_user: id, p_role: "user" });
     if (error) { setRoleError(`Kunne ikke fjerne rolle: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role: "user" } : m));
     logAction("role_change", `Fjernede admin-rolle fra ${target?.name}`, currentUser);
@@ -2738,7 +2953,7 @@ const AdminRoles = ({ currentUser }) => {
   };
   const rejectRequest = async (id) => {
     const target = members.find((m) => m.id === id);
-    const { error } = await supabase.from("profiles").update({ admin_requested: false }).eq("id", id);
+    const { error } = await supabase.rpc("admin_dismiss_request", { p_user: id });
     if (error) { setRoleError(`Fejl: ${error.message}`); return; }
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, adminRequested: false } : m));
     logAction("role_change", `Afslog admin-anmodning fra ${target?.name}`, currentUser);
@@ -3101,23 +3316,21 @@ const RequestAdminButton = ({ currentUser, setToast }) => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.from("profiles").select("admin_requested").eq("id", currentUser.id).single().then(({ data }) => {
-      if (data?.admin_requested) setRequested(true);
-    });
-  }, [currentUser.id]);
+    if (currentUser?.adminRequested) setRequested(true);
+  }, [currentUser?.adminRequested]);
 
   const handleRequest = async () => {
     setLoading(true);
-    const { error } = await supabase.from("profiles").update({
-      admin_requested: true,
-      admin_requested_at: new Date().toISOString(),
-    }).eq("id", currentUser.id);
+    const { error } = await supabase.rpc("request_admin_access");
     setLoading(false);
-    if (!error) {
-      setRequested(true);
-      setToast("📨 Din anmodning er sendt til Super Admin");
-      setTimeout(() => setToast(null), 3000);
+    if (error) {
+      setToast("Kunne ikke sende anmodningen: " + error.message);
+      setTimeout(() => setToast(null), 3500);
+      return;
     }
+    setRequested(true);
+    setToast("📨 Din anmodning er sendt til Super Admin");
+    setTimeout(() => setToast(null), 3000);
   };
 
   if (requested) {
@@ -3135,6 +3348,21 @@ const RequestAdminButton = ({ currentUser, setToast }) => {
       {loading ? "Sender..." : "Anmod om admin-rettigheder"}
     </button>
   );
+};
+
+// Udseende pr. beskedtype. Typerne oprettes af databasen – se
+// supabase/migrations/20260910120000_launch_hardening.sql, afsnit 6.
+const NOTIF_STYLE = {
+  approved:        { icon: <UserCheck className="w-4 h-4" />,      bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` },
+  task_assigned:   { icon: <UserPlus className="w-4 h-4" />,       bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` },
+  task_unassigned: { icon: <UserX className="w-4 h-4" />,          bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` },
+  task_changed:    { icon: <Pencil className="w-4 h-4" />,         bg: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` },
+  task_cancelled:  { icon: <AlertTriangle className="w-4 h-4" />,  bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purpleDark})` },
+  swap_accepted:   { icon: <ArrowLeftRight className="w-4 h-4" />, bg: `linear-gradient(135deg, ${theme.greenMid}, ${theme.purple})` },
+  swap_declined:   { icon: <ArrowLeftRight className="w-4 h-4" />, bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` },
+  points_adjusted: { icon: <Zap className="w-4 h-4" />,            bg: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` },
+  role_changed:    { icon: <ShieldCheck className="w-4 h-4" />,    bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.purple})` },
+  task_reminder:   { icon: <Clock className="w-4 h-4" />,          bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` },
 };
 
 const BottomNav = ({ active, onChange }) => {
@@ -3178,6 +3406,8 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [selectedTask, setSelectedTask] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [legalDoc, setLegalDoc] = useState(null);
+  const [pointGoal, setPointGoal] = useState(100);
 
   const claimedTasks = useMemo(
     () => tasks.filter((t) => claimedIds.has(t.id)),
@@ -3190,10 +3420,18 @@ export default function App() {
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
     try {
-      const query = supabase.from("profiles").select("*").eq("id", userId).single();
+      // my_profile() henter egen profil inkl. e-mail og telefon. Selve
+      // tabellen udleverer ikke kontaktoplysninger til klienten længere.
+      const query = supabase.rpc("my_profile").single();
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Profile load timeout")), 8000));
       const { data, error } = await Promise.race([query, timeout]);
       if (error) console.error("Profile load error:", error);
+      if (data && userId && data.id !== userId) {
+        console.warn("Profilen matcher ikke sessionen – logger ud");
+        await supabase.auth.signOut();
+        setIsAuthenticated(false);
+        return;
+      }
       if (data) {
         setCurrentUser({
           id: data.id,
@@ -3206,6 +3444,8 @@ export default function App() {
           pointsEarned: data.points || 0,
           tasksCompleted: data.tasks_done || 0,
           avatarUrl: data.avatar_url || null,
+          approved: data.approved === true,
+          adminRequested: data.admin_requested === true,
         });
         setIsAuthenticated(true);
       }
@@ -3296,24 +3536,57 @@ export default function App() {
     loadTasks();
   }, []);
 
+  const loadNotifications = async (userId = currentUser?.id) => {
+    if (!userId) return;
+    const { data } = await supabase.from("notifications")
+      .select("*").eq("user_id", userId)
+      .order("created_at", { ascending: false }).limit(50);
+    if (data) setNotifications(data);
+  };
+
   // Load claimed task IDs and notifications when user is set
   useEffect(() => {
-    if (!currentUser?.id) return;
-    // Load claimed IDs
-    supabase.from("task_claims").select("task_id").eq("user_id", currentUser.id).then(({ data }) => {
+    const uid = currentUser?.id;
+    if (!uid) return;
+    supabase.from("task_claims").select("task_id").eq("user_id", uid).then(({ data }) => {
       if (data) setClaimedIds(new Set(data.map((c) => c.task_id)));
     });
-    // Load notifications
-    supabase.from("notifications").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(30).then(({ data }) => {
-      if (data) setNotifications(data);
-    });
+    loadNotifications(uid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // Klubbens pointmål sættes i admin-panelet. Før stod 100/200 hårdt i koden,
+  // så indstillingen havde ingen effekt.
+  useEffect(() => {
+    supabase.from("settings").select("key,value").then(({ data }) => {
+      const goal = data?.find((r) => r.key === "point_goal")?.value;
+      const n = parseInt(goal, 10);
+      if (Number.isFinite(n) && n > 0) setPointGoal(n);
+    });
+  }, []);
 
   const markNotifsRead = async () => {
     const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
     if (unreadIds.length === 0) return;
     await supabase.from("notifications").update({ read: true }).in("id", unreadIds);
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
+
+  // Efter et bytte har både tilmeldinger, point og opgaveliste ændret sig.
+  const reloadMine = async () => {
+    if (!currentUser?.id) return;
+    const [{ data: me }, { data: claims }, { data: taskRows }] = await Promise.all([
+      supabase.rpc("my_profile").single(),
+      supabase.from("task_claims").select("task_id").eq("user_id", currentUser.id),
+      supabase.from("tasks").select("id, spots_left"),
+    ]);
+    if (me) setCurrentUser((prev) => prev && ({ ...prev, pointsEarned: me.points ?? 0, tasksCompleted: me.tasks_done ?? 0 }));
+    if (claims) setClaimedIds(new Set(claims.map((c) => c.task_id)));
+    if (taskRows) {
+      const bySpots = new Map(taskRows.map((r) => [r.id, r.spots_left]));
+      setTasks((prev) => prev.map((t) => bySpots.has(t.id) ? { ...t, spotsLeft: bySpots.get(t.id) } : t));
+    }
+    loadNotifications();
   };
 
   const handleAuth = (authData) => {
@@ -3340,41 +3613,77 @@ export default function App() {
     setSelectedTask(null);
   };
 
-  const handleClaim = async (taskId) => {
-    const next = new Set(claimedIds);
-    next.add(taskId);
-    setClaimedIds(next);
-    const task = tasks.find((t) => t.id === taskId);
-    setToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
-    setTimeout(() => setToast(null), 2500);
-    setTimeout(() => setTab("dashboard"), 900);
-    if (currentUser?.id) {
-      await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
-      const { data: updated } = await supabase.from("tasks").select("spots_left").eq("id", taskId).single();
-      if (updated) {
-        setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
-      }
-      setCurrentUser((prev) => ({ ...prev, pointsEarned: (prev.pointsEarned || 0) + (task?.points || 0), tasksCompleted: (prev.tasksCompleted || 0) + 1 }));
+  // Point og ledige pladser vedligeholdes udelukkende af databasen.
+  // Appen skriver aldrig selv i points/spots_left – den læser resultatet.
+  const refreshAfterClaimChange = async (taskId) => {
+    const [{ data: me }, { data: task }] = await Promise.all([
+      supabase.rpc("my_profile").single(),
+      supabase.from("tasks").select("spots_left").eq("id", taskId).single(),
+    ]);
+    if (me) {
+      setCurrentUser((prev) => prev && ({
+        ...prev,
+        pointsEarned: me.points ?? prev.pointsEarned,
+        tasksCompleted: me.tasks_done ?? prev.tasksCompleted,
+      }));
+    }
+    if (task) {
+      setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: task.spots_left } : t));
     }
   };
 
-  const handleUnclaim = async (taskId) => {
+  const showToast = (msg, ms = 2500) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), ms);
+  };
+
+  const handleClaim = async (taskId) => {
+    if (!currentUser?.id) return;
     const task = tasks.find((t) => t.id === taskId);
-    const next = new Set(claimedIds);
-    next.delete(taskId);
-    setClaimedIds(next);
-    setToast("Tjans frameldt");
-    setTimeout(() => setToast(null), 2500);
-    if (currentUser?.id) {
-      await supabase.from("task_claims").delete().eq("task_id", taskId).eq("user_id", currentUser.id);
-      await supabase.from("profiles").update({
-        points: Math.max(0, (currentUser.pointsEarned || 0) - (task?.points || 0)),
-        tasks_done: Math.max(0, (currentUser.tasksCompleted || 0) - 1),
-      }).eq("id", currentUser.id);
-      const { data: updated } = await supabase.from("tasks").update({ spots_left: (task?.spotsLeft || 0) + 1 }).eq("id", taskId).select("spots_left").single();
-      if (updated) setTasks((prev) => prev.map((t) => t.id === taskId ? { ...t, spotsLeft: updated.spots_left } : t));
-      setCurrentUser((prev) => ({ ...prev, pointsEarned: Math.max(0, (prev.pointsEarned || 0) - (task?.points || 0)), tasksCompleted: Math.max(0, (prev.tasksCompleted || 0) - 1) }));
+
+    if (!currentUser.approved) {
+      showToast("Din profil skal godkendes, før du kan tage tjanser", 3500);
+      return;
     }
+    if ((task?.spotsLeft ?? 0) <= 0) {
+      showToast("Opgaven er desværre fuldt besat", 3000);
+      return;
+    }
+
+    const { error } = await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
+
+    if (error) {
+      // Databasen afviser blandt andet, hvis nogen nåede den sidste plads først.
+      const full = /fuldt besat/i.test(error.message || "");
+      showToast(full ? "Nogen nåede den sidste plads før dig" : `Kunne ikke tilmelde: ${error.message}`, 3500);
+      await refreshAfterClaimChange(taskId);
+      return;
+    }
+
+    setClaimedIds((prev) => new Set(prev).add(taskId));
+    showToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
+    setTimeout(() => setTab("dashboard"), 900);
+    await refreshAfterClaimChange(taskId);
+  };
+
+  const handleUnclaim = async (taskId) => {
+    if (!currentUser?.id) return;
+
+    const { error } = await supabase.from("task_claims")
+      .delete().eq("task_id", taskId).eq("user_id", currentUser.id);
+
+    if (error) {
+      showToast(`Kunne ikke framelde: ${error.message}`, 3500);
+      return;
+    }
+
+    setClaimedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(taskId);
+      return next;
+    });
+    showToast("Tjans frameldt");
+    await refreshAfterClaimChange(taskId);
   };
 
   if (authLoading) {
@@ -3396,11 +3705,69 @@ export default function App() {
     );
   }
 
+  // Vilkår og privatlivspolitik lægger sig OVENPÅ skærmen, så en halvt
+  // udfyldt oprettelsesformular ikke går tabt, når man læser dem.
+  const legalOverlay = legalDoc && (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-stone-50">
+      <div className="max-w-md mx-auto bg-white min-h-screen shadow-xl">
+        <LegalScreen doc={legalDoc} onBack={() => setLegalDoc(null)} />
+      </div>
+    </div>
+  );
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-stone-50 font-sans antialiased">
         <style>{`@keyframes slideup { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slideup { animation: slideup 0.3s cubic-bezier(0.16, 1, 0.3, 1); } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
-        <AuthScreen onAuthenticated={handleAuth} />
+        <AuthScreen onAuthenticated={handleAuth} onShowLegal={setLegalDoc} />
+        {legalOverlay}
+      </div>
+    );
+  }
+
+  // Nye medlemmer venter på en admin, før de kan tage tjanser.
+  if (currentUser && !currentUser.approved) {
+    return (
+      <div className="min-h-screen bg-stone-50 font-sans antialiased">
+        <div className="max-w-md mx-auto min-h-screen flex items-center px-6" style={{ background: `linear-gradient(160deg, ${theme.greenDark} 0%, ${theme.greenMid} 55%, ${theme.purple} 100%)` }}>
+          <div className="bg-white rounded-3xl shadow-2xl p-6 w-full">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                <Clock className="w-7 h-7 text-white" />
+              </div>
+              <h2 className="text-xl font-bold text-stone-900">Tak for din tilmelding, {currentUser.name?.split(" ")[0]}!</h2>
+              <p className="text-[14px] text-stone-600 mt-2 leading-relaxed">
+                En af klubbens administratorer skal lige godkende din profil, før du kan tage tjanser.
+                Du får besked, så snart det er sket – som regel inden for et døgn.
+              </p>
+            </div>
+
+            <div className="bg-stone-50 rounded-xl p-3.5 mt-5 space-y-2">
+              <div className="flex justify-between text-[12px]"><span className="text-stone-500">Navn</span><span className="font-semibold text-stone-800">{currentUser.name}</span></div>
+              <div className="flex justify-between text-[12px]"><span className="text-stone-500">Hold</span><span className="font-semibold text-stone-800">{currentUser.team || "Ikke valgt"}</span></div>
+              <div className="flex justify-between text-[12px]"><span className="text-stone-500">E-mail</span><span className="font-semibold text-stone-800 truncate ml-2">{currentUser.email}</span></div>
+            </div>
+
+            <p className="text-[11px] text-stone-400 mt-4 text-center leading-relaxed">
+              Haster det? Skriv til {LEGAL_CONTACT}, så kigger vi på det.
+            </p>
+
+            <div className="flex gap-2 mt-5">
+              <button onClick={() => loadProfile(currentUser.id)} className="flex-1 py-3 rounded-xl font-bold text-white text-[13px]" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                Tjek igen
+              </button>
+              <button onClick={handleLogout} className="px-4 py-3 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-semibold">
+                Log ud
+              </button>
+            </div>
+
+            <div className="flex items-center justify-center gap-4 mt-4">
+              <button onClick={() => setLegalDoc("terms")} className="text-[11px] text-stone-400 underline">Vilkår</button>
+              <button onClick={() => setLegalDoc("privacy")} className="text-[11px] text-stone-400 underline">Privatlivspolitik</button>
+            </div>
+          </div>
+        </div>
+        {legalOverlay}
       </div>
     );
   }
@@ -3417,7 +3784,7 @@ export default function App() {
         ) : showCalendar ? (
           <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
-          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} />
+          <SwapScreen onBack={() => setShowSwaps(false)} claimedTasks={claimedTasks} currentUser={currentUser} onSwapAccepted={reloadMine} />
         ) : selectedTask ? (
           <div className="flex flex-col" style={{ height: "100dvh" }}>
             {/* Scrollable content */}
@@ -3448,16 +3815,21 @@ export default function App() {
 
             {/* Sticky button — never overlaps content */}
             <div className="shrink-0 p-4 bg-white border-t border-stone-100 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-              {claimedIds.has(selectedTask.id)
-                ? <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
-                : <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
-              }
+              {claimedIds.has(selectedTask.id) ? (
+                <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
+              ) : !currentUser?.approved ? (
+                <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-amber-900 bg-amber-50 border border-amber-200 flex items-center justify-center gap-2"><Clock className="w-4 h-4" />Din profil skal godkendes først</div>
+              ) : (selectedTask.spotsLeft ?? 0) <= 0 ? (
+                <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-500 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><Users className="w-4 h-4" />Opgaven er fuldt besat</div>
+              ) : (
+                <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
+              )}
             </div>
           </div>
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
@@ -3486,6 +3858,11 @@ export default function App() {
                   )}
                   {currentUser?.role === "user" && <RequestAdminButton currentUser={currentUser} setToast={setToast} />}
                   <button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button>
+
+                  <div className="flex items-center justify-center gap-4 pt-2 pb-1">
+                    <button onClick={() => setLegalDoc("terms")} className="text-[11px] text-stone-400 underline hover:text-stone-600">Vilkår</button>
+                    <button onClick={() => setLegalDoc("privacy")} className="text-[11px] text-stone-400 underline hover:text-stone-600">Privatlivspolitik</button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3495,6 +3872,8 @@ export default function App() {
         {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{toast}</div>}
 
         {!showCalendar && !showSwaps && !showAdmin && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
+
+        {legalOverlay}
 
         {/* Notification drawer */}
         {showNotif && (
@@ -3510,8 +3889,8 @@ export default function App() {
                   <div className="p-10 text-center"><BellRing className="w-10 h-10 mx-auto mb-2 text-stone-300" /><p className="text-[13px] text-stone-500">Ingen notifikationer endnu</p></div>
                 ) : notifications.map((n) => (
                   <div key={n.id} className={`px-5 py-3.5 flex items-start gap-3 ${n.read ? "" : "bg-violet-50/60"}`}>
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white text-sm" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-                      {n.type === "task_reminder" ? <Clock className="w-4 h-4" /> : n.type === "badge_unlocked" ? <Zap className="w-4 h-4" /> : <BellRing className="w-4 h-4" />}
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-white text-sm" style={{ background: NOTIF_STYLE[n.type]?.bg || `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                      {NOTIF_STYLE[n.type]?.icon || <BellRing className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-[13px] text-stone-900">{n.title}</div>
