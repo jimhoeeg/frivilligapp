@@ -157,6 +157,7 @@ const LEGAL_DOCS = {
       ]},
       { h: "Point og frivillighedsbidrag", p: [
         "Du optjener point, når en administrator har bekræftet, at du gennemførte tjansen — ikke allerede når du melder dig til. Indtil da står pointene som \u201eafventer bekræftelse\u201c på dit dashboard.",
+        "Har ingen administrator gjort tjansen op inden for en uge efter opgavens sidste dag, bliver den godkendt automatisk. Det er for ikke at lade nogen vente på point, de har gjort sig fortjent til.",
         "Møder du ikke op uden at melde afbud, kan tjansen blive registreret som ikke gennemført. Så giver den ingen point. Mener du, det er en fejl, så kontakt klubben — det kan altid laves om.",
         "Point bruges til at vise, hvor meget den enkelte bidrager, og kan indgå i klubbens ordning om frivillighedsbidrag. De aktuelle pointmål og beløb fastsættes af bestyrelsen og fremgår i appen.",
         "En administrator kan regulere point manuelt, hvis noget er registreret forkert. Det bliver noteret i klubbens log.",
@@ -2097,17 +2098,24 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy]       = useState(null);
   const [error, setError]     = useState(null);
+  const [auto, setAuto]       = useState(null);
 
   const load = async () => {
     setLoading(true);
-    const { data, error: err } = await supabase.rpc("admin_pending_confirmations");
+    const [{ data, error: err }, { data: preview }] = await Promise.all([
+      supabase.rpc("admin_pending_confirmations"),
+      supabase.rpc("auto_confirm_preview"),
+    ]);
     setLoading(false);
     if (err) { setError("Kunne ikke hente listen: " + err.message); return; }
     setError(null);
     setRows(data || []);
+    setAuto(preview?.[0] || null);
   };
 
   useEffect(() => { load(); }, []);
+
+  const autoDays = auto?.days_setting || 0;
 
   const confirmAll = async (row) => {
     setBusy(row.task_id); setError(null);
@@ -2126,7 +2134,15 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
     return [...rows]
       .map((r) => {
         const d = parseTaskDate({ date: r.task_date, dateFull: r.date_full });
-        return { ...r, when: d, isPast: d ? d < cutoff : false };
+        // Automatikken regner kun på datoer den kan læse med sikkerhed.
+        const iso = /^\d{4}-\d{2}-\d{2}/.test(r.date_full || "");
+        // parseTaskDate lander kl. 12, så begge sider skal skæres ned til
+        // ren dato — ellers bliver nedtællingen én dag forkert.
+        const dMid = d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : null;
+        const daysLeft = (iso && autoDays > 0 && dMid)
+          ? autoDays - Math.round((cutoff - dMid) / 86400000)
+          : null;
+        return { ...r, when: d, isPast: d ? d < cutoff : false, autoIn: daysLeft, manualOnly: autoDays > 0 && !iso };
       })
       .sort((a, b) => {
         if (a.isPast !== b.isPast) return a.isPast ? -1 : 1;
@@ -2162,6 +2178,23 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
             {r.no_show > 0 && <span className="text-[10px] text-stone-400 font-semibold">{r.no_show} udeblev</span>}
             <span className="text-[10px] text-stone-400">· {r.points} pt pr. person</span>
           </div>
+          {autoDays > 0 && (
+            <div className="text-[10px] mt-1.5">
+              {r.manualOnly ? (
+                <span className="inline-flex items-center gap-1 text-stone-500">
+                  <AlertTriangle className="w-2.5 h-2.5" />Datoen kan ikke læses automatisk — skal gøres op i hånden
+                </span>
+              ) : r.autoIn != null && r.autoIn <= 0 ? (
+                <span className="inline-flex items-center gap-1 text-emerald-700 font-semibold">
+                  <Clock className="w-2.5 h-2.5" />Godkendes automatisk ved næste kørsel
+                </span>
+              ) : r.autoIn != null ? (
+                <span className="inline-flex items-center gap-1 text-stone-500">
+                  <Clock className="w-2.5 h-2.5" />Godkendes automatisk om {r.autoIn} {r.autoIn === 1 ? "dag" : "dage"}
+                </span>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
 
@@ -2185,10 +2218,23 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
       <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
         <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
         <p className="text-[11px] text-violet-900 leading-relaxed">
-          Medlemmer får først deres point, når du bekræfter, at tjansen er gennemført.
+          Medlemmer får først deres point, når tjansen er bekræftet som gennemført.
           Mødte alle op, kan du godkende hele opgaven med ét tryk.
+          {autoDays > 0
+            ? <> Det, du ikke når, godkendes automatisk {autoDays} dage efter opgavens sidste dag — så her skal du kun røre det, der <strong>ikke</strong> gik som planlagt.</>
+            : <> Automatisk godkendelse er slået fra, så alt skal gøres op her.</>}
         </p>
       </div>
+
+      {autoDays > 0 && auto?.unparseable > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-amber-900 leading-relaxed">
+            <strong>{auto.unparseable}</strong> {auto.unparseable === 1 ? "tilmelding" : "tilmeldinger"} hører til opgaver uden en
+            entydig slutdato. Dem rører automatikken ikke — de skal godkendes her.
+          </p>
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
@@ -3362,6 +3408,7 @@ const AdminSettings = ({ currentUser }) => {
   const [contribution, setContrib]    = useState("1500");
   const [seasonStart, setStart]       = useState("2025-08-01");
   const [seasonEnd, setEnd]           = useState("2026-06-30");
+  const [autoDays, setAutoDays]       = useState("7");
   const [saved, setSaved]             = useState(false);
   const [saving, setSaving]           = useState(false);
 
@@ -3373,6 +3420,7 @@ const AdminSettings = ({ currentUser }) => {
       if (map.contribution_kr) setContrib(map.contribution_kr);
       if (map.season_start)   setStart(map.season_start);
       if (map.season_end)     setEnd(map.season_end);
+      if (map.auto_confirm_days != null) setAutoDays(map.auto_confirm_days);
     });
   }, []);
 
@@ -3383,11 +3431,12 @@ const AdminSettings = ({ currentUser }) => {
       { key: "contribution_kr", value: contribution },
       { key: "season_start",    value: seasonStart },
       { key: "season_end",      value: seasonEnd },
+      { key: "auto_confirm_days", value: String(parseInt(autoDays) || 0) },
     ], { onConflict: "key" });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-    logAction("settings", `Opdaterede indstillinger: halvsmål=${pointGoal} pt, bidrag=${contribution} kr`, currentUser);
+    logAction("settings", `Opdaterede indstillinger: halvsmål=${pointGoal} pt, bidrag=${contribution} kr, automatisk bekræftelse=${parseInt(autoDays) || 0} dage`, currentUser);
   };
 
   return (
@@ -3406,6 +3455,18 @@ const AdminSettings = ({ currentUser }) => {
             <AdminInput type="date" value={seasonEnd} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
+        <div className="pt-3 border-t border-stone-100">
+          <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Automatisk bekræftelse</div>
+          <AdminInput label="Godkend automatisk efter (dage)" type="number" placeholder="7" icon={<Clock className="w-4 h-4" />} value={autoDays} onChange={(e) => setAutoDays(e.target.value)} />
+          <p className="text-[11px] text-stone-400 mt-1.5 leading-relaxed">
+            {parseInt(autoDays) > 0 ? (
+              <>Tjanser der stadig afventer {parseInt(autoDays)} dage efter opgavens sidste dag, godkendes af sig selv. Har du markeret nogen som udeblevet, bliver det stående. Skriv 0 for at slå fra.</>
+            ) : (
+              <>Slået fra — alle tjanser skal gøres op i hånden under Bekræft.</>
+            )}
+          </p>
+        </div>
+
         <button onClick={save} disabled={saving} className="w-full py-2.5 rounded-xl text-white font-bold text-[13px] flex items-center justify-center gap-2 disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
           {saving ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Gemmer...</> : <><Save className="w-4 h-4" />Gem indstillinger</>}
         </button>
@@ -3886,6 +3947,21 @@ export default function App() {
     }
     loadNotifications();
   };
+
+  // Sikkerhedsnet for den automatiske bekræftelse. Er pg_cron slået til på
+  // Supabase-projektet, klarer det daglige job arbejdet, og dette kald finder
+  // ikke noget. Er det ikke, sker opgørelsen her i stedet — funktionen har en
+  // spærretid på en time, så den kører højst én gang i timen uanset hvor
+  // mange der åbner appen.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase.rpc("auto_confirm_due_claims").then(({ data, error }) => {
+      if (error) { console.warn("auto_confirm_due_claims:", error.message); return; }
+      if (data > 0) reloadMine();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser?.id]);
+
 
   const handleAuth = (authData) => {
     // Show global spinner while profile loads in the background.

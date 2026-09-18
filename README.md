@@ -6,7 +6,7 @@ Volunteer task coordination web app for Randers Volleyballklub (RVK).
 
 - 🔐 **Login og oprettelse** — med holdvalg og admin-godkendelse af nye medlemmer
 - 📋 **Opgaver** — søg, filtrér og tag tjanser
-- ✅ **Bekræftelse** — point gives først når en admin har godkendt tjansen som gennemført
+- ✅ **Bekræftelse** — point gives først når tjansen er godkendt som gennemført, manuelt eller automatisk efter 7 dage
 - 📊 **Point** — beregnes i databasen ud fra bekræftede tjanser plus admins bonuspoint
 - 🏆 **Rangliste** — medlemmer og hold
 - 🔄 **Byt tjanser** — tilmelding og point flytter samlet i én databasefunktion
@@ -65,12 +65,21 @@ select tgname from pg_trigger
 --   tc_before_delete, tc_before_insert
 ```
 
-Kør derefter `supabase/migrations/20260918100000_task_completion.sql` på samme
-måde. Den flytter point fra *tilmelding* til *bekræftet gennemført*, og
+Kør derefter de øvrige migrationer i `supabase/migrations/` i navnerækkefølge.
+`20260918100000_task_completion.sql` Den flytter point fra *tilmelding* til *bekræftet gennemført*, og
 nulstiller derfor pointtallene: alle eksisterende tilmeldinger står som
 "afventer bekræftelse", indtil en admin gør dem op under **Admin → Bekræft**.
 Vil I i stedet godkende hele den eksisterende historik på én gang, står linjen
 til det i bunden af filen.
+
+`20260918140000_auto_confirm.sql` slår automatisk bekræftelse til efter 7 dage.
+Findes `pg_cron` på projektet, oprettes et dagligt job kl. 03:00 UTC. Kan
+udvidelsen ikke slås til, skriver filen det som en NOTICE og fejler ikke —
+appen kalder så selv funktionen, når nogen er logget ind. Tjek hvad der skete:
+
+```sql
+select jobname, schedule from cron.job where jobname = 'rvk_auto_confirm';
+```
 
 **2. Rul sletnings-funktionen ud**
 
@@ -119,6 +128,7 @@ psql -d rvk -f supabase_setup.sql                       # basisskemaet
 for m in supabase/migrations/*.sql; do psql -d rvk -f "$m"; done
 psql -d rvk -f supabase/tests/10_behaviour.sql          # 15 tjek
 psql -d rvk -f supabase/tests/20_completion.sql         # 14 tjek af bekræftelser
+psql -d rvk -f supabase/tests/30_auto_confirm.sql      # 11 tjek af automatikken
 ```
 
 ## Deployment
@@ -162,9 +172,24 @@ Admins gør tjanser op under **Admin → Bekræft**, enten samlet pr. opgave ell
 person for person. En bekræftelse kan altid fortrydes — pointene følger med
 tilbage.
 
+### Automatisk bekræftelse
+
+Er der gået 7 dage efter opgavens sidste dag, og står tilmeldingen stadig som
+`signed_up`, godkendes den af sig selv. Antal dage sættes under **Admin →
+Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
+
+- Kun `signed_up`. Har en admin markeret nogen som udeblevet, bliver det stående.
+- Kun opgaver hvor slutdatoen kan læses entydigt (`date_full` eller `date_end`
+  i ISO-format). Ældre opgaver med kun en dansk datotekst røres ikke, og
+  admin-panelet siger det tydeligt.
+- Medlemmet får en besked, der fortæller at godkendelsen skete automatisk.
+- En automatisk godkendelse kan fortrydes som enhver anden.
+
+Kør den manuelt: `select public.auto_confirm_due_claims(true);`
+Se hvad der venter: `select * from public.auto_confirm_preview();`
+
 ## Køreplan
 
-- [ ] Automatisk bekræftelse efter X dage, hvis admin ikke har gjort andet
 - [ ] E-mailnotifikationer (i dag kun beskeder inde i appen)
 - [ ] PWA: app-ikon og "Føj til hjemmeskærm"
 - [ ] Fejlovervågning og fast backup
