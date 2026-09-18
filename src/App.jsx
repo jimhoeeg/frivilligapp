@@ -153,9 +153,11 @@ const LEGAL_DOCS = {
       ]},
       { h: "Når du tager en tjans", p: [
         "Når du melder dig til en opgave, regner klubben med dig. Kan du alligevel ikke, så meld fra i god tid eller tilbyd tjansen på bytte-markedet, så en anden kan overtage den.",
-        "Du optjener point, når du melder dig til en opgave. Melder du fra igen, trækkes pointene tilbage.",
+        "Du kan melde fra, så længe tjansen ikke er gjort op. Er den først bekræftet som gennemført, skal du kontakte klubben.",
       ]},
       { h: "Point og frivillighedsbidrag", p: [
+        "Du optjener point, når en administrator har bekræftet, at du gennemførte tjansen — ikke allerede når du melder dig til. Indtil da står pointene som \u201eafventer bekræftelse\u201c på dit dashboard.",
+        "Møder du ikke op uden at melde afbud, kan tjansen blive registreret som ikke gennemført. Så giver den ingen point. Mener du, det er en fejl, så kontakt klubben — det kan altid laves om.",
         "Point bruges til at vise, hvor meget den enkelte bidrager, og kan indgå i klubbens ordning om frivillighedsbidrag. De aktuelle pointmål og beløb fastsættes af bestyrelsen og fremgår i appen.",
         "En administrator kan regulere point manuelt, hvis noget er registreret forkert. Det bliver noteret i klubbens log.",
       ]},
@@ -174,7 +176,8 @@ const LEGAL_DOCS = {
     sections: [
       { h: "Hvad vi gemmer om dig", p: [
         "Navn, e-mailadresse, telefonnummer (hvis du oplyser det), hvilket hold du hører til, og et profilbillede hvis du uploader et.",
-        "Hvilke opgaver du har meldt dig til, hvor mange point du har optjent, og hvornår du oprettede din profil.",
+        "Hvilke opgaver du har meldt dig til, om de er bekræftet som gennemført, hvor mange point du har optjent, og hvornår du oprettede din profil.",
+        "Registreres en tjans som ikke gennemført, kan en administrator notere en kort bemærkning om hvorfor. Den kan du selv se i beskeden, du får.",
         "Din adgangskode gemmes aldrig i klar tekst — den håndteres krypteret af vores databaseleverandør.",
       ]},
       { h: "Hvorfor vi gemmer det", p: [
@@ -797,7 +800,24 @@ const badgeDefs = (halfGoal) => [
   { id: "fullgoal", emoji: "🏆", label: "Sæsonmål",      desc: `${halfGoal * 2} point – hele sæsonen`,        req: (e) => e >= halfGoal * 2 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
+// Sådan ser en tilmelding ud i medlemmets egne skærme.
+const CLAIM_STATE = {
+  signed_up: { label: "Afventer bekræftelse", cls: "bg-amber-50 text-amber-800 border-amber-200",       icon: Clock },
+  completed: { label: "Godkendt",             cls: "bg-emerald-50 text-emerald-800 border-emerald-200", icon: CheckCircle2 },
+  no_show:   { label: "Ikke gennemført",      cls: "bg-stone-100 text-stone-600 border-stone-200",      icon: AlertTriangle },
+};
+
+const ClaimStatusPill = ({ status }) => {
+  const s = CLAIM_STATE[status] || CLAIM_STATE.signed_up;
+  const Icon = s.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-semibold ${s.cls}`}>
+      <Icon className="w-2.5 h-2.5" />{s.label}
+    </span>
+  );
+};
+
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
@@ -822,6 +842,9 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
   const badges       = useMemo(() => badgeDefs(halfGoal), [halfGoal]);
   const earnedBadges = badges.filter((b) => b.req(earned, tasks));
 
+  const statusOf  = (t) => claimStatus?.get(t.id) || "signed_up";
+  const openTasks = claimedTasks.filter((t) => statusOf(t) === "signed_up");
+
   return (
     <div className="pb-24">
       <div className="px-5 pt-12 pb-6 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
@@ -838,6 +861,11 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
                   <span className="text-lg text-white/70">/ {fullGoal}</span>
                 </div>
                 <div className="text-[10px] text-white/60 mt-0.5">Halvt sæsonmål: {halfGoal} pt</div>
+                {pendingPoints > 0 && (
+                  <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
+                    <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
+                  </div>
+                )}
               </div>
               <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${fullDone ? "bg-emerald-400/80" : ""}`} style={!fullDone ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{pct}%</div>
             </div>
@@ -858,12 +886,15 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
                   ? <span>✓ 1. halvsmål nået · <strong className="text-white">{fullGoal - earned} pt</strong> til hele sæsonen</span>
                   : <span><strong className="text-white">{halfGoal - earned} pt</strong> til 1. halvsmål – fritaget bidrag</span>}
             </div>
+            <div className="text-[10px] text-white/50 mt-2 leading-relaxed">
+              Point tæller med, når en administrator har bekræftet, at tjansen er gennemført.
+            </div>
           </div>
         </div>
       </div>
 
       <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
-        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{claimedTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
+        <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{openTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm">
           <div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{earnedBadges.length}</div>
           <div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div>
@@ -893,7 +924,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
       )}
 
       <div className="px-5 mt-6">
-        <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine kommende tjanser</h2></div>
+        <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine tjanser</h2></div>
         {claimedTasks.length === 0 ? (
           <div className="bg-white rounded-xl p-5 border border-dashed border-stone-200 text-center">
             <ListChecks className="w-8 h-8 mx-auto mb-2 text-stone-300" />
@@ -908,9 +939,10 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal }) => {
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-[13px] text-stone-900 truncate">{t.title}</div>
                   <div className="text-[11px] text-stone-500 flex items-center gap-1.5 mt-0.5"><span>{t.date}</span>{t.time && <><span>·</span><span>{t.time}</span></>}</div>
+                  <div className="mt-1"><ClaimStatusPill status={statusOf(t)} /></div>
                 </div>
                 <div className="shrink-0 flex items-center gap-1.5">
-                  <div className="px-2 py-0.5 rounded-full text-white text-[11px] font-bold" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</div>
+                  <div className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${statusOf(t) === "completed" ? "text-white" : statusOf(t) === "no_show" ? "bg-stone-100 text-stone-400 line-through" : "text-white opacity-60"}`} style={statusOf(t) === "no_show" ? {} : { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{statusOf(t) === "completed" ? "+" : ""}{t.points}</div>
                   <ChevronRight className="w-4 h-4 text-stone-300" />
                 </div>
               </button>
@@ -932,9 +964,11 @@ const MemberTasksModal = ({ member, onClose }) => {
       setLoading(true);
       const { data } = await supabase
         .from("task_claims")
-        .select("task_id, tasks(id, title, date, date_full, time, location, points, icon, category)")
+        .select("task_id, status, tasks(id, title, date, date_full, time, location, points, icon, category)")
         .eq("user_id", member.id);
-      setClaims((data || []).map((c) => c.tasks).filter(Boolean));
+      setClaims((data || [])
+        .filter((c) => c.tasks)
+        .map((c) => ({ ...c.tasks, status: c.status || "signed_up" })));
       setLoading(false);
     })();
   }, [member.id]);
@@ -952,7 +986,9 @@ const MemberTasksModal = ({ member, onClose }) => {
     return d ? d < today : false;
   }).sort((a, b) => new Date(b.date_full || 0) - new Date(a.date_full || 0));
 
-  const totalPoints = claims.reduce((s, t) => s + (t.points || 0), 0);
+  // Kun bekræftede tjanser giver point.
+  const totalPoints   = claims.filter((t) => t.status === "completed").reduce((s, t) => s + (t.points || 0), 0);
+  const pendingPoints = claims.filter((t) => t.status === "signed_up").reduce((s, t) => s + (t.points || 0), 0);
 
   const TaskRow = ({ t }) => (
     <div className="flex items-center gap-3 py-2.5 border-b border-stone-100 last:border-b-0">
@@ -962,9 +998,10 @@ const MemberTasksModal = ({ member, onClose }) => {
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-semibold text-stone-900 truncate">{t.title}</div>
         <div className="text-[11px] text-stone-400">{t.date_full || t.date}{t.time ? ` · ${t.time}` : ""}</div>
+        <div className="mt-1"><ClaimStatusPill status={t.status} /></div>
       </div>
-      <div className="shrink-0 text-[11px] font-bold text-white px-2 py-0.5 rounded-full" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-        +{t.points}
+      <div className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full ${t.status === "completed" ? "text-white" : t.status === "no_show" ? "bg-stone-100 text-stone-400 line-through" : "text-white opacity-60"}`} style={t.status === "no_show" ? {} : { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+        {t.status === "completed" ? "+" : ""}{t.points}
       </div>
     </div>
   );
@@ -980,7 +1017,10 @@ const MemberTasksModal = ({ member, onClose }) => {
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-bold text-[15px] text-stone-900">{member.name}</div>
-              <div className="text-[11px] text-stone-400">{member.role} · {totalPoints} point · {claims.length} opgaver i alt</div>
+              <div className="text-[11px] text-stone-400">
+                {totalPoints} point optjent · {claims.length} tilmeldinger
+                {pendingPoints > 0 && <> · {pendingPoints} pt afventer</>}
+              </div>
             </div>
             <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg"><X className="w-4 h-4 text-stone-500" /></button>
           </div>
@@ -1498,13 +1538,24 @@ const MenuButton = ({ icon, label, danger, onClick }) => (
 );
 
 // ---- ADMIN SHELL ----
-const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
+const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged }) => {
   const [section, setSection] = useState("overview");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [openSignups, setOpenSignups] = useState(null);
   const currentUserRole = currentUser?.role;
   const isSuperAdmin = currentUserRole === "super_admin";
 
+  // Tæller på fanen, så ingen glemmer at gøre tjanserne op.
+  const refreshPending = async () => {
+    const { data } = await supabase.rpc("admin_pending_confirmations");
+    setPendingCount((data || []).reduce((n, r) => n + r.pending, 0));
+  };
+
+  useEffect(() => { refreshPending(); }, [section]);
+
   const sections = [
     { id: "overview",  label: "Oversigt",      icon: Activity,    superOnly: false },
+    { id: "confirm",   label: "Bekræft",       icon: CheckCircle2, superOnly: false, badge: pendingCount },
     { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: 0 },
     { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
     { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
@@ -1553,8 +1604,9 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks }) => {
 
       <div className="px-5 mt-5">
         {section === "overview"  && <AdminOverview tasks={tasks} />}
+        {section === "confirm"   && <AdminConfirmations currentUser={currentUser} onOpenTask={(id) => { setOpenSignups(id); setSection("tasks"); }} />}
         {section === "approvals" && <AdminApprovals />}
-        {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} />}
+        {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} openSignups={openSignups} onSignupsOpened={() => setOpenSignups(null)} onConfirmed={() => { refreshPending(); onPointsChanged?.(); }} />}
         {section === "members"   && <AdminMembers currentUserRole={currentUserRole} currentUser={currentUser} />}
         {section === "teams"     && isSuperAdmin && <AdminTeams />}
         {section === "roles"     && isSuperAdmin && <AdminRoles currentUser={currentUser} />}
@@ -1782,7 +1834,7 @@ const AdminApprovals = () => {
 };
 
 // ---- OPGAVETILMELDTE ----
-const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
+const AdminTaskSignups = ({ task, onClose, setTasks, currentUser, onConfirmed }) => {
   const [signups,      setSignups]      = useState([]);
   const [allMembers,   setAllMembers]   = useState([]);
   const [loading,      setLoading]      = useState(true);
@@ -1796,7 +1848,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
     (async () => {
       setLoading(true);
       const [{ data: claims }, { data: members }] = await Promise.all([
-        supabase.from("task_claims").select("user_id, profiles(id, name, role)").eq("task_id", task.id),
+        supabase.rpc("admin_task_signups", { p_task: task.id }),
         supabase.from("profiles").select("id, name, role").order("name"),
       ]);
       setSignups(claims || []);
@@ -1806,6 +1858,35 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
   }, [task.id]);
 
   const signedUpIds = new Set(signups.map((s) => s.user_id));
+
+  // Bekræftelse af gennemførte tjanser. Point tilføjes først her.
+  const setStatus = async (userId, status) => {
+    setSaving(true); setError(null);
+    const { error: err } = await supabase.rpc("admin_set_claim_status", {
+      p_task: task.id, p_user: userId, p_status: status,
+    });
+    setSaving(false);
+    if (err) { setError("Kunne ikke gemme: " + err.message); return; }
+    setSignups((prev) => prev.map((s) => s.user_id === userId ? { ...s, status } : s));
+    const who = signups.find((s) => s.user_id === userId)?.name || "medlem";
+    logAction("task", status === "completed"
+      ? `Bekræftede ${who} som gennemført på "${task.title}"`
+      : status === "no_show"
+        ? `Registrerede ${who} som udeblevet fra "${task.title}"`
+        : `Genåbnede bekræftelsen for ${who} på "${task.title}"`, currentUser);
+  };
+
+  const confirmAll = async () => {
+    setSaving(true); setError(null);
+    const { error: err } = await supabase.rpc("admin_confirm_task", { p_task: task.id, p_status: "completed" });
+    setSaving(false);
+    if (err) { setError("Kunne ikke bekræfte: " + err.message); return; }
+    setSignups((prev) => prev.map((s) => s.status === "signed_up" ? { ...s, status: "completed" } : s));
+    onConfirmed?.();
+    logAction("task", `Bekræftede alle tilmeldte på "${task.title}"`, currentUser);
+  };
+
+  const awaiting = signups.filter((s) => s.status === "signed_up").length;
 
   // Point og ledige pladser reguleres af databasen, ikke her. Tidligere lagde
   // admin-panelet selv point til OVENI databasens egen optælling, så en
@@ -1826,6 +1907,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
     await syncSpots();
     setSignups((prev) => prev.filter((s) => s.user_id !== profile.id));
     setConfirmRemove(null); setSaving(false);
+    onConfirmed?.();
     logAction("task", `Fjernede ${profile.name} fra "${task.title}"`, currentUser);
   };
 
@@ -1842,7 +1924,7 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
     }
 
     await syncSpots();
-    setSignups((prev) => [...prev, { user_id: member.id, profiles: member }]);
+    setSignups((prev) => [...prev, { user_id: member.id, name: member.name, role: member.role, status: "signed_up" }]);
     setAssignSearch(""); setSaving(false);
     logAction("task", `Tildelte "${task.title}" til ${member.name}`, currentUser);
   };
@@ -1868,8 +1950,17 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
 
       {/* Tilmeldte */}
       <div>
-        <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">
-          Tilmeldte ({signups.length})
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">
+            Tilmeldte ({signups.length})
+          </div>
+          {awaiting > 0 && (
+            <button disabled={saving} onClick={confirmAll}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-white disabled:opacity-50 active:scale-95"
+              style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+              <CheckCircle2 className="w-3.5 h-3.5" />{awaiting === 1 ? "Markér gennemført" : `Alle ${awaiting} gennemførte`}
+            </button>
+          )}
         </div>
         {loading ? (
           <div className="text-center py-6 text-stone-400 text-sm">Indlæser...</div>
@@ -1878,23 +1969,44 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
         ) : (
           <div className="space-y-2">
             {signups.map((s) => {
-              const p = s.profiles;
-              if (!p) return null;
+              const st = s.status || "signed_up";
               return (
-                <div key={s.user_id} className="bg-white border border-stone-100 rounded-xl p-3 flex items-center gap-3 shadow-sm">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
-                    {(p.name || "?")[0].toUpperCase()}
+                <div key={s.user_id} className="bg-white border border-stone-100 rounded-xl p-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                      {(s.name || "?")[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-[13px] text-stone-900 truncate">{s.name}</div>
+                      <div className="text-[11px] text-stone-400 truncate">{s.team || s.role}</div>
+                    </div>
+                    <ClaimStatusPill status={st} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-[13px] text-stone-900">{p.name}</div>
-                    <div className="text-[11px] text-stone-400">{p.role}</div>
+
+                  <div className="flex gap-1.5 mt-2.5">
+                    {st === "signed_up" ? (
+                      <>
+                        <button disabled={saving} onClick={() => setStatus(s.user_id, "completed")}
+                          className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[12px] font-bold text-white disabled:opacity-50 active:scale-95"
+                          style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                          <Check className="w-3.5 h-3.5" />Gennemført (+{task.points})
+                        </button>
+                        <button disabled={saving} onClick={() => setStatus(s.user_id, "no_show")}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 active:scale-95">
+                          <UserX className="w-3.5 h-3.5" />Udeblev
+                        </button>
+                      </>
+                    ) : (
+                      <button disabled={saving} onClick={() => setStatus(s.user_id, "signed_up")}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[12px] font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 disabled:opacity-50 active:scale-95">
+                        <ArrowLeft className="w-3.5 h-3.5" />Fortryd
+                      </button>
+                    )}
+                    <button disabled={saving} onClick={() => setConfirmRemove(s)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 disabled:opacity-50 active:scale-95">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setConfirmRemove(p)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-red-600 bg-red-50 hover:bg-red-100 active:scale-95"
-                  >
-                    <UserX className="w-3.5 h-3.5" />Fjern
-                  </button>
                 </div>
               );
             })}
@@ -1954,7 +2066,10 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
           <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="text-[15px] font-bold text-stone-900 mb-1">Fjern tilmelding?</div>
             <p className="text-[13px] text-stone-500 mb-4">
-              <strong>{confirmRemove.name}</strong> fjernes fra opgaven og mister <strong>{task.points} point</strong>.
+              <strong>{confirmRemove.name}</strong> fjernes fra opgaven, og pladsen bliver fri igen.
+              {confirmRemove.status === "completed"
+                ? <> Tjansen er bekræftet, så de <strong>{task.points} point</strong> trækkes tilbage.</>
+                : <> Tjansen er ikke bekræftet, så der er ingen point at trække tilbage.</>}
             </p>
             <div className="flex gap-2">
               <button onClick={() => setConfirmRemove(null)} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[13px] font-semibold text-stone-600">Annuller</button>
@@ -1974,11 +2089,169 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser }) => {
 };
 
 // ---- OPGAVESTYRING ----
-const AdminTasks = ({ tasks, setTasks, currentUser }) => {
+// ---- BEKRÆFT GENNEMFØRTE TJANSER ----
+// Point gives først her. Listen viser de opgaver, hvor nogen stadig afventer
+// at blive gjort op — overståede først, for det er dem der haster.
+const AdminConfirmations = ({ currentUser, onOpenTask }) => {
+  const [rows, setRows]       = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy]       = useState(null);
+  const [error, setError]     = useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    const { data, error: err } = await supabase.rpc("admin_pending_confirmations");
+    setLoading(false);
+    if (err) { setError("Kunne ikke hente listen: " + err.message); return; }
+    setError(null);
+    setRows(data || []);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const confirmAll = async (row) => {
+    setBusy(row.task_id); setError(null);
+    const { error: err } = await supabase.rpc("admin_confirm_task", { p_task: row.task_id, p_status: "completed" });
+    setBusy(null);
+    if (err) { setError("Kunne ikke bekræfte: " + err.message); return; }
+    setRows((prev) => prev.filter((r) => r.task_id !== row.task_id));
+    logAction("task", `Bekræftede alle ${row.pending} tilmeldte på "${row.title}"`, currentUser);
+  };
+
+  // Overståede opgaver øverst, ellers kronologisk. Samme datoforståelse som
+  // opgavefeedet, så en dato skrevet "4. okt" også sorteres rigtigt.
+  const sorted = useMemo(() => {
+    const today = new Date();
+    const cutoff = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    return [...rows]
+      .map((r) => {
+        const d = parseTaskDate({ date: r.task_date, dateFull: r.date_full });
+        return { ...r, when: d, isPast: d ? d < cutoff : false };
+      })
+      .sort((a, b) => {
+        if (a.isPast !== b.isPast) return a.isPast ? -1 : 1;
+        if (!a.when && !b.when) return 0;
+        if (!a.when) return 1;
+        if (!b.when) return -1;
+        return a.isPast ? b.when - a.when : a.when - b.when;
+      });
+  }, [rows]);
+
+  const overdue = sorted.filter((r) => r.isPast);
+  const upcoming = sorted.filter((r) => !r.isPast);
+  const totalPending = rows.reduce((n, r) => n + r.pending, 0);
+
+  const Row = ({ r }) => (
+    <div className="bg-white border border-stone-100 rounded-xl p-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: r.isPast ? `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+          <CategoryIcon type={r.icon} className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-[13px] text-stone-900 truncate">{r.title}</div>
+          <div className="text-[11px] text-stone-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span>{r.task_date}</span>
+            {r.task_time && <><span>·</span><span>{r.task_time}</span></>}
+            {r.location && <><span>·</span><span className="truncate">{r.location}</span></>}
+          </div>
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-amber-800 text-[10px] font-semibold">
+              <Clock className="w-2.5 h-2.5" />{r.pending} afventer
+            </span>
+            {r.completed > 0 && <span className="text-[10px] text-emerald-700 font-semibold">{r.completed} godkendt</span>}
+            {r.no_show > 0 && <span className="text-[10px] text-stone-400 font-semibold">{r.no_show} udeblev</span>}
+            <span className="text-[10px] text-stone-400">· {r.points} pt pr. person</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-1.5 mt-2.5">
+        <button disabled={busy === r.task_id} onClick={() => confirmAll(r)}
+          className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg text-[12px] font-bold text-white disabled:opacity-50 active:scale-95"
+          style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          {busy === r.task_id ? "Gemmer..." : r.pending === 1 ? "Markér gennemført" : `Alle ${r.pending} gennemførte`}
+        </button>
+        <button onClick={() => onOpenTask(r.task_id)}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold text-stone-600 bg-stone-100 hover:bg-stone-200 active:scale-95">
+          Enkeltvis<ChevronRight className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+        <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-violet-900 leading-relaxed">
+          Medlemmer får først deres point, når du bekræfter, at tjansen er gennemført.
+          Mødte alle op, kan du godkende hele opgaven med ét tryk.
+        </p>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-[12px] text-red-900 flex-1">{error}</p>
+          <button onClick={() => setError(null)} className="text-red-400"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-8 text-stone-400 text-sm">Indlæser...</div>
+      ) : rows.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center">
+          <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-300" />
+          <p className="text-[13px] text-stone-600 font-semibold">Alt er gjort op</p>
+          <p className="text-[12px] text-stone-400 mt-1">Der er ingen tjanser, der venter på bekræftelse.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="text-[12px] text-stone-500">
+              <strong className="text-stone-800">{totalPending}</strong> tilmeldinger på <strong className="text-stone-800">{rows.length}</strong> opgaver afventer
+            </div>
+            <button onClick={load} className="text-[11px] text-stone-400 underline hover:text-stone-600">Opdatér</button>
+          </div>
+
+          {overdue.length > 0 && (
+            <div>
+              <div className="text-[11px] uppercase tracking-widest font-bold text-pink-700 mb-2">
+                Overstået ({overdue.length})
+              </div>
+              <div className="space-y-2">{overdue.map((r) => <Row key={r.task_id} r={r} />)}</div>
+            </div>
+          )}
+
+          {upcoming.length > 0 && (
+            <div>
+              <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">
+                Endnu ikke afholdt ({upcoming.length})
+              </div>
+              <div className="space-y-2">{upcoming.map((r) => <Row key={r.task_id} r={r} />)}</div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened, onConfirmed }) => {
   const [showNew, setShowNew]       = useState(false);
   const [editTask, setEditTask]     = useState(null);
   const [menuOpen, setMenuOpen]     = useState(null);
   const [signupsTask, setSignupsTask] = useState(null);
+
+  // Kommer man hertil fra bekræftelseslisten, åbnes den valgte opgave direkte.
+  useEffect(() => {
+    if (!openSignups) return;
+    const t = tasks.find((x) => x.id === openSignups);
+    if (t) setSignupsTask(t);
+    onSignupsOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignups, tasks]);
   const [saveError, setSaveError]     = useState(null);
 
   const deleteTask = async (id) => {
@@ -2060,7 +2333,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser }) => {
   };
 
   if (signupsTask) {
-    return <AdminTaskSignups task={signupsTask} onClose={() => setSignupsTask(null)} setTasks={setTasks} currentUser={currentUser} />;
+    return <AdminTaskSignups task={signupsTask} onClose={() => setSignupsTask(null)} setTasks={setTasks} currentUser={currentUser} onConfirmed={onConfirmed} />;
   }
 
   return (
@@ -3357,6 +3630,9 @@ const NOTIF_STYLE = {
   task_assigned:   { icon: <UserPlus className="w-4 h-4" />,       bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` },
   task_unassigned: { icon: <UserX className="w-4 h-4" />,          bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` },
   task_changed:    { icon: <Pencil className="w-4 h-4" />,         bg: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` },
+  task_completed:  { icon: <CheckCircle2 className="w-4 h-4" />,   bg: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` },
+  task_no_show:    { icon: <UserX className="w-4 h-4" />,          bg: `linear-gradient(135deg, #78716c, #57534e)` },
+  task_reopened:   { icon: <Clock className="w-4 h-4" />,          bg: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` },
   task_cancelled:  { icon: <AlertTriangle className="w-4 h-4" />,  bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purpleDark})` },
   swap_accepted:   { icon: <ArrowLeftRight className="w-4 h-4" />, bg: `linear-gradient(135deg, ${theme.greenMid}, ${theme.purple})` },
   swap_declined:   { icon: <ArrowLeftRight className="w-4 h-4" />, bg: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` },
@@ -3396,7 +3672,9 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab] = useState("tasks");
-  const [claimedIds, setClaimedIds] = useState(new Set());
+  // Tilmeldingerne gemmes nu med deres tilstand, fordi point først tæller
+  // når en admin har bekræftet, at tjansen er gennemført.
+  const [myClaims, setMyClaims] = useState([]);
   const [toast, setToast] = useState(null);
   const [welcomeToast, setWelcomeToast] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -3409,9 +3687,29 @@ export default function App() {
   const [legalDoc, setLegalDoc] = useState(null);
   const [pointGoal, setPointGoal] = useState(100);
 
+  const claimedIds = useMemo(
+    () => new Set(myClaims.map((c) => c.task_id)),
+    [myClaims]
+  );
+
+  const claimStatus = useMemo(() => {
+    const m = new Map();
+    myClaims.forEach((c) => m.set(c.task_id, c.status || "signed_up"));
+    return m;
+  }, [myClaims]);
+
   const claimedTasks = useMemo(
     () => tasks.filter((t) => claimedIds.has(t.id)),
     [claimedIds, tasks]
+  );
+
+  // Point der venter på en admins bekræftelse. Vises adskilt fra de optjente,
+  // så ingen tror de allerede tæller med mod sæsonmålet.
+  const pendingPoints = useMemo(
+    () => myClaims
+      .filter((c) => (c.status || "signed_up") === "signed_up")
+      .reduce((sum, c) => sum + (c.points_awarded || 0), 0),
+    [myClaims]
   );
 
   // Detect password recovery flow (when user clicks email link)
@@ -3548,8 +3846,8 @@ export default function App() {
   useEffect(() => {
     const uid = currentUser?.id;
     if (!uid) return;
-    supabase.from("task_claims").select("task_id").eq("user_id", uid).then(({ data }) => {
-      if (data) setClaimedIds(new Set(data.map((c) => c.task_id)));
+    supabase.from("task_claims").select("task_id, status, points_awarded").eq("user_id", uid).then(({ data }) => {
+      if (data) setMyClaims(data);
     });
     loadNotifications(uid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3577,11 +3875,11 @@ export default function App() {
     if (!currentUser?.id) return;
     const [{ data: me }, { data: claims }, { data: taskRows }] = await Promise.all([
       supabase.rpc("my_profile").single(),
-      supabase.from("task_claims").select("task_id").eq("user_id", currentUser.id),
+      supabase.from("task_claims").select("task_id, status, points_awarded").eq("user_id", currentUser.id),
       supabase.from("tasks").select("id, spots_left"),
     ]);
     if (me) setCurrentUser((prev) => prev && ({ ...prev, pointsEarned: me.points ?? 0, tasksCompleted: me.tasks_done ?? 0 }));
-    if (claims) setClaimedIds(new Set(claims.map((c) => c.task_id)));
+    if (claims) setMyClaims(claims);
     if (taskRows) {
       const bySpots = new Map(taskRows.map((r) => [r.id, r.spots_left]));
       setTasks((prev) => prev.map((t) => bySpots.has(t.id) ? { ...t, spotsLeft: bySpots.get(t.id) } : t));
@@ -3606,7 +3904,7 @@ export default function App() {
     await supabase.auth.signOut();
     setIsAuthenticated(false);
     setTab("tasks");
-    setClaimedIds(new Set());
+    setMyClaims([]);
     setShowCalendar(false);
     setShowSwaps(false);
     setShowAdmin(false);
@@ -3660,8 +3958,8 @@ export default function App() {
       return;
     }
 
-    setClaimedIds((prev) => new Set(prev).add(taskId));
-    showToast(`🎉 Tjansen er din! +${task?.points ?? 0} point`);
+    setMyClaims((prev) => [...prev, { task_id: taskId, status: "signed_up", points_awarded: task?.points ?? 0 }]);
+    showToast(`🎉 Tjansen er din! ${task?.points ?? 0} point når den er gennemført`, 3200);
     setTimeout(() => setTab("dashboard"), 900);
     await refreshAfterClaimChange(taskId);
   };
@@ -3673,15 +3971,14 @@ export default function App() {
       .delete().eq("task_id", taskId).eq("user_id", currentUser.id);
 
     if (error) {
-      showToast(`Kunne ikke framelde: ${error.message}`, 3500);
+      const settled = /gjort op/i.test(error.message || "");
+      showToast(settled
+        ? "Tjansen er allerede gjort op og kan ikke frameldes"
+        : `Kunne ikke framelde: ${error.message}`, 3500);
       return;
     }
 
-    setClaimedIds((prev) => {
-      const next = new Set(prev);
-      next.delete(taskId);
-      return next;
-    });
+    setMyClaims((prev) => prev.filter((c) => c.task_id !== taskId));
     showToast("Tjans frameldt");
     await refreshAfterClaimChange(taskId);
   };
@@ -3780,7 +4077,7 @@ export default function App() {
         {welcomeToast && <div className="fixed top-5 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-lg z-50 animate-slideup" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>{welcomeToast}</div>}
 
         {showAdmin ? (
-          <AdminDashboard currentUser={currentUser} onBack={() => setShowAdmin(false)} tasks={tasks} setTasks={setTasks} />
+          <AdminDashboard currentUser={currentUser} onBack={() => setShowAdmin(false)} tasks={tasks} setTasks={setTasks} onPointsChanged={reloadMine} />
         ) : showCalendar ? (
           <CalendarScreen tasks={tasks} claimedTasks={claimedTasks} onTaskClick={(task) => { setSelectedTask(task); setShowCalendar(false); }} onBack={() => setShowCalendar(false)} />
         ) : showSwaps ? (
@@ -3802,7 +4099,7 @@ export default function App() {
 
               <div className="px-5 -mt-5 relative z-10 mb-4">
                 <div className="rounded-2xl p-4 flex items-center justify-between text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
-                  <div><div className="text-[11px] uppercase tracking-widest font-bold text-white/80">Du optjener</div><div className="text-2xl font-black flex items-center gap-1"><Zap className="w-6 h-6" fill="white" />{selectedTask.points} point</div></div>
+                  <div><div className="text-[11px] uppercase tracking-widest font-bold text-white/80">Når den er gennemført</div><div className="text-2xl font-black flex items-center gap-1"><Zap className="w-6 h-6" fill="white" />{selectedTask.points} point</div></div>
                   <DifficultyPill level={selectedTask.difficulty} />
                 </div>
               </div>
@@ -3815,21 +4112,28 @@ export default function App() {
 
             {/* Sticky button — never overlaps content */}
             <div className="shrink-0 p-4 bg-white border-t border-stone-100 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-              {claimedIds.has(selectedTask.id) ? (
-                <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
+              {claimStatus.get(selectedTask.id) === "completed" ? (
+                <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" />Gennemført og godkendt · +{selectedTask.points} point</div>
+              ) : claimStatus.get(selectedTask.id) === "no_show" ? (
+                <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-600 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4 text-stone-500" />Registreret som ikke gennemført</div>
+              ) : claimedIds.has(selectedTask.id) ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-stone-500 text-center">Pointene tilføjes, når en administrator har bekræftet tjansen.</div>
+                  <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
+                </div>
               ) : !currentUser?.approved ? (
                 <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-amber-900 bg-amber-50 border border-amber-200 flex items-center justify-center gap-2"><Clock className="w-4 h-4" />Din profil skal godkendes først</div>
               ) : (selectedTask.spotsLeft ?? 0) <= 0 ? (
                 <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-500 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><Users className="w-4 h-4" />Opgaven er fuldt besat</div>
               ) : (
-                <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( +{selectedTask.points} point )</button>
+                <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( {selectedTask.points} point )</button>
               )}
             </div>
           </div>
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
