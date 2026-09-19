@@ -48,9 +48,18 @@ npm run preview
 
 **1. Kør migrationerne**
 
-Supabase Dashboard → SQL Editor. Kør filerne i `supabase/migrations/` i
-navnerækkefølge, én ad gangen. De kan alle køres flere gange uden at gøre
-skade, og de er tilsammen nok — rør ikke noget i `supabase/legacy/`.
+Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
+**`supabase/RUN_ALL.sql`** → Run. Det er de otte migrationer sat efter
+hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
+transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
+
+Vil du hellere læse dem enkeltvis, så kør filerne i `supabase/migrations/`
+i navnerækkefølge. Resultatet er det samme. De kan alle køres flere gange
+uden at gøre skade, og de er tilsammen nok — rør ikke noget i
+`supabase/legacy/`.
+
+> `RUN_ALL.sql` er genereret fra `supabase/migrations/`. Tilføjer du en
+> migration, skal den genskabes.
 
 | Fil | Hvad den gør |
 |---|---|
@@ -156,7 +165,8 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 
 ```
 src/App.jsx                    # hele appen
-supabase/migrations/           # databaseændringer – kør i rækkefølge
+supabase/RUN_ALL.sql           # alle migrationer samlet – ét indsæt
+supabase/migrations/           # databaseændringer – kilden til RUN_ALL.sql
 supabase/functions/            # serverfunktioner (sletning af medlemmer)
 supabase/tests/                # kan køre migrationerne igennem lokalt
 supabase/seed.sql              # hold og super admins – ret før brug
