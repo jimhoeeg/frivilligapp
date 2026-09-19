@@ -1,0 +1,27 @@
+-- ============================================================================
+-- RVK Frivillig – alle migrationer samlet i én fil
+--
+-- Genereret fra supabase/migrations/. Indholdet er præcis det samme, blot
+-- sat efter hinanden i kørselsrækkefølge, så det kan indsættes på én gang.
+--
+-- SÅDAN:
+--   Supabase Dashboard → SQL Editor → New query → indsæt HELE filen → Run.
+--
+-- Filen kan køres flere gange uden at gøre skade. Fejler noget undervejs,
+-- ruller Supabase det hele tilbage, og fejlbeskeden peger på det afsnit,
+-- der gik galt — afsnittene er markeret tydeligt nedenfor.
+--
+-- To ting den gør, som du skal vide FØR du trykker Run:
+--
+--   1. Den genberegner alle point fra bunden. Bonuspoint, der er givet i
+--      hånden, går tabt i den proces.
+--   2. Point gives fremover først, når en tjans er bekræftet som gennemført.
+--      Alle eksisterende tilmeldinger står derfor som "afventer bekræftelse",
+--      indtil en admin gør dem op under Admin → Bekræft. Vil du i stedet
+--      godkende hele historikken på én gang, står linjen til det i bunden
+--      af afsnit 3.
+--
+-- Bagefter: kør supabase/seed.sql (ret holdene først), og rul
+-- sletningsfunktionen ud med: supabase functions deploy delete-member
+-- ============================================================================
+

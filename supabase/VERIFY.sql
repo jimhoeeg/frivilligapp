@@ -11,7 +11,7 @@
 select * from (
 
 -- ---------------------------------------------------------------- SKEMA ----
-select 1 as nr, 'Alle 10 tabeller findes' as tjek,
+select 1::numeric as nr, 'Alle 10 tabeller findes' as tjek,
   case when (select count(*) from pg_tables
               where schemaname='public'
                 and tablename in ('profiles','teams','tasks','task_steps','task_claims',
@@ -211,6 +211,26 @@ select 18, 'Super admins',
        else 'FEJL' end,
   (select count(*)::text || ' super admin(s) – der bør være mindst 2'
      from public.profiles where role='super_admin')
+
+union all
+select 18.5, 'Ingen funktioner staar aabne for anonyme',
+  case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and has_function_privilege('anon', p.oid, 'execute')) = 0
+       then 'OK' else 'FEJL' end,
+  coalesce((select string_agg(p.proname, ', ') from pg_proc p
+             join pg_namespace n on n.oid=p.pronamespace
+             where n.nspname='public' and has_function_privilege('anon', p.oid, 'execute')),
+           'ingen – kun indloggede kan kalde noget')
+
+union all
+select 18.6, 'Kun appens egne funktioner er aabne for indloggede',
+  case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public'
+                and has_function_privilege('authenticated', p.oid, 'execute')) = 19
+       then 'OK' else 'FEJL' end,
+  (select count(*) filter (where has_function_privilege('authenticated', p.oid, 'execute'))::text
+          || ' af ' || count(*)::text || ' – forventet 19'
+     from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public')
 
 union all
 select 19, 'Medlemmer der afventer godkendelse',

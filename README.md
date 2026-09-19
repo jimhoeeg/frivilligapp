@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de otte migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de ni migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -59,7 +59,8 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 `supabase/legacy/`.
 
 > `RUN_ALL.sql` er genereret fra `supabase/migrations/`. Tilføjer du en
-> migration, skal den genskabes.
+> migration, så kør `./supabase/build_run_all.sh` — ellers kommer filen
+> bagud, uden at nogen opdager det.
 
 | Fil | Hvad den gør |
 |---|---|
@@ -71,6 +72,7 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919080000_policies_from_legacy.sql` | Adgangsregler, der før kun lå i de løse filer. |
 | `20260919090000_points_follow_task.sql` | Point følger med, når en opgaves værdi ændres. |
 | `20260919110000_client_errors.sql` | Fejl fra medlemmernes telefoner. |
+| `20260919140000_lock_function_execute.sql` | Kun indloggede må kalde databasens funktioner, og kun de 19 appen bruger. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -86,6 +88,7 @@ Den læser kun og ændrer ingenting. Resultatet er 20 linjer, der hver siger
 | 8–12 | GDPR-hullet lukket, e-mail og telefon skjult, og at ingen kan hæve sin egen rolle eller sine egne point |
 | 13–16 | At pointsummer, tilstande, ledige pladser og indstillinger stemmer |
 | 17–18 | At hold og mindst to super admins er oprettet (trin 3) |
+| 18.5–18.6 | At ingen funktion står åben for anonyme, og at kun appens 19 egne er åbne for indloggede |
 | 19–20 | INFO: hvor mange venter på godkendelse og bekræftelse |
 
 **Alt skal stå `OK`, på nær `INFO`-linjerne.** Linje 17 og 18 står som `FEJL`,
@@ -176,6 +179,7 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 ```
 src/App.jsx                    # hele appen
 supabase/RUN_ALL.sql           # alle migrationer samlet – ét indsæt
+supabase/build_run_all.sh      # genskaber RUN_ALL.sql fra migrations/
 supabase/VERIFY.sql            # eftersyn efter migrationerne – læser kun
 supabase/migrations/           # databaseændringer – kilden til RUN_ALL.sql
 supabase/functions/            # serverfunktioner (sletning af medlemmer)
