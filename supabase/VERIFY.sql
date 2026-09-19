@@ -11,17 +11,17 @@
 select * from (
 
 -- ---------------------------------------------------------------- SKEMA ----
-select 1::numeric as nr, 'Alle 10 tabeller findes' as tjek,
+select 1::numeric as nr, 'Alle 11 tabeller findes' as tjek,
   case when (select count(*) from pg_tables
               where schemaname='public'
                 and tablename in ('profiles','teams','tasks','task_steps','task_claims',
                                   'swap_offers','notifications','audit_log','settings',
-                                  'client_errors')) = 10
+                                  'client_errors','season_results')) = 11
        then 'OK' else 'FEJL' end as resultat,
   (select string_agg(tablename, ', ' order by tablename) from pg_tables
     where schemaname='public'
       and tablename in ('profiles','teams','tasks','task_steps','task_claims',
-                        'swap_offers','notifications','audit_log','settings','client_errors')
+                        'swap_offers','notifications','audit_log','settings','client_errors','season_results')
   ) as detalje
 
 union all
@@ -29,14 +29,14 @@ select 2, 'Row level security slået til overalt',
   case when (select count(*) from pg_tables t
               where t.schemaname='public'
                 and t.tablename in ('profiles','teams','tasks','task_steps','task_claims',
-                                    'swap_offers','notifications','audit_log','settings','client_errors')
+                                    'swap_offers','notifications','audit_log','settings','client_errors','season_results')
                 and not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
                                  where n.nspname='public' and c.relname=t.tablename and c.relrowsecurity)) = 0
        then 'OK' else 'FEJL' end,
   coalesce((select string_agg(t.tablename, ', ') from pg_tables t
              where t.schemaname='public'
                and t.tablename in ('profiles','teams','tasks','task_steps','task_claims',
-                                   'swap_offers','notifications','audit_log','settings','client_errors')
+                                   'swap_offers','notifications','audit_log','settings','client_errors','season_results')
                and not exists (select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace
                                 where n.nspname='public' and c.relname=t.tablename and c.relrowsecurity)),
            'alle har RLS')
@@ -94,7 +94,8 @@ select 7, 'Alle funktioner appen kalder findes',
         ('accept_swap'),('decline_swap'),('admin_set_claim_status'),('admin_confirm_task'),
         ('admin_pending_confirmations'),('admin_task_signups'),('auto_confirm_due_claims'),
         ('auto_confirm_preview'),('task_claim_counts'),('log_client_error'),
-        ('get_my_role'),('is_approved')
+        ('get_my_role'),('is_approved'),('admin_reset_season'),
+        ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows')
       ) as f(navn)
       where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                          where n.nspname='public' and p.proname=f.navn)) = 0
@@ -105,11 +106,12 @@ select 7, 'Alle funktioner appen kalder findes',
         ('accept_swap'),('decline_swap'),('admin_set_claim_status'),('admin_confirm_task'),
         ('admin_pending_confirmations'),('admin_task_signups'),('auto_confirm_due_claims'),
         ('auto_confirm_preview'),('task_claim_counts'),('log_client_error'),
-        ('get_my_role'),('is_approved')
+        ('get_my_role'),('is_approved'),('admin_reset_season'),
+        ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows')
       ) as f(navn)
       where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                          where n.nspname='public' and p.proname=f.navn)),
-      'alle 19 findes')
+      'alle 23 findes')
 
 -- ---------------------------------------------------------- RETTIGHEDER ----
 union all
@@ -226,10 +228,10 @@ union all
 select 18.6, 'Kun appens egne funktioner er aabne for indloggede',
   case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public'
-                and has_function_privilege('authenticated', p.oid, 'execute')) = 19
+                and has_function_privilege('authenticated', p.oid, 'execute')) = 23
        then 'OK' else 'FEJL' end,
   (select count(*) filter (where has_function_privilege('authenticated', p.oid, 'execute'))::text
-          || ' af ' || count(*)::text || ' – forventet 19'
+          || ' af ' || count(*)::text || ' – forventet 23'
      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public')
 
 union all

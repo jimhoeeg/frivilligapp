@@ -45,11 +45,28 @@ revoke execute on all functions in schema public from anon;
 -- prune_client_errors(). Rettighederne gives tilbage nedenfor, én for én.
 revoke execute on all functions in schema public from authenticated;
 
--- Også for funktioner, der oprettes senere – ellers er hullet tilbage,
--- næste gang nogen skriver en migration.
-alter default privileges in schema public revoke execute on functions from public;
+-- Fjern også Supabases egne standardrettigheder til anon og authenticated,
+-- så de ikke bliver givet igen til næste funktion.
 alter default privileges in schema public revoke execute on functions from anon;
 alter default privileges in schema public revoke execute on functions from authenticated;
+
+-- BEMÆRK: PUBLIC kan IKKE lukkes på denne måde.
+--
+--   alter default privileges ... revoke execute on functions from public;
+--
+-- ser ud til at virke, men gør ingenting. Den kan kun trække tilbage, hvad
+-- alter default privileges selv har uddelt – ikke Postgres' indbyggede
+-- rettighed, som enhver ny funktion får. Afprøvet: en funktion oprettet
+-- bagefter står stadig med "=X/postgres", altså åben for alle.
+--
+-- Derfor gælder følgende regel for alle fremtidige migrationer:
+--
+--   EN MIGRATION, DER OPRETTER EN FUNKTION, SKAL SELV LUKKE DEN:
+--
+--     revoke execute on function public.min_funktion(...) from public, anon;
+--     grant  execute on function public.min_funktion(...) to authenticated;
+--
+-- Glemmer man det, fanger linje 18.5 i supabase/VERIFY.sql det.
 
 
 -- ============================================================================

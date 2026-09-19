@@ -3521,6 +3521,217 @@ const AdminRoles = ({ currentUser }) => {
   );
 };
 
+// ---- NULSTIL SÆSON ----
+//
+// Knappen sletter hele klubbens pointregnskab. Den skal derfor være svær at
+// trykke på ved et uheld, og let at forstå før man gør det. Fire spærringer:
+//
+//   1. Tallene hentes fra databasen, når dialogen åbnes — ikke fra hvad
+//      browseren tilfældigvis havde liggende. Man ser det, der faktisk sker.
+//   2. Sæsonen skal have et navn, så arkivet kan findes igen bagefter.
+//   3. Man skal skrive NULSTIL i hånden. Ingen "er du sikker?"-knap, man kan
+//      nå at trykke på to gange.
+//   4. Databasen kræver det samme ord igen. Selv et forkert kald mod API'et
+//      uden om appen gør ingenting.
+const SeasonResetModal = ({ currentUser, defaultLabel, onClose, onDone }) => {
+  const [preview, setPreview] = useState(null);
+  const [label, setLabel]     = useState(defaultLabel || "");
+  const [typed, setTyped]     = useState("");
+  const [busy, setBusy]       = useState(false);
+  const [error, setError]     = useState(null);
+  const [result, setResult]   = useState(null);
+
+  useEffect(() => {
+    supabase.rpc("admin_season_reset_preview").then(({ data, error: e }) => {
+      if (e) { setError(e.message); return; }
+      setPreview(data?.[0] || null);
+    });
+  }, []);
+
+  const armed = typed === "NULSTIL" && label.trim().length > 0 && !busy;
+
+  const run = async () => {
+    if (!armed) return;
+    setBusy(true);
+    setError(null);
+    const { data, error: e } = await supabase.rpc("admin_reset_season", {
+      p_confirm: "NULSTIL",
+      p_label: label.trim(),
+    });
+    setBusy(false);
+    if (e) { setError(e.message); return; }
+    setResult(data?.[0] || null);
+    logAction("settings", `Nulstillede sæsonen "${label.trim()}"`, currentUser);
+  };
+
+  if (result) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            <div className="text-[15px] font-bold text-stone-900">Sæsonen er nulstillet</div>
+          </div>
+          <p className="text-[13px] text-stone-600 leading-relaxed mb-4">
+            <strong>{result.archived_members}</strong> medlemmers stilling er gemt i arkivet under
+            {" "}<strong>{label.trim()}</strong>. {result.deleted_claims} tilmeldinger er slettet,
+            {" "}{result.freed_tasks} opgaver har fået pladserne fri igen
+            {result.closed_swaps > 0 && <>, og {result.closed_swaps} åbne byttetilbud er lukket</>}.
+            Alle er nu på 0 point, og de har fået besked om hvorfor.
+          </p>
+          <button onClick={onDone} className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-[13px] font-bold">
+            Luk
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle className="w-5 h-5 text-pink-500 shrink-0" />
+          <div className="text-[15px] font-bold text-stone-900">Nulstil sæsonen</div>
+        </div>
+        <p className="text-[13px] text-stone-500 mb-4 leading-relaxed">
+          Alle medlemmer startes forfra på 0 point. Det kan ikke fortrydes.
+        </p>
+
+        {!preview && !error && (
+          <div className="text-[13px] text-stone-400 py-6 text-center">Henter tallene...</div>
+        )}
+
+        {preview && (
+          <>
+            <div className="bg-stone-50 rounded-xl p-3.5 space-y-2 mb-4">
+              <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Det her sker</div>
+              <Row label="Medlemmer der nulstilles" value={preview.members} />
+              <Row label="Point der slettes" value={`${preview.total_points} pt`} />
+              <Row label="Tilmeldinger der slettes" value={preview.claims_total} />
+              {preview.open_swaps > 0 && <Row label="Åbne byttetilbud der lukkes" value={preview.open_swaps} />}
+            </div>
+
+            {preview.claims_pending > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
+                <div className="text-[12px] font-bold text-amber-900 mb-0.5">
+                  {preview.claims_pending} {preview.claims_pending === 1 ? "tjans er" : "tjanser er"} ikke gjort op endnu
+                </div>
+                <p className="text-[12px] text-amber-800 leading-relaxed">
+                  De giver 0 point, som det står nu. Er de gennemført, så bekræft dem under
+                  {" "}<strong>Bekræft</strong> først — ellers mister de frivillige pointene.
+                </p>
+              </div>
+            )}
+
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4">
+              <div className="text-[12px] font-bold text-emerald-900 mb-0.5">Stillingen gemmes</div>
+              <p className="text-[12px] text-emerald-800 leading-relaxed">
+                Hvert medlems point, bonuspoint og antal tjanser arkiveres, før de nulstilles.
+                Så kan I stadig svare på, hvem der nåede målet, hvis nogen spørger til bidraget.
+              </p>
+            </div>
+
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">
+              Navn på sæsonen der afsluttes
+            </label>
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="fx 2025/2026"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-[14px] mb-4 focus:outline-none focus:border-stone-400"
+            />
+
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">
+              Skriv <span className="font-mono text-pink-600">NULSTIL</span> for at bekræfte
+            </label>
+            <input
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
+              placeholder="NULSTIL"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-[14px] font-mono tracking-widest mb-4 focus:outline-none focus:border-pink-400"
+            />
+          </>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+            <p className="text-[12px] text-red-800">{error}</p>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[13px] font-semibold text-stone-600">
+            Annuller
+          </button>
+          <button
+            onClick={run}
+            disabled={!armed}
+            className="flex-1 py-2.5 rounded-xl text-[13px] font-bold text-white bg-pink-600 hover:bg-pink-700 active:scale-[0.98] disabled:bg-stone-200 disabled:text-stone-400 disabled:active:scale-100"
+          >
+            {busy ? "Nulstiller..." : "Nulstil sæsonen"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Row = ({ label, value }) => (
+  <div className="flex items-center justify-between">
+    <span className="text-[13px] text-stone-600">{label}</span>
+    <span className="text-[13px] font-bold text-stone-900">{value}</span>
+  </div>
+);
+
+// ---- ET ARKIVERET SÆSONRESULTAT ----
+const SeasonArchiveModal = ({ label, onClose }) => {
+  const [rows, setRows] = useState(null);
+
+  useEffect(() => {
+    supabase.rpc("admin_season_rows", { p_label: label }).then(({ data }) => setRows(data || []));
+  }, [label]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[15px] font-bold text-stone-900 mb-0.5">Sæson {label}</div>
+        <p className="text-[12px] text-stone-500 mb-3">Stillingen som den så ud, da sæsonen blev gjort op.</p>
+
+        <div className="overflow-y-auto -mx-1 px-1">
+          {rows === null && <div className="text-[13px] text-stone-400 py-6 text-center">Henter...</div>}
+          {rows?.length === 0 && <div className="text-[13px] text-stone-400 py-6 text-center">Ingen rækker.</div>}
+          {rows?.map((r, i) => (
+            <div key={i} className="flex items-center justify-between py-2 border-b border-stone-100 last:border-0">
+              <div className="min-w-0">
+                <div className="text-[13px] font-semibold text-stone-800 truncate">{r.name}</div>
+                <div className="text-[11px] text-stone-500">
+                  {r.team || "uden hold"} · {r.tasks_done} {r.tasks_done === 1 ? "tjans" : "tjanser"}
+                  {r.bonus_points !== 0 && <> · {r.bonus_points > 0 ? "+" : ""}{r.bonus_points} bonus</>}
+                </div>
+              </div>
+              <div className="text-right shrink-0 pl-3">
+                <div className="text-[14px] font-bold text-stone-900">{r.points} pt</div>
+                {r.point_goal != null && (
+                  <div className={`text-[10px] font-semibold ${r.points >= r.point_goal ? "text-emerald-600" : "text-stone-400"}`}>
+                    {r.points >= r.point_goal ? "nåede målet" : `mål ${r.point_goal}`}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold shrink-0">
+          Luk
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ---- INDSTILLINGER (kun Super Admin) ----
 const AdminSettings = ({ currentUser }) => {
   const [pointGoal, setPointGoal]     = useState("100");
@@ -3530,6 +3741,23 @@ const AdminSettings = ({ currentUser }) => {
   const [autoDays, setAutoDays]       = useState("7");
   const [saved, setSaved]             = useState(false);
   const [saving, setSaving]           = useState(false);
+  const [showReset, setShowReset]     = useState(false);
+  const [seasons, setSeasons]         = useState([]);
+  const [openSeason, setOpenSeason]   = useState(null);
+
+  // Foreslået navn til arkivet, fx "2025/2026". Bygges af sæsonperioden, så
+  // admin ikke selv skal finde på noget under en handling der ikke kan fortrydes.
+  const seasonLabel = useMemo(() => {
+    const y1 = (seasonStart || "").slice(0, 4);
+    const y2 = (seasonEnd   || "").slice(0, 4);
+    if (y1 && y2) return y1 === y2 ? y1 : `${y1}/${y2}`;
+    return String(new Date().getFullYear());
+  }, [seasonStart, seasonEnd]);
+
+  const loadSeasons = () => {
+    supabase.rpc("admin_season_list").then(({ data }) => setSeasons(data || []));
+  };
+  useEffect(loadSeasons, []);
 
   useEffect(() => {
     supabase.from("settings").select("key,value").then(({ data }) => {
@@ -3593,9 +3821,49 @@ const AdminSettings = ({ currentUser }) => {
 
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-3">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Klubdata</div>
-        <button className="w-full flex items-center justify-between px-4 py-3 bg-stone-50 hover:bg-stone-100 rounded-xl text-left"><span className="text-[13px] font-semibold">Eksportér alle klubdata (CSV)</span><Download className="w-4 h-4 text-stone-500" /></button>
-        <button className="w-full flex items-center justify-between px-4 py-3 bg-pink-50 hover:bg-pink-100 rounded-xl text-left"><span className="text-[13px] font-semibold text-pink-700">Nulstil ny sæson (slet alle point)</span><AlertTriangle className="w-4 h-4 text-pink-500" /></button>
+
+        <button
+          onClick={() => setShowReset(true)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-pink-50 hover:bg-pink-100 rounded-xl text-left"
+        >
+          <span className="text-[13px] font-semibold text-pink-700">Nulstil ny sæson (slet alle point)</span>
+          <AlertTriangle className="w-4 h-4 text-pink-500" />
+        </button>
+
+        {/* Arkivet. Et arkiv ingen kan se, er ikke et arkiv. */}
+        {seasons.length > 0 && (
+          <div className="pt-2 border-t border-stone-100">
+            <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">Tidligere sæsoner</div>
+            <div className="space-y-1.5">
+              {seasons.map((s) => (
+                <button
+                  key={s.season_label}
+                  onClick={() => setOpenSeason(s.season_label)}
+                  className="w-full flex items-center justify-between px-3 py-2.5 bg-stone-50 hover:bg-stone-100 rounded-xl text-left"
+                >
+                  <div>
+                    <div className="text-[13px] font-semibold text-stone-800">{s.season_label}</div>
+                    <div className="text-[11px] text-stone-500">
+                      {s.members} medlemmer · {s.total_points} point i alt · {s.reached_goal} nåede målet
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-stone-400 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      {showReset && (
+        <SeasonResetModal
+          currentUser={currentUser}
+          defaultLabel={seasonLabel}
+          onClose={() => setShowReset(false)}
+          onDone={() => { setShowReset(false); loadSeasons(); }}
+        />
+      )}
+      {openSeason && <SeasonArchiveModal label={openSeason} onClose={() => setOpenSeason(null)} />}
     </div>
   );
 };

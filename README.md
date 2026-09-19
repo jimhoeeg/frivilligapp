@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de ni migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de ti migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -72,7 +72,8 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919080000_policies_from_legacy.sql` | Adgangsregler, der før kun lå i de løse filer. |
 | `20260919090000_points_follow_task.sql` | Point følger med, når en opgaves værdi ændres. |
 | `20260919110000_client_errors.sql` | Fejl fra medlemmernes telefoner. |
-| `20260919140000_lock_function_execute.sql` | Kun indloggede må kalde databasens funktioner, og kun de 19 appen bruger. |
+| `20260919140000_lock_function_execute.sql` | Kun indloggede må kalde databasens funktioner, og kun dem appen bruger. |
+| `20260919160000_season_reset.sql` | Nulstil sæsonen — med arkiv af stillingen og en lås, så det ikke sker ved et uheld. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -88,7 +89,7 @@ Den læser kun og ændrer ingenting. Resultatet er 20 linjer, der hver siger
 | 8–12 | GDPR-hullet lukket, e-mail og telefon skjult, og at ingen kan hæve sin egen rolle eller sine egne point |
 | 13–16 | At pointsummer, tilstande, ledige pladser og indstillinger stemmer |
 | 17–18 | At hold og mindst to super admins er oprettet (trin 3) |
-| 18.5–18.6 | At ingen funktion står åben for anonyme, og at kun appens 19 egne er åbne for indloggede |
+| 18.5–18.6 | At ingen funktion står åben for anonyme, og at kun appens 23 egne er åbne for indloggede |
 | 19–20 | INFO: hvor mange venter på godkendelse og bekræftelse |
 
 **Alt skal stå `OK`, på nær `INFO`-linjerne.** Linje 17 og 18 står som `FEJL`,
@@ -147,6 +148,7 @@ psql -d rvk -f supabase/tests/10_behaviour.sql          # 15 tjek
 psql -d rvk -f supabase/tests/20_completion.sql         # 14 tjek af bekræftelser
 psql -d rvk -f supabase/tests/30_auto_confirm.sql       # 11 tjek af automatikken
 psql -d rvk -f supabase/tests/40_points_follow_task.sql # 9 tjek af pointændringer
+psql -d rvk -f supabase/tests/50_season_reset.sql       # 14 tjek af sæsonnulstilling
 ```
 
 ### Efterladt SQL i den rigtige database
@@ -261,6 +263,40 @@ Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
 
 Kør den manuelt: `select public.auto_confirm_due_claims(true);`
 Se hvad der venter: `select * from public.auto_confirm_preview();`
+
+## Nulstilling af sæson
+
+**Admin → Indstillinger → Klubdata → Nulstil ny sæson.** Kun super admins.
+
+Alle medlemmer sættes til 0 point, alle tilmeldinger slettes, pladserne bliver
+fri igen, og åbne byttetilbud lukkes. Det kan ikke fortrydes.
+
+**Stillingen arkiveres først.** Hvert medlems point, bonuspoint og antal
+tjanser gemmes i `season_results`, før de nulstilles — ellers kunne klubben
+ikke svare på, hvem der nåede målet, når nogen får en regning for
+frivillighedsbidraget. Arkivet kan læses samme sted under *Tidligere sæsoner*.
+
+Sletter et medlem sin profil, forsvinder deres arkivrækker med. Det er en
+bevidst afvejning: privatlivspolitikken lover sletning, og det løfte vejer
+tungere end at kunne dokumentere en gammel sæson.
+
+Fire ting skal være opfyldt, før knappen kan trykkes:
+
+1. Man skal være super admin — databasen tjekker det, ikke kun appen
+2. Sæsonen skal have et navn, så arkivet kan findes igen
+3. Man skal skrive `NULSTIL` i hånden
+4. Databasen kræver det samme ord igen, så et kald uden om appen gør ingenting
+
+Dialogen henter tallene fra databasen, når den åbnes, og advarer særskilt,
+hvis der stadig ligger tjanser, ingen har gjort op — de ville give 0 point.
+
+Fra SQL:
+
+```sql
+select * from public.admin_season_reset_preview();          -- hvad ville ske
+select * from public.admin_reset_season('NULSTIL', '2025/2026');
+select * from public.admin_season_list();                   -- arkivet
+```
 
 ## Køreplan
 
