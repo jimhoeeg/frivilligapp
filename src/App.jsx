@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Component } from "react";
 import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
@@ -24,6 +24,85 @@ const theme = {
   paper: "#FAFAF7",
   muted: "#6B7F77",
 };
+
+// ============ FEJLOPSAMLING ============
+//
+// Gik noget i stykker hos et medlem, endte det før i browserens konsol, hvor
+// ingen kigger. Nu havner det i databasen, så admins kan se det i panelet.
+// Databasen sætter en grænse på 20 fejl pr. bruger i timen, så en fejl inde
+// i en render-løkke ikke kan fylde tabellen.
+
+const seenErrors = new Set();
+
+const reportError = (message, source, stack) => {
+  const key = `${source}:${message}`.slice(0, 200);
+  if (seenErrors.has(key)) return;          // samme fejl igen i denne session
+  seenErrors.add(key);
+  supabase.rpc("log_client_error", {
+    p_message:    String(message || "Ukendt fejl"),
+    p_source:     source,
+    p_stack:      stack ? String(stack) : null,
+    p_url:        typeof window !== "undefined" ? window.location.href : null,
+    p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+  }).then(({ error }) => {
+    if (error) console.warn("Kunne ikke indrapportere fejl:", error.message);
+  });
+};
+
+if (typeof window !== "undefined") {
+  window.addEventListener("error", (e) => {
+    reportError(e.message, "error", e.error?.stack);
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const r = e.reason;
+    reportError(r?.message || String(r), "unhandledrejection", r?.stack);
+  });
+}
+
+// Uden denne ville en fejl under rendering give en helt hvid skærm uden
+// forklaring — det værste, der kan møde et medlem der skal tage en tjans.
+export class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { crashed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { crashed: true };
+  }
+
+  componentDidCatch(error, info) {
+    reportError(error?.message, "render", error?.stack || info?.componentStack);
+  }
+
+  render() {
+    if (!this.state.crashed) return this.props.children;
+    return (
+      <div className="min-h-screen flex items-center justify-center px-6" style={{ background: theme.paper }}>
+        <div className="max-w-sm w-full bg-white rounded-3xl shadow-xl p-6 text-center">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+            <AlertTriangle className="w-7 h-7 text-white" />
+          </div>
+          <h1 className="text-lg font-bold text-stone-900">Der gik noget galt</h1>
+          <p className="text-[13px] text-stone-600 mt-2 leading-relaxed">
+            Appen løb ind i en fejl. Klubben har fået besked, så vi kan kigge på det.
+            Prøv at hente siden igen — dine tilmeldinger og point er ikke berørt.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full mt-5 py-3 rounded-xl font-bold text-white text-[13px]"
+            style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}
+          >
+            Hent siden igen
+          </button>
+          <p className="text-[11px] text-stone-400 mt-3">
+            Bliver ved med at ske? Skriv til {LEGAL_CONTACT}.
+          </p>
+        </div>
+      </div>
+    );
+  }
+}
 
 const CategoryIcon = ({ type, className = "w-5 h-5" }) => {
   const icons = {
@@ -1280,6 +1359,11 @@ const SwapScreen = ({ onBack, claimedTasks, currentUser, onSwapAccepted }) => {
     }));
   };
 
+  // Dataindlæsning ved visning. Reglerne advarer mod setState i en effect og
+  // mod at udelade loadOffers fra deps, men her sker opdateringen først efter
+  // et svar fra serveren — det er netop det, effects er til: at synkronisere
+  // med noget uden for React. Tages loadOffers med i deps, kører den i ring.
+  /* eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(() => { loadOffers(); }, [currentUser?.id]);
 
   const incoming  = offers.filter((o) => o.status === "incoming");
@@ -1552,6 +1636,10 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
     setPendingCount((data || []).reduce((n, r) => n + r.pending, 0));
   };
 
+  // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
+  // men her sker det først efter et svar fra serveren — det er netop det,
+  // effects er til: at synkronisere med noget uden for React.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refreshPending(); }, [section]);
 
   const sections = [
@@ -1729,6 +1817,10 @@ const AdminApprovals = () => {
     })));
   };
 
+  // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
+  // men her sker det først efter et svar fra serveren — det er netop det,
+  // effects er til: at synkronisere med noget uden for React.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, []);
 
   const approve = async (a) => {
@@ -2113,6 +2205,10 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
     setAuto(preview?.[0] || null);
   };
 
+  // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
+  // men her sker det først efter et svar fra serveren — det er netop det,
+  // effects er til: at synkronisere med noget uden for React.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { load(); }, []);
 
   const autoDays = auto?.days_setting || 0;
@@ -2151,7 +2247,7 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
         if (!b.when) return -1;
         return a.isPast ? b.when - a.when : a.when - b.when;
       });
-  }, [rows]);
+  }, [rows, autoDays]);
 
   const overdue = sorted.filter((r) => r.isPast);
   const upcoming = sorted.filter((r) => !r.isPast);
@@ -2288,16 +2384,13 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
   const [showNew, setShowNew]       = useState(false);
   const [editTask, setEditTask]     = useState(null);
   const [menuOpen, setMenuOpen]     = useState(null);
-  const [signupsTask, setSignupsTask] = useState(null);
-
   // Kommer man hertil fra bekræftelseslisten, åbnes den valgte opgave direkte.
-  useEffect(() => {
-    if (!openSignups) return;
-    const t = tasks.find((x) => x.id === openSignups);
-    if (t) setSignupsTask(t);
-    onSignupsOpened?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openSignups, tasks]);
+  // Komponenten monteres på ny, hver gang man skifter til Opgaver-fanen, så
+  // prop'en kan læses i en initializer — det er hverken nødvendigt eller
+  // korrekt at kopiere den ind med en effect.
+  const [signupsTaskId, setSignupsTaskId] = useState(openSignups || null);
+  const signupsTask = signupsTaskId ? tasks.find((t) => t.id === signupsTaskId) : null;
+  const closeSignups = () => { setSignupsTaskId(null); onSignupsOpened?.(); };
   const [saveError, setSaveError]     = useState(null);
 
   const deleteTask = async (id) => {
@@ -2379,7 +2472,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
   };
 
   if (signupsTask) {
-    return <AdminTaskSignups task={signupsTask} onClose={() => setSignupsTask(null)} setTasks={setTasks} currentUser={currentUser} onConfirmed={onConfirmed} />;
+    return <AdminTaskSignups task={signupsTask} onClose={closeSignups} setTasks={setTasks} currentUser={currentUser} onConfirmed={onConfirmed} />;
   }
 
   return (
@@ -2411,7 +2504,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
                       <button onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                       {menuOpen === t.id && (
                         <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-xl border border-stone-100 py-1 w-44 z-30">
-                          <MenuButton icon={<Users className="w-3.5 h-3.5" />} label="Tilmeldte" onClick={() => { setSignupsTask(t); setMenuOpen(null); }} />
+                          <MenuButton icon={<Users className="w-3.5 h-3.5" />} label="Tilmeldte" onClick={() => { setSignupsTaskId(t.id); setMenuOpen(null); }} />
                           <div className="h-px bg-stone-100 my-1" />
                           <MenuButton icon={<Pencil className="w-3.5 h-3.5" />} label="Rediger" onClick={() => { setEditTask(t); setMenuOpen(null); }} />
                           <MenuButton icon={<Copy className="w-3.5 h-3.5" />} label="Duplikér" onClick={() => duplicateTask(t)} />
@@ -2426,7 +2519,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
                     <span className="text-[10px] font-bold text-stone-600">{filled}/{t.spotsTotal}</span>
                     <span className="px-1.5 py-0.5 rounded-md text-white text-[10px] font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</span>
                     <button
-                      onClick={() => setSignupsTask(t)}
+                      onClick={() => setSignupsTaskId(t.id)}
                       className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-stone-600 bg-stone-100 hover:bg-stone-200 active:scale-95"
                     >
                       <Users className="w-3 h-3" />{filled}
@@ -2670,6 +2763,21 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const [urgent, setUrgent]     = useState(task?.urgent || false);
   const [description, setDesc]  = useState(task?.description?.join("\n") || "");
 
+  // Ændrer en admin pointtallet på en opgave, hvor folk allerede står
+  // tilmeldt, følger deres point med. Det skal man kunne se FØR man gemmer.
+  const [claimCounts, setClaimCounts] = useState(null);
+  useEffect(() => {
+    if (isNew || !task?.id) return;
+    let ignore = false;
+    supabase.rpc("task_claim_counts", { p_task: task.id }).then(({ data }) => {
+      if (!ignore && data?.[0]) setClaimCounts(data[0]);
+    });
+    return () => { ignore = true; };
+  }, [isNew, task?.id]);
+
+  const pointsChanged = !isNew && parseInt(points) !== (task?.points ?? null);
+  const affected      = (claimCounts?.signed_up || 0) + (claimCounts?.completed || 0);
+
   const applyTemplate = (tpl, catLabel, catIcon) => {
     setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
     setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
@@ -2800,6 +2908,17 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             <AdminInput label="Point" type="number" placeholder="15" icon={<Zap className="w-4 h-4" />} value={points} onChange={(e) => setPoints(e.target.value)} />
             <AdminInput label="Pladser" type="number" placeholder="2" icon={<Users className="w-4 h-4" />} value={spots} onChange={(e) => setSpots(e.target.value)} />
           </div>
+
+          {pointsChanged && affected > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                <strong>{affected}</strong> {affected === 1 ? "person står" : "personer står"} allerede på opgaven.
+                Ændrer du pointtallet fra {task.points} til {parseInt(points) || 0}, følger deres point med
+                {claimCounts.completed > 0 && <> — og {claimCounts.completed === 1 ? "den ene, der allerede er godkendt, får" : `de ${claimCounts.completed} der allerede er godkendt, får`} summen justeret og besked om det</>}.
+              </p>
+            </div>
+          )}
 
           {/* Sværhedsgrad */}
           <div>
@@ -3484,13 +3603,82 @@ const AdminSettings = ({ currentUser }) => {
 // ---- AUDIT LOG (kun Super Admin) ----
 const AdminAuditLog = () => {
   const [logs, setLogs] = useState([]);
+  const [errors, setErrors] = useState([]);
+  const [view, setView] = useState("actions");
+
   useEffect(() => {
     supabase.from("audit_log").select("*").order("created_at", { ascending: false }).then(({ data }) => {
       if (data) setLogs(data);
     });
+    supabase.from("client_errors")
+      .select("*, profiles(name)")
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .then(({ data }) => { if (data) setErrors(data); });
   }, []);
+
+  if (view === "errors") {
+    return (
+      <div className="space-y-3">
+        <div className="flex gap-1.5">
+          <button onClick={() => setView("actions")} className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-stone-100 text-stone-600">Handlinger</button>
+          <button className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>Fejl ({errors.length})</button>
+        </div>
+
+        <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+          <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] text-violet-900 leading-relaxed">
+            Uventede fejl fra medlemmernes telefoner. Før endte de i browserens konsol, hvor ingen så dem.
+            Samme fejl hos mange på én gang betyder som regel, at noget er gået i stykker for alle. Fejl ældre end 90 dage slettes.
+          </p>
+        </div>
+
+        {errors.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-8 text-center">
+            <CheckCircle2 className="w-10 h-10 mx-auto mb-2 text-emerald-300" />
+            <p className="text-[13px] text-stone-600 font-semibold">Ingen fejl registreret</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {errors.map((e) => (
+              <div key={e.id} className="bg-white rounded-xl border border-stone-100 shadow-sm p-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-semibold text-stone-900 break-words">{e.message}</div>
+                    <div className="text-[11px] text-stone-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span>{e.profiles?.name || "ukendt medlem"}</span>
+                      <span>·</span>
+                      <span>{new Date(e.created_at).toLocaleString("da-DK")}</span>
+                      {e.source && <><span>·</span><span className="mono">{e.source}</span></>}
+                    </div>
+                    {e.stack && (
+                      <details className="mt-1.5">
+                        <summary className="text-[11px] text-stone-400 cursor-pointer">Vis detaljer</summary>
+                        <pre className="text-[10px] text-stone-500 mt-1 whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-stone-50 rounded-lg p-2">{e.stack}</pre>
+                      </details>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
   <div className="space-y-3">
+    <div className="flex gap-1.5">
+      <button className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>Handlinger</button>
+      <button onClick={() => setView("errors")} className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold inline-flex items-center gap-1.5 ${errors.length > 0 ? "bg-red-50 text-red-700" : "bg-stone-100 text-stone-600"}`}>
+        Fejl{errors.length > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center">{errors.length}</span>}
+      </button>
+    </div>
+
     <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
       <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
       <p className="text-[11px] text-violet-900">Alle ændringer foretaget af Admins logges her. Loggen kan ikke slettes og opbevares i 5 år.</p>
@@ -3646,12 +3834,11 @@ const ProfileAvatar = ({ currentUser, setCurrentUser, setToast }) => {
 };
 
 const RequestAdminButton = ({ currentUser, setToast }) => {
-  const [requested, setRequested] = useState(false);
+  // Anmodningen kan komme to steder fra: profilen vi allerede har hentet,
+  // eller et tryk lige nu. Begge dele læses ud af det samme udtryk.
+  const [justRequested, setJustRequested] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (currentUser?.adminRequested) setRequested(true);
-  }, [currentUser?.adminRequested]);
+  const requested = justRequested || !!currentUser?.adminRequested;
 
   const handleRequest = async () => {
     setLoading(true);
@@ -3662,7 +3849,7 @@ const RequestAdminButton = ({ currentUser, setToast }) => {
       setTimeout(() => setToast(null), 3500);
       return;
     }
-    setRequested(true);
+    setJustRequested(true);
     setToast("📨 Din anmodning er sendt til Super Admin");
     setTimeout(() => setToast(null), 3000);
   };
@@ -3730,7 +3917,8 @@ const BottomNav = ({ active, onChange }) => {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(() =>
+    !(typeof window !== "undefined" && window.location.hash.includes("type=recovery")));
   const [currentUser, setCurrentUser] = useState(null);
   const [tab, setTab] = useState("tasks");
   // Tilmeldingerne gemmes nu med deres tilstand, fordi point først tæller
@@ -3774,7 +3962,12 @@ export default function App() {
   );
 
   // Detect password recovery flow (when user clicks email link)
-  const [recoveryMode, setRecoveryMode] = useState(false);
+  // Klikker man linket i nulstillings-mailen, står det i URL'ens hash allerede
+  // inden React renderer første gang. Læs det der, i stedet for at rette state
+  // bagefter i en effect — så slipper vi for et glimt af login-skærmen.
+  const isRecoveryUrl = () =>
+    typeof window !== "undefined" && window.location.hash.includes("type=recovery");
+  const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
 
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
@@ -3818,13 +4011,6 @@ export default function App() {
   // Initial session check + auth state listener
   useEffect(() => {
     let mounted = true;
-
-    // Detect password recovery from URL hash — show reset screen immediately
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setRecoveryMode(true);
-      setAuthLoading(false);
-    }
 
     // Safety net: never stay on loading screen for more than 6 seconds
     const safety = setTimeout(() => {
@@ -3910,6 +4096,10 @@ export default function App() {
     supabase.from("task_claims").select("task_id, status, points_awarded").eq("user_id", uid).then(({ data }) => {
       if (data) setMyClaims(data);
     });
+    // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
+    // men her sker det først efter et svar fra serveren — det er netop det,
+    // effects er til: at synkronisere med noget uden for React.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadNotifications(uid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);

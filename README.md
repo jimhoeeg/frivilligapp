@@ -40,51 +40,41 @@ npm run build
 npm run preview
 ```
 
-## Udrulning af lanceringsrettelserne
+## Udrulning
 
-> **Kør dette FØR appen sendes ud til medlemmerne.** Rettelserne til
-> pointregnskab, adgang til medlemsdata, godkendelse, bytte og notifikationer
-> ligger halvt i databasen. Uden trin 1 og 2 herunder virker appen ikke.
+> **Kør dette FØR appen sendes ud til medlemmerne.** Halvdelen af rettelserne
+> ligger i databasen, ikke i appen. Uden trin 1 og 2 kalder appen funktioner,
+> der ikke findes.
 
-**1. Kør databasemigrationen**
+**1. Kør migrationerne**
 
-Åbn Supabase Dashboard → SQL Editor → indsæt hele indholdet af
-`supabase/migrations/20260910120000_launch_hardening.sql` → Run.
+Supabase Dashboard → SQL Editor. Kør filerne i `supabase/migrations/` i
+navnerækkefølge, én ad gangen. De kan alle køres flere gange uden at gøre
+skade, og de er tilsammen nok — rør ikke noget i `supabase/legacy/`.
 
-Filen kan køres flere gange uden at gøre skade. Læs afsnit 3 i filen først —
-den genberegner alle point fra bunden, og manuelt tildelte bonuspoint fra før
-migrationen går tabt i den proces.
+| Fil | Hvad den gør |
+|---|---|
+| `20260101000000_baseline.sql` | Tabeller og indekser. Intet andet. |
+| `20260910120000_launch_hardening.sql` | Adgang til medlemsdata, godkendelse, pointregnskab, bytte, beskeder. **Genberegner alle point fra bunden** — bonuspoint givet i hånden før nu går tabt. |
+| `20260918100000_task_completion.sql` | Point først når en tjans er bekræftet. Nulstiller pointtallene: alt står som "afventer bekræftelse", til en admin gør det op. Vil I godkende hele historikken på én gang, står linjen i bunden af filen. |
+| `20260918140000_auto_confirm.sql` | Automatisk bekræftelse efter 7 dage. Opretter et `pg_cron`-job hvis muligt; ellers klarer appen det selv. |
+| `20260918160000_cleanup_orphans.sql` | Fjerner efterladte pointfunktioner fra en gren, der aldrig blev merget. |
+| `20260919080000_policies_from_legacy.sql` | Adgangsregler, der før kun lå i de løse filer. |
+| `20260919090000_points_follow_task.sql` | Point følger med, når en opgaves værdi ændres. |
+| `20260919110000_client_errors.sql` | Fejl fra medlemmernes telefoner. |
 
-Tjek bagefter hvilke triggere der ligger på tilmeldinger:
+Kontrollér bagefter:
 
 ```sql
+-- forventet: tc_after_delete, tc_after_insert, tc_after_update,
+--            tc_before_delete, tc_before_insert
 select tgname from pg_trigger
- where tgrelid = 'public.task_claims'::regclass and not tgisinternal;
--- forventet efter BEGGE migrationer:
---   tc_after_delete, tc_after_insert, tc_after_update,
---   tc_before_delete, tc_before_insert
+ where tgrelid = 'public.task_claims'::regclass and not tgisinternal
+ order by 1;
+
+-- kører den daglige automatik i databasen?
+select jobname, schedule from cron.job where jobname like 'rvk_%';
 ```
-
-Kør derefter de øvrige migrationer i `supabase/migrations/` i navnerækkefølge.
-
-`20260918100000_task_completion.sql` flytter point fra *tilmelding* til
-*bekræftet gennemført*, og nulstiller derfor pointtallene: alle eksisterende
-tilmeldinger står som "afventer bekræftelse", indtil en admin gør dem op
-under **Admin → Bekræft**.
-Vil I i stedet godkende hele den eksisterende historik på én gang, står linjen
-til det i bunden af filen.
-
-`20260918140000_auto_confirm.sql` slår automatisk bekræftelse til efter 7 dage.
-Findes `pg_cron` på projektet, oprettes et dagligt job kl. 03:00 UTC. Kan
-udvidelsen ikke slås til, skriver filen det som en NOTICE og fejler ikke —
-appen kalder så selv funktionen, når nogen er logget ind. Tjek hvad der skete:
-
-```sql
-select jobname, schedule from cron.job where jobname = 'rvk_auto_confirm';
-```
-
-`20260918160000_cleanup_orphans.sql` rydder efterladte pointfunktioner fra en
-gren, der aldrig blev merget — se "Efterladt SQL i den rigtige database".
 
 **2. Rul sletnings-funktionen ud**
 
@@ -92,22 +82,19 @@ gren, der aldrig blev merget — se "Efterladt SQL i den rigtige database".
 supabase functions deploy delete-member
 ```
 
-Uden den kan admins ikke slette eller afvise medlemmer — sletning kræver
+Uden den kan admins hverken slette eller afvise medlemmer — sletning kræver
 service-nøglen, som aldrig må ligge i browseren.
 
-**3. Sæt miljøvariabler i Vercel**
+**3. Kør `supabase/seed.sql` — ret filen først**
+
+Hold og super admins. Holdlisten er standardnavne, ikke jeres, og medlemmer
+vælger hold når de opretter sig; er tabellen tom, kan ingen oprette sig
+ordentligt. Sørg for **mindst to** super admins.
+
+**4. Sæt miljøvariabler i Vercel**
 
 `VITE_SUPABASE_URL` og `VITE_SUPABASE_ANON_KEY` under Settings →
 Environment Variables.
-
-**4. Udpeg mindst to super admins**
-
-```sql
-update public.profiles set role = 'super_admin', approved = true
- where email in ('formand@randersvk.dk', 'kasserer@randersvk.dk');
-```
-
-To personer, så klubben ikke er låst ude hvis én mister adgangen.
 
 **5. Godkend teksterne**
 
@@ -115,12 +102,16 @@ Vilkår og privatlivspolitik i `src/App.jsx` (`LEGAL_DOCS`) er **et udkast**.
 Bestyrelsen skal læse dem igennem, og `LEGAL_CONTACT` skal rettes til klubbens
 rigtige adresse, før appen sendes ud.
 
+**6. Prøvekør med 3–5 personer**
+
+På deres egne telefoner: opret profil, godkend, tag en tjans, meld fra, byt,
+bekræft som gennemført, slet en testbruger.
+
 ### Ældre SQL-filer
 
-`supabase_*.sql` i roden er de oprindelige løsblade. De er stadig historikken
-for, hvordan databasen blev bygget, men migrationen ovenfor er den gældende
-sandhed — den overskriver de politikker, de gamle filer satte op. Kør dem
-ikke igen.
+De oprindelige løsblade ligger i `supabase/legacy/` med en forklaring.
+**Kør dem ikke.** `supabase_setup.sql` gendanner blandt andet politikken, der
+gjorde hele medlemslisten læsbar uden login.
 
 ### Test af databasen
 
@@ -129,11 +120,11 @@ ikke igen.
 ```bash
 createdb rvk
 psql -d rvk -f supabase/tests/00_supabase_stub.sql     # efterligner Supabase
-psql -d rvk -f supabase_setup.sql                       # basisskemaet
 for m in supabase/migrations/*.sql; do psql -d rvk -f "$m"; done
 psql -d rvk -f supabase/tests/10_behaviour.sql          # 15 tjek
 psql -d rvk -f supabase/tests/20_completion.sql         # 14 tjek af bekræftelser
-psql -d rvk -f supabase/tests/30_auto_confirm.sql      # 11 tjek af automatikken
+psql -d rvk -f supabase/tests/30_auto_confirm.sql       # 11 tjek af automatikken
+psql -d rvk -f supabase/tests/40_points_follow_task.sql # 9 tjek af pointændringer
 ```
 
 ### Efterladt SQL i den rigtige database
@@ -167,14 +158,50 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 src/App.jsx                    # hele appen
 supabase/migrations/           # databaseændringer – kør i rækkefølge
 supabase/functions/            # serverfunktioner (sletning af medlemmer)
-supabase/tests/                # kan køre migrationen igennem lokalt
-supabase_*.sql                 # historik, se "Ældre SQL-filer" ovenfor
+supabase/tests/                # kan køre migrationerne igennem lokalt
+supabase/seed.sql              # hold og super admins – ret før brug
+supabase/legacy/               # historik. Kør dem ikke.
 public/icon.svg                # klubbens ikon – PNG'erne er genereret herfra
 ```
 
 Ikonerne (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) er
 rasteriseret fra `public/icon.svg`. Ændrer du SVG'en, skal PNG'erne
 genskabes — ellers viser telefonerne det gamle ikon.
+
+## Drift
+
+### Fejl fra medlemmernes telefoner
+
+Uventede fejl skrives til `client_errors` og kan ses under **Admin → Audit log
+→ Fejl**. En fejlgrænse omkring appen sørger samtidig for, at et nedbrud under
+rendering giver en forklaring i stedet for en hvid skærm.
+
+Databasen sætter en grænse på 20 fejl pr. bruger i timen, og fejl ældre end
+90 dage slettes automatisk (eller med `select public.prune_client_errors();`).
+
+Det er ikke et rigtigt overvågningsværktøj — der er ingen alarmer. Ser I
+samme fejl hos mange på én gang, er noget gået i stykker for alle.
+
+### Backup
+
+**Tjek hvilken Supabase-plan I er på.** På gratisplanen er der ingen
+automatisk backup at rulle tilbage til, og projektet sættes på pause ved
+inaktivitet. Med et rigtigt medlemsregister bør I enten opgradere eller lave
+en fast eksport (Supabase Dashboard → Database → Backups).
+
+### Tests
+
+Databasen har en testsuite (se ovenfor) — den dækker pointregnskab,
+adgangsregler, bekræftelser og automatik. **Appen har ingen automatiske
+tests**; ændringer i `src/App.jsx` skal klikkes igennem i hånden. Det er et
+bevidst valg: logikken der kan regne forkert ligger i databasen, og den er
+dækket.
+
+### Support
+
+Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx` (nu
+`kontakt@randersvk.dk` — ret den). Aftal hvem der læser den adresse, før
+linket sendes ud.
 
 ## Pointmodel
 
@@ -213,7 +240,7 @@ Se hvad der venter: `select * from public.auto_confirm_preview();`
 ## Køreplan
 
 - [ ] E-mailnotifikationer (i dag kun beskeder inde i appen)
-- [ ] Fejlovervågning og fast backup
+- [ ] Rigtigt domæne (fx `frivillig.randersvk.dk`) i stedet for Vercel-adressen
 - [ ] Del `App.jsx` op i filer
 
 ## License

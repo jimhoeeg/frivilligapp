@@ -459,7 +459,7 @@ grant execute on function public.accept_swap(uuid) to authenticated;
 -- ============================================================================
 
 update public.profiles p
-   set points     = coalesce(c.pts, 0) + p.bonus_points,
+   set points     = greatest(0, coalesce(c.pts, 0) + p.bonus_points),
        tasks_done = coalesce(c.cnt, 0)
   from (
         select user_id,
@@ -472,7 +472,7 @@ update public.profiles p
  where c.user_id = p.id;
 
 update public.profiles p
-   set points     = p.bonus_points,
+   set points     = greatest(0, p.bonus_points),
        tasks_done = 0
  where not exists (
         select 1 from public.task_claims tc
