@@ -25,6 +25,80 @@ const theme = {
   muted: "#6B7F77",
 };
 
+// ============ PROFILEN KUNNE IKKE HENTES ============
+//
+// Login lykkes i Supabase, men appen kan ikke hente medlemsprofilen. Det sker
+// i tre tilfaelde: profilen findes ikke (oprettelsen gik galt undervejs),
+// serveren svarer med en fejl, eller kaldet naar ikke igennem inden for 8
+// sekunder.
+//
+// Foer viste appen bare login-skaermen igen. Set fra medlemmet: man skriver
+// sit kodeord, der sker ingenting, man skriver det igen. To konti i den
+// rigtige database stod praecis saadan, og ingen kunne have gaettet hvorfor.
+// Nu siger appen hvad der er galt, og hvad man goer ved det.
+const ProfileProblemScreen = ({ kind, onRetry, onSignOut, busy }) => {
+  const missing = kind === "missing";
+  return (
+    <div className="min-h-screen bg-stone-50 font-sans antialiased flex items-center justify-center p-5">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-sm border border-stone-100">
+        <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center mb-4">
+          <AlertTriangle className="w-5 h-5 text-amber-600" />
+        </div>
+
+        <h1 className="text-lg font-bold text-stone-900 mb-1.5">
+          {missing ? "Din profil mangler" : "Kunne ikke hente din profil"}
+        </h1>
+
+        <p className="text-[13px] text-stone-600 leading-relaxed mb-4">
+          {missing ? (
+            <>
+              Du er logget ind, men der er ingen medlemsprofil knyttet til din konto.
+              Det sker, hvis oprettelsen blev afbrudt undervejs. Det er ikke noget,
+              du kan rette selv — skriv til klubben, så laver en administrator den.
+            </>
+          ) : (
+            <>
+              Du er logget ind, men forbindelsen til klubbens database svarede ikke.
+              Det er næsten altid midlertidigt. Prøv igen om lidt.
+            </>
+          )}
+        </p>
+
+        {missing && (
+          <div className="bg-stone-50 rounded-xl p-3 mb-4">
+            <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-1">Skriv til</div>
+            <a href={`mailto:${LEGAL_CONTACT}`} className="text-[13px] font-semibold text-emerald-700 break-all">
+              {LEGAL_CONTACT}
+            </a>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            onClick={onSignOut}
+            className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[13px] font-semibold text-stone-600"
+          >
+            Log ud
+          </button>
+          {!missing && (
+            <button
+              onClick={onRetry}
+              disabled={busy}
+              className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-[13px] font-bold disabled:opacity-60"
+            >
+              {busy ? "Prøver..." : "Prøv igen"}
+            </button>
+          )}
+        </div>
+
+        <p className="text-[11px] text-stone-400 mt-4 leading-relaxed">
+          Fejlen er automatisk registreret, så klubbens administratorer kan se den.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 // ============ VANDRET LISTE ============
 //
 // Appen har syv rækker, der er bredere end skærmen: kategorifiltre, badges,
@@ -4547,6 +4621,9 @@ const BottomNav = ({ active, onChange }) => {
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  // null = alt vel. "missing" = ingen profilraekke. "error" = serveren svarede ikke.
+  const [profileProblem, setProfileProblem] = useState(null);
+
   const [authLoading, setAuthLoading] = useState(() =>
     !(typeof window !== "undefined" && window.location.hash.includes("type=recovery")));
   const [currentUser, setCurrentUser] = useState(null);
@@ -4607,14 +4684,37 @@ export default function App() {
       const query = supabase.rpc("my_profile").single();
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Profile load timeout")), 8000));
       const { data, error } = await Promise.race([query, timeout]);
-      if (error) console.error("Profile load error:", error);
+
+      // PostgREST svarer PGRST116 på .single(), når der ikke er nogen række.
+      // Det er ikke en serverfejl — det er en bruger uden medlemsprofil, og
+      // de to skal ikke have samme besked.
+      const ingenRaekke = error?.code === "PGRST116";
+
+      if (error && !ingenRaekke) {
+        console.error("Profile load error:", error);
+        reportError(`my_profile() fejlede: ${error.message}`, "auth");
+        setProfileProblem("error");
+        return;
+      }
+
       if (data && userId && data.id !== userId) {
         console.warn("Profilen matcher ikke sessionen – logger ud");
         await supabase.auth.signOut();
         setIsAuthenticated(false);
         return;
       }
-      if (data) {
+
+      // Gyldig session, men ingen medlemsprofil. Tidligere faldt vi bare
+      // igennem her, og medlemmet endte på login-skærmen igen uden at vide
+      // hvorfor.
+      if (ingenRaekke || !data) {
+        reportError("Logget ind, men my_profile() gav ingen række", "auth");
+        setProfileProblem("missing");
+        return;
+      }
+
+      {
+        setProfileProblem(null);
         setCurrentUser({
           id: data.id,
           name: data.name,
@@ -4633,6 +4733,8 @@ export default function App() {
       }
     } catch (e) {
       console.error("loadProfile failed:", e);
+      reportError(`loadProfile: ${e.message}`, "auth", e.stack);
+      setProfileProblem("error");
     } finally {
       setAuthLoading(false);
     }
@@ -4674,6 +4776,9 @@ export default function App() {
       if (session?.user) {
         await loadProfile(session.user.id);
       } else {
+        // Ingen session: ryd også et hængende profilproblem, ellers bliver
+        // fejlskærmen stående efter en udlogning.
+        setProfileProblem(null);
         setIsAuthenticated(false);
         setAuthLoading(false);
       }
@@ -4887,6 +4992,34 @@ export default function App() {
           <div className="text-sm text-stone-500 font-medium">Indlæser...</div>
         </div>
       </div>
+    );
+  }
+
+  // Gyldig session, men profilen kunne ikke hentes. Skal komme FØR
+  // login-skærmen, ellers er vi tilbage ved det tavse loop.
+  if (profileProblem) {
+    return (
+      <ProfileProblemScreen
+        kind={profileProblem}
+        busy={authLoading}
+        onRetry={async () => {
+          setAuthLoading(true);
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.user) {
+            setProfileProblem(null);
+            await loadProfile(data.session.user.id);
+          } else {
+            setProfileProblem(null);
+            setIsAuthenticated(false);
+            setAuthLoading(false);
+          }
+        }}
+        onSignOut={async () => {
+          await supabase.auth.signOut();
+          setProfileProblem(null);
+          setIsAuthenticated(false);
+        }}
+      />
     );
   }
 

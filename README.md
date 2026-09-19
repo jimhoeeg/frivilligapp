@@ -229,6 +229,28 @@ Databasen sætter en grænse på 20 fejl pr. bruger i timen, og fejl ældre end
 Det er ikke et rigtigt overvågningsværktøj — der er ingen alarmer. Ser I
 samme fejl hos mange på én gang, er noget gået i stykker for alle.
 
+### Når profilen ikke kan hentes
+
+Login kan lykkes i Supabase, uden at appen kan hente medlemsprofilen. Det sker
+i tre tilfælde: profilen findes ikke, serveren svarer med en fejl, eller
+kaldet nåede ikke igennem inden for 8 sekunder.
+
+Før faldt alle tre igennem til login-skærmen. Set fra medlemmet: man skriver
+sit kodeord, der sker ingenting, man skriver det igen. To konti i den rigtige
+database stod præcis sådan.
+
+Nu vises en skærm, der skelner:
+
+- **Din profil mangler** — kontoen findes, men der er ingen medlemsprofil.
+  Det kan medlemmet ikke rette selv, så skærmen henviser til `LEGAL_CONTACT`.
+  Ingen "prøv igen"-knap; den ville ikke hjælpe.
+- **Kunne ikke hente din profil** — serveren svarede ikke. Her er der en
+  "prøv igen", som henter sessionen og forsøger på ny.
+
+Begge skriver til `client_errors`, så det kan ses under **Admin → Audit log →
+Fejl**. PostgREST svarer `PGRST116` på `.single()` ved nul rækker, og den kode
+er det eneste, der skiller "ingen profil" fra "serverfejl".
+
 ### Backup
 
 **Tjek hvilken Supabase-plan I er på.** På gratisplanen er der ingen
