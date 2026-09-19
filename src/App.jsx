@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, Component } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, Component } from "react";
 import { supabase } from "./supabaseClient";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
@@ -23,6 +23,112 @@ const theme = {
   ink: "#0A1F17",
   paper: "#FAFAF7",
   muted: "#6B7F77",
+};
+
+// ============ VANDRET LISTE ============
+//
+// Appen har syv rækker, der er bredere end skærmen: kategorifiltre, badges,
+// holdene på scoreboardet, admin-fanerne og et par filtre mere. Admin-fanerne
+// er 1109px brede i et 390px vindue — to tredjedele er gemt.
+//
+// De kunne godt rulles, men tre ting manglede:
+//
+//   1. Intet fortalte, at der var mere. Klassen "scrollbar-hide" stod i
+//      markup'en uden nogensinde at være defineret, så rullepanelet var
+//      hverken vist eller skjult — det afhang af styresystemet.
+//   2. På en computer gør musehjulet ingenting på en vandret liste. Man skal
+//      holde Shift nede, og det ved næsten ingen. De sidste fire admin-faner
+//      var i praksis uden for rækkevidde med en almindelig mus.
+//   3. Skiftede man fane programmatisk (fx via tallet på "Bekræft"), kunne den
+//      aktive fane ende uden for det synlige felt.
+//
+// Løsningen her holder sig ude af syne, til den er nødvendig:
+//
+//   * Indholdet tones blødt ud i den kant, hvor der er mere. Det er en
+//      mask-image på selve indholdet, ikke en gradient malet ovenpå — derfor
+//      virker det lige godt på den grønne header og på hvid baggrund.
+//   * Pilene vises kun, hvis der er noget at rulle til, og kun på enheder med
+//      mus. På en telefon svæver der ikke knapper over indholdet.
+//   * Musehjulet ruller sidelæns, når markøren er over rækken.
+//   * Den aktive knap rulles selv ind i billedet.
+// Pilen er skjult for skærmlæsere og tastatur med vilje: den fører ikke nogen
+// steder hen, som knapperne i rækken ikke allerede gør. Den findes kun for
+// musebrugere, der ikke kan svippe.
+const RowArrow = ({ dir, show, onClick, arrowClass }) => (
+  <button
+    type="button"
+    tabIndex={-1}
+    aria-hidden="true"
+    onClick={() => onClick(dir)}
+    className={`hidden [@media(hover:hover)]:flex absolute top-1/2 -translate-y-1/2 ${dir < 0 ? "left-0" : "right-0"} z-10
+      w-7 h-7 items-center justify-center rounded-full bg-white text-stone-600 shadow-md ring-1 ring-stone-900/10
+      transition-opacity duration-150 ${show ? "opacity-90 hover:opacity-100" : "opacity-0 pointer-events-none"} ${arrowClass}`}
+  >
+    {dir < 0 ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+  </button>
+);
+
+const ScrollRow = ({ children, className = "", arrowClass = "" }) => {
+  const ref = useRef(null);
+  const [edge, setEdge] = useState({ left: false, right: false });
+
+  const update = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    // 1px slør: subpixel-bredder gør ellers pilen synlig i yderpositionen.
+    setEdge({ left: el.scrollLeft > 1, right: el.scrollLeft < max - 1 });
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    return () => ro.disconnect();
+  }, [update, children]);
+
+  // Hold den aktive knap synlig, også når fanen skiftes inde fra koden.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const active = el.querySelector('[data-active="true"]');
+    if (active) active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }, [children]);
+
+  // Lodret hjul → vandret rulning. Kun når der faktisk ER noget at rulle,
+  // ellers stjæler rækken sidens scroll.
+  const onWheel = (e) => {
+    const el = ref.current;
+    if (!el || el.scrollWidth <= el.clientWidth) return;
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;   // pladen ruller selv sidelæns
+    el.scrollLeft += e.deltaY;
+    update();
+  };
+
+  const nudge = (dir) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(120, el.clientWidth * 0.7), behavior: "smooth" });
+  };
+
+  const mask =
+    edge.left && edge.right ? "fade-both"
+    : edge.left ? "fade-left"
+    : edge.right ? "fade-right"
+    : "";
+
+  return (
+    <div className="relative">
+      <div ref={ref} onScroll={update} onWheel={onWheel} className={`${className} ${mask}`}>
+        {children}
+      </div>
+      <RowArrow dir={-1} show={edge.left} onClick={nudge} arrowClass={arrowClass} />
+      <RowArrow dir={1}  show={edge.right} onClick={nudge} arrowClass={arrowClass} />
+    </div>
+  );
 };
 
 // ============ FEJLOPSAMLING ============
@@ -757,7 +863,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
               {/* Kategori */}
               <div>
                 <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">Kategori</div>
-                <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                <ScrollRow className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
                   {catFilters.map((f) => {
                     const active = catFilter === f;
                     const isUrgent = f === "Haster";
@@ -767,7 +873,7 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
                       </button>
                     );
                   })}
-                </div>
+                </ScrollRow>
               </div>
 
               {/* Tidligere opgaver */}
@@ -989,7 +1095,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
       {earnedBadges.length > 0 && (
         <div className="px-5 mt-5">
           <h2 className="text-sm font-bold text-stone-900 mb-2">Mine badges</h2>
-          <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+          <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
             {badges.map((b) => {
               const unlocked = b.req(earned, tasks);
               return (
@@ -999,7 +1105,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
                 </div>
               );
             })}
-          </div>
+          </ScrollRow>
         </div>
       )}
 
@@ -1178,7 +1284,7 @@ const ScoreboardScreen = ({ currentUserId }) => {
       </div>
 
       <div className="px-5 mt-4">
-        <div className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
+        <ScrollRow className="flex gap-2 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-hide">
           {teams.map((t) => {
             const active = filter === t;
             return (
@@ -1187,7 +1293,7 @@ const ScoreboardScreen = ({ currentUserId }) => {
               </button>
             );
           })}
-        </div>
+        </ScrollRow>
       </div>
 
       {currentUserRank > 0 && (
@@ -1671,13 +1777,13 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
             <RoleBadge role={currentUserRole} large />
           </div>
           {/* Section tabs */}
-          <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+          <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
             {sections.map((s) => {
               const Icon = s.icon;
               const disabled = s.superOnly && !isSuperAdmin;
               const active = section === s.id;
               return (
-                <button key={s.id} disabled={disabled} onClick={() => !disabled && setSection(s.id)}
+                <button key={s.id} disabled={disabled} data-active={active} onClick={() => !disabled && setSection(s.id)}
                   className={`shrink-0 relative inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[12px] font-bold transition-all ${active ? "bg-white text-emerald-900 shadow-md" : disabled ? "bg-white/5 text-white/30 border border-white/10 cursor-not-allowed" : "bg-white/10 text-white border border-white/20 hover:bg-white/20"}`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -1687,12 +1793,12 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
                 </button>
               );
             })}
-          </div>
+          </ScrollRow>
         </div>
       </div>
 
       <div className="px-5 mt-5">
-        {section === "overview"  && <AdminOverview tasks={tasks} />}
+        {section === "overview"  && <AdminOverview tasks={tasks} currentUser={currentUser} />}
         {section === "confirm"   && <AdminConfirmations currentUser={currentUser} onOpenTask={(id) => { setOpenSignups(id); setSection("tasks"); }} />}
         {section === "approvals" && <AdminApprovals />}
         {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} openSignups={openSignups} onSignupsOpened={() => setOpenSignups(null)} onConfirmed={() => { refreshPending(); onPointsChanged?.(); }} />}
@@ -1707,20 +1813,59 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
 };
 
 // ---- OVERSIGT ----
-const AdminOverview = ({ tasks }) => {
+const AdminOverview = ({ tasks, currentUser }) => {
   const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
+  const [goal, setGoal] = useState(100);
+  const [contribution, setContribution] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    supabase.from("profiles").select("points").then(({ data }) => {
+    // Målet og bidraget står i indstillingerne. Tallene var hårdkodet til 100
+    // og 50 her, så ændrede en super admin halvsmålet, sagde denne skærm
+    // stadig "≥100 pt" — og bidragslisten ville have udpeget de forkerte.
+    Promise.all([
+      supabase.from("profiles").select("points"),
+      supabase.from("settings").select("key,value"),
+    ]).then(([{ data }, { data: cfg }]) => {
+      const map = Object.fromEntries((cfg || []).map((r) => [r.key, r.value]));
+      const g = parseInt(map.point_goal) || 100;
+      setGoal(g);
+      setContribution(parseInt(map.contribution_kr) || 0);
       if (data && data.length > 0) {
         const total = data.length;
-        const goalReached = data.filter((m) => m.points >= 100).length;
-        const behind = data.filter((m) => m.points < 50).length;
+        const goalReached = data.filter((m) => m.points >= g).length;
+        const behind = data.filter((m) => m.points < g / 2).length;
         const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
         setStats({ total, goalReached, behind, avg });
       }
     });
   }, []);
+
+  const exportContributions = async () => {
+    setExporting(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_list_members");
+      if (error) throw error;
+      const rows = (data || [])
+        .slice()
+        .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "da"))
+        .map((m) => [
+          m.name, m.team, m.points, goal,
+          m.points >= goal ? "Nået målet" : m.points >= goal / 2 ? "På vej" : "Bagud",
+          m.points >= goal ? 0 : contribution,
+        ]);
+      if (!rows.length) { setExporting(false); return; }
+      downloadCSV(
+        `rvk-bidragsliste-${today()}.csv`,
+        toCSV(["Navn", "Hold", "Point", "Maal", "Status", "Bidrag (kr)"], rows)
+      );
+      const skyldige = rows.filter((r) => r[5] > 0).length;
+      await logAction("settings",
+        `Eksporterede bidragsliste (${rows.length} medlemmer, ${skyldige} under målet)`, currentUser);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const openSpots = tasks.reduce((s, t) => s + t.spotsLeft, 0);
 
@@ -1750,9 +1895,9 @@ const AdminOverview = ({ tasks }) => {
           <AlertTriangle className="w-5 h-5 text-pink-500" />
         </div>
         {[
-          { label: "🎉 Nået halvsmål (≥100 pt)", count: stats.goalReached,                                          color: theme.greenMid },
-          { label: "🟣 På vej (50–99 pt)",      count: stats.total - stats.goalReached - stats.behind,        color: theme.purple },
-          { label: "⚠️ Bagud (under 50 pt)",    count: stats.behind,                                           color: theme.pink },
+          { label: `🎉 Nået halvsmål (≥${goal} pt)`,                      count: stats.goalReached,                              color: theme.greenMid },
+          { label: `🟣 På vej (${goal / 2}–${goal - 1} pt)`,               count: stats.total - stats.goalReached - stats.behind,  color: theme.purple },
+          { label: `⚠️ Bagud (under ${goal / 2} pt)`,                      count: stats.behind,                                   color: theme.pink },
         ].map((row, i) => {
           const pct = stats.total > 0 ? Math.round((row.count / stats.total) * 100) : 0;
           return (
@@ -1762,9 +1907,21 @@ const AdminOverview = ({ tasks }) => {
             </div>
           );
         })}
-        <button className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-bold text-white flex items-center justify-center gap-1.5" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-          <Download className="w-3.5 h-3.5" />Eksportér bidragsliste
+        <button
+          onClick={exportContributions}
+          disabled={exporting || stats.total === 0}
+          className="w-full mt-3 py-2.5 rounded-xl text-[12px] font-bold text-white flex items-center justify-center gap-1.5 disabled:opacity-50"
+          style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}
+        >
+          <Download className="w-3.5 h-3.5" />
+          {exporting ? "Henter..." : "Eksportér bidragsliste"}
         </button>
+        {contribution > 0 && (
+          <p className="text-[11px] text-stone-400 mt-2 leading-snug">
+            Listen viser hvert medlems point mod målet på {goal} pt, og hvem der efter den
+            opgørelse skal betale {contribution} kr.
+          </p>
+        )}
       </div>
 
       {/* Seneste audit */}
@@ -2812,7 +2969,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
           </div>
           {/* Category tabs */}
-          <div className="shrink-0 flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
+          <ScrollRow className="shrink-0 flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
             {TASK_TEMPLATES.map((g) => (
               <button key={g.label} onClick={() => setTplCat(g.label)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === g.label ? "text-white" : "bg-stone-100 text-stone-700"}`}
@@ -2820,7 +2977,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
                 {g.label}
               </button>
             ))}
-          </div>
+          </ScrollRow>
           {/* Template list */}
           <div className="overflow-y-auto flex-1 p-4 space-y-2 pb-24">
             {activeTplGroup.templates.map((tpl) => (
@@ -3070,11 +3227,11 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
         <Search className="w-4 h-4 text-stone-400" />
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søg medlem..." className="flex-1 bg-transparent outline-none text-sm" />
       </div>
-      <div className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+      <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
         {[["all","Alle"],["reached","Nået mål"],["behind","Bagud"]].map(([id,label]) => (
           <button key={id} onClick={() => setFilter(id)} className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === id ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`} style={filter === id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>{label}</button>
         ))}
-      </div>
+      </ScrollRow>
       <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm">
         {filtered.map((m) => {
           const reached = m.points >= 100;

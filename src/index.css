@@ -11,3 +11,39 @@ body {
   width: 100%;
   min-height: 100svh;
 }
+
+/* Vandrette lister bruger denne. Klassen fandtes i markup'en længe før den
+   fandtes her — Tailwind har den ikke indbygget, og der er ingen plugin, så
+   den gjorde ingenting. Rullepanelet stjæler højde og ser forkert ud under
+   en række chips; fortællingen om at der er mere, klarer ScrollRow i stedet
+   med en blød udtoning i kanten. */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Blød kant på vandrette lister.
+   En maske på selve indholdet, ikke en gradient malet ovenpå. Derfor virker
+   den lige godt på den grønne gradient-header og på hvid baggrund — en
+   overlejret gradient ville skulle kende baggrundsfarven og ramme forkert et
+   af stederne. 28px er nok til at man ser, at noget fortsætter, uden at den
+   yderste knap bliver ulæselig. */
+.fade-left,
+.fade-right,
+.fade-both {
+  -webkit-mask-image: var(--row-fade);
+  mask-image: var(--row-fade);
+}
+.fade-left  { --row-fade: linear-gradient(to right, transparent 0, #000 28px); }
+.fade-right { --row-fade: linear-gradient(to left,  transparent 0, #000 28px); }
+.fade-both  { --row-fade: linear-gradient(to right, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%); }
+
+/* Rammer nogen Reducér bevægelse, skal rulningen ikke glide. */
+@media (prefers-reduced-motion: reduce) {
+  .scrollbar-hide { scroll-behavior: auto; }
+}

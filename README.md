@@ -195,6 +195,26 @@ Ikonerne (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) er
 rasteriseret fra `public/icon.svg`. Ændrer du SVG'en, skal PNG'erne
 genskabes — ellers viser telefonerne det gamle ikon.
 
+## Vandrette lister
+
+Syv steder i appen er en række bredere end skærmen — kategorifiltre, badges,
+holdene på scoreboardet, admin-fanerne. Admin-fanerne er 1109px i et 390px
+vindue, så to tredjedele er skjult.
+
+Alle bruger `<ScrollRow>`, som holder sig ude af syne til den er nødvendig:
+
+- Indholdet tones blødt ud i den kant, hvor der er mere. Det er en
+  `mask-image` på indholdet, ikke en gradient ovenpå — derfor virker det lige
+  godt på den grønne header og på hvid baggrund.
+- Musehjulet ruller sidelæns, når markøren er over rækken. Uden det kan en
+  computerbruger kun komme videre ved at holde Shift nede, og det ved de færreste.
+- Pile vises kun på enheder med mus, og kun når der er noget at rulle til.
+- Den aktive knap rulles selv ind i billedet, også når fanen skiftes fra koden.
+
+Klassen `scrollbar-hide` stod i markup'en længe uden at være defineret nogen
+steder — hverken Tailwind eller et plugin leverer den. Den er nu i
+`src/index.css`.
+
 ## Drift
 
 ### Fejl fra medlemmernes telefoner
@@ -270,6 +290,12 @@ Se hvad der venter: `select * from public.auto_confirm_preview();`
 
 Tre filer: medlemsliste, opgaveliste og tilmeldinger. Arkiverede sæsoner
 hentes hver for sig med download-ikonet i *Tidligere sæsoner*.
+
+**Bidragslisten** ligger et andet sted: **Admin → Oversigt → Eksportér
+bidragsliste**. Den viser hvert medlems point mod målet og hvem der efter den
+opgørelse skal betale. Mål og beløb læses fra indstillingerne — de var
+tidligere hårdkodet til 100 og 50 point på den skærm, så en ændring af
+halvsmålet slog ikke igennem.
 
 Filerne er skrevet til at åbne rigtigt ved dobbeltklik i **dansk** Excel:
 
