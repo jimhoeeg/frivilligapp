@@ -12,7 +12,7 @@ Volunteer task coordination web app for Randers Volleyballklub (RVK).
 - 🔄 **Byt tjanser** — tilmelding og point flytter samlet i én databasefunktion
 - 🔔 **Notifikationer** — ved godkendelse, tildeling, bekræftelse, ændret eller aflyst opgave
 - 🛡️ **Admin-panel** — opgaver, medlemmer, roller, godkendelser og audit-log
-- 📱 **Mobile-first** — bygget til telefonen
+- 📱 **Mobile-first** — bygget til telefonen, kan lægges på hjemmeskærmen
 
 ## Tech Stack
 
@@ -66,9 +66,11 @@ select tgname from pg_trigger
 ```
 
 Kør derefter de øvrige migrationer i `supabase/migrations/` i navnerækkefølge.
-`20260918100000_task_completion.sql` Den flytter point fra *tilmelding* til *bekræftet gennemført*, og
-nulstiller derfor pointtallene: alle eksisterende tilmeldinger står som
-"afventer bekræftelse", indtil en admin gør dem op under **Admin → Bekræft**.
+
+`20260918100000_task_completion.sql` flytter point fra *tilmelding* til
+*bekræftet gennemført*, og nulstiller derfor pointtallene: alle eksisterende
+tilmeldinger står som "afventer bekræftelse", indtil en admin gør dem op
+under **Admin → Bekræft**.
 Vil I i stedet godkende hele den eksisterende historik på én gang, står linjen
 til det i bunden af filen.
 
@@ -80,6 +82,9 @@ appen kalder så selv funktionen, når nogen er logget ind. Tjek hvad der skete:
 ```sql
 select jobname, schedule from cron.job where jobname = 'rvk_auto_confirm';
 ```
+
+`20260918160000_cleanup_orphans.sql` rydder efterladte pointfunktioner fra en
+gren, der aldrig blev merget — se "Efterladt SQL i den rigtige database".
 
 **2. Rul sletnings-funktionen ud**
 
@@ -131,18 +136,30 @@ psql -d rvk -f supabase/tests/20_completion.sql         # 14 tjek af bekræftels
 psql -d rvk -f supabase/tests/30_auto_confirm.sql      # 11 tjek af automatikken
 ```
 
+### Efterladt SQL i den rigtige database
+
+Grenen `claude/app-domain-usage-lsz87f` blev aldrig merget, men dens SQL blev
+kørt på Supabase-projektet. Den lavede sin egen vej til at uddele point
+(`claim_task`, `unclaim_task`, `handle_task_claim`). Appen kalder dem ikke
+længere, men så længe de ligger i databasen, findes der to måder at ændre en
+persons point på. `20260918160000_cleanup_orphans.sql` fjerner dem. Eftersynet
+i bunden af den fil viser, om der er flere rester.
+
 ## Deployment
 
-Deployed on **Vercel** — auto-deploys on push to `main` branch.
+Kører på **Vercel** i projektet **`frivilligappen`**, som auto-deployer ved
+push til `main`.
 
-Live: `https://frivilligapp.vercel.app`
+Live: `https://frivilligappen-jimhoeeg-5138s-projects.vercel.app`
 
-### Deploy Manually
+> **Kun ét Vercel-projekt må være koblet til dette repo.** Der lå tidligere to
+> (`frivilligapp` og `frivilligappen`), og de udløste hver deres build ved
+> samme push. På Hobby-planen er der én byggeplads, så det ene build døde
+> konsekvent med `BUILD_FAILED — "Resource provisioning failed"` efter et
+> halvt sekund og uden logs. Opret ikke et projekt nummer to.
 
-1. Go to [vercel.com](https://vercel.com)
-2. Import GitHub repo: `jimhoeeg/frivilligapp`
-3. Vercel auto-detects Vite config
-4. Deploy! ✨
+Inden linket sendes til medlemmerne bør der peges et rigtigt domæne på
+projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 
 ## Project Structure
 
@@ -152,7 +169,12 @@ supabase/migrations/           # databaseændringer – kør i rækkefølge
 supabase/functions/            # serverfunktioner (sletning af medlemmer)
 supabase/tests/                # kan køre migrationen igennem lokalt
 supabase_*.sql                 # historik, se "Ældre SQL-filer" ovenfor
+public/icon.svg                # klubbens ikon – PNG'erne er genereret herfra
 ```
+
+Ikonerne (`icon-192.png`, `icon-512.png`, `apple-touch-icon.png`) er
+rasteriseret fra `public/icon.svg`. Ændrer du SVG'en, skal PNG'erne
+genskabes — ellers viser telefonerne det gamle ikon.
 
 ## Pointmodel
 
@@ -191,7 +213,6 @@ Se hvad der venter: `select * from public.auto_confirm_preview();`
 ## Køreplan
 
 - [ ] E-mailnotifikationer (i dag kun beskeder inde i appen)
-- [ ] PWA: app-ikon og "Føj til hjemmeskærm"
 - [ ] Fejlovervågning og fast backup
 - [ ] Del `App.jsx` op i filer
 
