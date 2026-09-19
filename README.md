@@ -72,18 +72,28 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919090000_points_follow_task.sql` | Point følger med, når en opgaves værdi ændres. |
 | `20260919110000_client_errors.sql` | Fejl fra medlemmernes telefoner. |
 
-Kontrollér bagefter:
+**1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
-```sql
--- forventet: tc_after_delete, tc_after_insert, tc_after_update,
---            tc_before_delete, tc_before_insert
-select tgname from pg_trigger
- where tgrelid = 'public.task_claims'::regclass and not tgisinternal
- order by 1;
+Samme sted: SQL Editor → New query → indsæt hele **`supabase/VERIFY.sql`** → Run.
+Den læser kun og ændrer ingenting. Resultatet er 20 linjer, der hver siger
+`OK`, `FEJL` eller `INFO`:
 
--- kører den daglige automatik i databasen?
-select jobname, schedule from cron.job where jobname like 'rvk_%';
-```
+| Linje | Hvad den fanger |
+|---|---|
+| 1–3 | Tabeller, row level security, ingen tabel uden adgangsregler |
+| 4–6 | De rigtige triggere — og at den gamle pointtrigger og den konkurrerende pointmotor er væk |
+| 7 | At alle 19 funktioner, appen kalder, findes |
+| 8–12 | GDPR-hullet lukket, e-mail og telefon skjult, og at ingen kan hæve sin egen rolle eller sine egne point |
+| 13–16 | At pointsummer, tilstande, ledige pladser og indstillinger stemmer |
+| 17–18 | At hold og mindst to super admins er oprettet (trin 3) |
+| 19–20 | INFO: hvor mange venter på godkendelse og bekræftelse |
+
+**Alt skal stå `OK`, på nær `INFO`-linjerne.** Linje 17 og 18 står som `FEJL`,
+indtil `seed.sql` er kørt — det er ventet. Står noget andet som `FEJL`, siger
+`detalje`-kolonnen hvem eller hvad det drejer sig om.
+
+Nederst kommer en NOTICE om `pg_cron`. Er den ikke slået til på projektet, er
+det ikke en fejl — appen kalder selv opgørelsen, når nogen er logget ind.
 
 **2. Rul sletnings-funktionen ud**
 
@@ -166,6 +176,7 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 ```
 src/App.jsx                    # hele appen
 supabase/RUN_ALL.sql           # alle migrationer samlet – ét indsæt
+supabase/VERIFY.sql            # eftersyn efter migrationerne – læser kun
 supabase/migrations/           # databaseændringer – kilden til RUN_ALL.sql
 supabase/functions/            # serverfunktioner (sletning af medlemmer)
 supabase/tests/                # kan køre migrationerne igennem lokalt
