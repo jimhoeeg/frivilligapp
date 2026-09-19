@@ -264,6 +264,25 @@ Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
 Kør den manuelt: `select public.auto_confirm_due_claims(true);`
 Se hvad der venter: `select * from public.auto_confirm_preview();`
 
+## Eksport af klubdata
+
+**Admin → Indstillinger → Klubdata → Eksportér klubdata.** Kun super admins.
+
+Tre filer: medlemsliste, opgaveliste og tilmeldinger. Arkiverede sæsoner
+hentes hver for sig med download-ikonet i *Tidligere sæsoner*.
+
+Filerne er skrevet til at åbne rigtigt ved dobbeltklik i **dansk** Excel:
+
+- **Semikolon** som separator, ikke komma. Dansk Excel bruger semikolon som
+  listeseparator, og med komma lander hele rækken i én kolonne.
+- **UTF-8 BOM** forrest. Uden de tre bytes bliver æ, ø og å til volapyk.
+- Felter med semikolon, citationstegn eller linjeskift sættes i anførselstegn,
+  og citationstegn fordobles. En admin-bemærkning med et linjeskift i
+  sprænger altså ikke filen.
+
+Medlemslisten indeholder e-mail og telefon. Hver eksport skrives i
+audit-loggen med navnet på den, der hentede den.
+
 ## Nulstilling af sæson
 
 **Admin → Indstillinger → Klubdata → Nulstil ny sæson.** Kun super admins.

@@ -3521,6 +3521,177 @@ const AdminRoles = ({ currentUser }) => {
   );
 };
 
+// ---- CSV ----
+//
+// To ting går galt, hvis man skriver CSV naivt til danske brugere:
+//
+//   1. Åbner man en UTF-8-fil i Excel uden BOM, bliver æ, ø og å til volapyk.
+//      De tre bytes forrest fortæller Excel, hvad den har med at gøre.
+//   2. Dansk Excel bruger semikolon som listeseparator, ikke komma. Med komma
+//      lander hele rækken i én kolonne, og så er filen ubrugelig uden
+//      importguiden.
+//
+// Derfor: semikolon og BOM. Filen åbner korrekt ved dobbeltklik i dansk
+// Excel, Numbers og Google Sheets.
+const csvCell = (v) => {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "boolean") return v ? "ja" : "nej";
+  const s = String(v);
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const toCSV = (headers, rows) =>
+  [headers.map(csvCell).join(";"), ...rows.map((r) => r.map(csvCell).join(";"))].join("\r\n");
+
+const downloadCSV = (filename, csv) => {
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Uden revoke bliver filen liggende i hukommelsen, til fanen lukkes.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+// ---- EKSPORT AF KLUBDATA ----
+//
+// Kun super admins. Filerne indeholder medlemmernes kontaktoplysninger, så
+// hver eksport skrives i audit-loggen: hvem hentede hvad, og hvornår.
+const ExportItem = ({ id, busy, done, title, desc, onClick }) => (
+  <button
+    onClick={onClick}
+    disabled={busy !== null}
+    className="w-full flex items-center justify-between px-4 py-3 bg-stone-50 hover:bg-stone-100 rounded-xl text-left disabled:opacity-50"
+  >
+    <div className="min-w-0 pr-3">
+      <div className="text-[13px] font-semibold text-stone-800">{title}</div>
+      <div className="text-[11px] text-stone-500 leading-snug">{desc}</div>
+    </div>
+    {busy === id
+      ? <div className="w-4 h-4 border-2 border-stone-300 border-t-stone-600 rounded-full animate-spin shrink-0" />
+      : done.includes(id)
+        ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+        : <Download className="w-4 h-4 text-stone-500 shrink-0" />}
+  </button>
+);
+
+const ExportModal = ({ currentUser, onClose }) => {
+  const [busy, setBusy]   = useState(null);
+  const [error, setError] = useState(null);
+  const [done, setDone]   = useState([]);
+
+  const run = async (key, label, build) => {
+    setBusy(key);
+    setError(null);
+    try {
+      const { filename, headers, rows } = await build();
+      if (!rows.length) { setError(`Der er ingen ${label.toLowerCase()} at eksportere endnu.`); return; }
+      downloadCSV(filename, toCSV(headers, rows));
+      await logAction("settings", `Eksporterede ${label.toLowerCase()} (${rows.length} rækker)`, currentUser);
+      setDone((d) => [...d, key]);
+    } catch (e) {
+      setError(e.message || "Kunne ikke hente data");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const exportMembers = () => run("members", "Medlemsliste", async () => {
+    const { data, error: e } = await supabase.rpc("admin_list_members");
+    if (e) throw e;
+    return {
+      filename: `rvk-medlemmer-${today()}.csv`,
+      headers: ["Navn", "Hold", "Rolle", "Point", "Tjanser", "Godkendt", "E-mail", "Telefon", "Oprettet"],
+      rows: (data || []).map((m) => [
+        m.name, m.team, m.role, m.points, m.tasks_done, m.approved,
+        m.email, m.phone, (m.created_at || "").slice(0, 10),
+      ]),
+    };
+  });
+
+  const exportTasks = () => run("tasks", "Opgaveliste", async () => {
+    const { data, error: e } = await supabase
+      .from("tasks")
+      .select("title,category,date,date_full,date_end,time,location,points,difficulty,spots_total,spots_left,duration_type")
+      .order("date_full", { ascending: true });
+    if (e) throw e;
+    return {
+      filename: `rvk-opgaver-${today()}.csv`,
+      headers: ["Titel", "Kategori", "Dato", "Startdato", "Slutdato", "Tidsrum", "Sted", "Point", "Sværhed", "Pladser", "Ledige", "Varighed"],
+      rows: (data || []).map((t) => [
+        t.title, t.category, t.date, t.date_full, t.date_end, t.time, t.location,
+        t.points, t.difficulty, t.spots_total, t.spots_left, t.duration_type,
+      ]),
+    };
+  });
+
+  const exportClaims = () => run("claims", "Tilmeldinger", async () => {
+    const { data, error: e } = await supabase
+      .from("task_claims")
+      .select("status,points_awarded,claimed_at,confirmed_at,admin_note,tasks(title,date,date_full,points),profiles(name,team)")
+      .order("claimed_at", { ascending: false });
+    if (e) throw e;
+    return {
+      filename: `rvk-tilmeldinger-${today()}.csv`,
+      headers: ["Opgave", "Dato", "Navn", "Hold", "Tilstand", "Point", "Tilmeldt", "Bekræftet", "Bemærkning"],
+      rows: (data || []).map((c) => [
+        c.tasks?.title, c.tasks?.date, c.profiles?.name, c.profiles?.team,
+        CLAIM_STATE[c.status]?.label || c.status,
+        c.status === "completed" ? c.points_awarded : 0,
+        (c.claimed_at || "").slice(0, 10),
+        (c.confirmed_at || "").slice(0, 10),
+        c.admin_note,
+      ]),
+    };
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="text-[15px] font-bold text-stone-900 mb-0.5">Eksportér klubdata</div>
+        <p className="text-[13px] text-stone-500 mb-4 leading-relaxed">
+          Filerne åbner direkte i Excel og Numbers.
+        </p>
+
+        <div className="space-y-2">
+          <ExportItem id="members" busy={busy} done={done} title="Medlemsliste"
+                desc="Navn, hold, point, tjanser — og kontaktoplysninger"
+                onClick={exportMembers} />
+          <ExportItem id="tasks" busy={busy} done={done} title="Opgaveliste"
+                desc="Alle opgaver med datoer, point og pladser"
+                onClick={exportTasks} />
+          <ExportItem id="claims" busy={busy} done={done} title="Tilmeldinger"
+                desc="Hvem stod på hvad, og hvordan det blev gjort op"
+                onClick={exportClaims} />
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-4">
+          <div className="text-[12px] font-bold text-amber-900 mb-0.5">Medlemslisten er personoplysninger</div>
+          <p className="text-[12px] text-amber-800 leading-relaxed">
+            Den indeholder e-mail og telefon. Gem den ikke i en delt mappe, og slet den når du er
+            færdig. Hver eksport skrives i audit-loggen med dit navn.
+          </p>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-3">
+            <p className="text-[12px] text-red-800">{error}</p>
+          </div>
+        )}
+
+        <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold">
+          Luk
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ---- NULSTIL SÆSON ----
 //
 // Knappen sletter hele klubbens pointregnskab. Den skal derfor være svær at
@@ -3697,8 +3868,32 @@ const SeasonArchiveModal = ({ label, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="text-[15px] font-bold text-stone-900 mb-0.5">Sæson {label}</div>
-        <p className="text-[12px] text-stone-500 mb-3">Stillingen som den så ud, da sæsonen blev gjort op.</p>
+        <div className="flex items-start justify-between gap-3 mb-0.5">
+          <div className="min-w-0">
+            <div className="text-[15px] font-bold text-stone-900">Sæson {label}</div>
+            <p className="text-[12px] text-stone-500 mb-3">Stillingen som den så ud, da sæsonen blev gjort op.</p>
+          </div>
+          <button
+            onClick={() => {
+              if (!rows?.length) return;
+              downloadCSV(
+                `rvk-saeson-${label.replace(/[^\w-]+/g, "-")}.csv`,
+                toCSV(
+                  ["Navn", "Hold", "Point", "Bonuspoint", "Tjanser", "Maal", "Naaede maalet"],
+                  rows.map((r) => [
+                    r.name, r.team, r.points, r.bonus_points, r.tasks_done,
+                    r.point_goal, r.point_goal != null ? r.points >= r.point_goal : "",
+                  ])
+                )
+              );
+            }}
+            disabled={!rows?.length}
+            title="Hent som CSV"
+            className="shrink-0 p-2 rounded-lg bg-stone-100 hover:bg-stone-200 disabled:opacity-40"
+          >
+            <Download className="w-4 h-4 text-stone-600" />
+          </button>
+        </div>
 
         <div className="overflow-y-auto -mx-1 px-1">
           {rows === null && <div className="text-[13px] text-stone-400 py-6 text-center">Henter...</div>}
@@ -3742,6 +3937,7 @@ const AdminSettings = ({ currentUser }) => {
   const [saved, setSaved]             = useState(false);
   const [saving, setSaving]           = useState(false);
   const [showReset, setShowReset]     = useState(false);
+  const [showExport, setShowExport]   = useState(false);
   const [seasons, setSeasons]         = useState([]);
   const [openSeason, setOpenSeason]   = useState(null);
 
@@ -3823,6 +4019,14 @@ const AdminSettings = ({ currentUser }) => {
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Klubdata</div>
 
         <button
+          onClick={() => setShowExport(true)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-stone-50 hover:bg-stone-100 rounded-xl text-left"
+        >
+          <span className="text-[13px] font-semibold">Eksportér klubdata (CSV)</span>
+          <Download className="w-4 h-4 text-stone-500" />
+        </button>
+
+        <button
           onClick={() => setShowReset(true)}
           className="w-full flex items-center justify-between px-4 py-3 bg-pink-50 hover:bg-pink-100 rounded-xl text-left"
         >
@@ -3863,6 +4067,7 @@ const AdminSettings = ({ currentUser }) => {
           onDone={() => { setShowReset(false); loadSeasons(); }}
         />
       )}
+      {showExport && <ExportModal currentUser={currentUser} onClose={() => setShowExport(false)} />}
       {openSeason && <SeasonArchiveModal label={openSeason} onClose={() => setOpenSeason(null)} />}
     </div>
   );
