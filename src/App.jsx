@@ -648,11 +648,16 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
   const [confirmEmailSent, setConfirmEmailSent] = useState(false);
 
   const [teams, setTeams] = useState([]);
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
 
   useEffect(() => {
-    supabase.from("teams").select("name").order("name").then(({ data }) => {
-      if (data && data.length > 0) setTeams(data.map((t) => t.name));
-      else setTeams(["Ny"]);
+    // Holdene hentes UDEN session — man vælger sit hold, mens man opretter sig.
+    // Går det galt, er den forkerte reaktion at finde på et holdnavn: så ender
+    // alle nye medlemmer samme sted, og ingen opdager det. Sig det i stedet.
+    supabase.from("teams").select("name").order("name").then(({ data, error }) => {
+      if (error) reportError(`Kunne ikke hente hold: ${error.message}`, "signup");
+      setTeams((data || []).map((t) => t.name));
+      setTeamsLoaded(true);
     });
   }, []);
 
@@ -800,12 +805,19 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
                 <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Hold</label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none"><Users className="w-4 h-4" /></div>
-                  <select value={team} onChange={(e) => setTeam(e.target.value)} className={`w-full pl-10 pr-10 py-3 text-sm bg-stone-50 rounded-xl border outline-none appearance-none transition-colors ${errors.team ? "border-pink-300 bg-pink-50" : "border-stone-200 focus:border-emerald-500"}`}>
-                    <option value="">Vælg dit hold...</option>
+                  <select value={team} onChange={(e) => setTeam(e.target.value)} disabled={!teamsLoaded || teams.length === 0} className={`w-full pl-10 pr-10 py-3 text-sm bg-stone-50 rounded-xl border outline-none appearance-none transition-colors disabled:opacity-60 ${errors.team ? "border-pink-300 bg-pink-50" : "border-stone-200 focus:border-emerald-500"}`}>
+                    <option value="">
+                      {!teamsLoaded ? "Henter hold..." : teams.length === 0 ? "Ingen hold tilgængelige" : "Vælg dit hold..."}
+                    </option>
                     {teams.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
                 </div>
+                {teamsLoaded && teams.length === 0 && (
+                  <p className="text-[11px] text-amber-700 mt-1">
+                    Holdlisten kunne ikke hentes. Skriv til {LEGAL_CONTACT} — det er ikke noget, du kan rette.
+                  </p>
+                )}
                 {errors.team && <p className="text-[11px] text-pink-600 mt-1">{errors.team}</p>}
               </div>
               <label className="flex items-start gap-2.5 pt-1 cursor-pointer">

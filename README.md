@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de ti migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de elleve migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -74,6 +74,7 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919110000_client_errors.sql` | Fejl fra medlemmernes telefoner. |
 | `20260919140000_lock_function_execute.sql` | Kun indloggede må kalde databasens funktioner, og kun dem appen bruger. |
 | `20260919160000_season_reset.sql` | Nulstil sæsonen — med arkiv af stillingen og en lås, så det ikke sker ved et uheld. |
+| `20260922180000_teams_readable_at_signup.sql` | Holdlisten skal kunne læses uden login — oprettelsesskærmen henter den, før der findes en session. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -98,6 +99,12 @@ indtil `seed.sql` er kørt — det er ventet. Står noget andet som `FEJL`, sige
 
 Nederst kommer en NOTICE om `pg_cron`. Er den ikke slået til på projektet, er
 det ikke en fejl — appen kalder selv opgørelsen, når nogen er logget ind.
+
+> **Hold skal kunne læses uden login.** Oprettelsesskærmen henter holdlisten,
+> før brugeren har en session, og feltet er påkrævet. Læsereglen på `teams` er
+> derfor `using (true)` — holdnavne er ikke personoplysninger. Strammer man den
+> til `auth.uid() is not null`, får nye medlemmer en tom liste og kan ikke
+> oprette sig. Skrivning er stadig kun for super admins.
 
 **2. Rul sletnings-funktionen ud**
 
