@@ -229,6 +229,16 @@ Databasen sætter en grænse på 20 fejl pr. bruger i timen, og fejl ældre end
 Det er ikke et rigtigt overvågningsværktøj — der er ingen alarmer. Ser I
 samme fejl hos mange på én gang, er noget gået i stykker for alle.
 
+### Tilbagemeldinger fra medlemmerne
+
+**Profil → Noget der driller?** Medlemmet skriver kort, hvad der skete, og det
+går samme vej som et nedbrud — `log_client_error` med `source = 'feedback'`.
+Admins ser det under **Audit log → Fejl & beskeder**, hvor en besked skrevet
+af et menneske vises anderledes end en stakspor, med hvem der skrev og hvornår.
+
+Databasens grænse på 20 pr. bruger i timen gælder også her, og alt ældre end
+90 dage slettes.
+
 ### Når profilen ikke kan hentes
 
 Login kan lykkes i Supabase, uden at appen kan hente medlemsprofilen. Det sker

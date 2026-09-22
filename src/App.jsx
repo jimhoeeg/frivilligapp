@@ -8,7 +8,7 @@ import {
   Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
   ShieldCheck, UserPlus, DollarSign, AlertTriangle, Activity, FileText,
   Pencil, Copy, UserCheck, UserX, ThumbsUp, BellRing,
-  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft
+  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft, MessageSquare
 } from "lucide-react";
 
 const theme = {
@@ -23,6 +23,86 @@ const theme = {
   ink: "#0A1F17",
   paper: "#FAFAF7",
   muted: "#6B7F77",
+};
+
+// ============ SIG TIL, HVIS NOGET DRILLER ============
+//
+// Under en prøvekørsel er forskellen på brugbar og ubrugelig tilbagemelding,
+// om der er en knap. Ellers bliver det til "den var lidt mærkelig i går" i en
+// hal, og det er glemt inden nogen skriver det ned.
+//
+// Beskeden går samme vej som nedbrud — log_client_error med source
+// "feedback" — så admins ser den under Audit log → Fejl sammen med
+// tidspunkt, hvem der skrev, og hvilken skærm de stod på. Databasens
+// grænse på 20 pr. bruger i timen gælder også her.
+const FeedbackModal = ({ onClose }) => {
+  const [text, setText] = useState("");
+  const [sendt, setSendt] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const send = async () => {
+    const besked = text.trim();
+    if (!besked) return;
+    setBusy(true);
+    await supabase.rpc("log_client_error", {
+      p_message:    besked.slice(0, 500),
+      p_source:     "feedback",
+      p_stack:      null,
+      p_url:        typeof window !== "undefined" ? window.location.href : null,
+      p_user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+    });
+    setBusy(false);
+    setSendt(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl p-5 w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        {sendt ? (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              <div className="text-[15px] font-bold text-stone-900">Tak — den er sendt</div>
+            </div>
+            <p className="text-[13px] text-stone-600 leading-relaxed mb-4">
+              Klubbens administratorer kan se den nu. Du får ikke et svar her i appen,
+              så skriv til {LEGAL_CONTACT}, hvis det haster.
+            </p>
+            <button onClick={onClose} className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-[13px] font-bold">Luk</button>
+          </>
+        ) : (
+          <>
+            <div className="text-[15px] font-bold text-stone-900 mb-0.5">Noget der driller?</div>
+            <p className="text-[13px] text-stone-500 mb-3 leading-relaxed">
+              Skriv hvad du lavede, og hvad der skete. Det behøver ikke være pænt —
+              det hjælper mest, hvis du skriver det med det samme.
+            </p>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              rows={4}
+              maxLength={500}
+              autoFocus
+              placeholder="Fx: Jeg trykkede Tag tjansen på dommerbordet, og så skete der ingenting."
+              className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-[14px] resize-none focus:outline-none focus:border-stone-400"
+            />
+            <div className="text-[11px] text-stone-400 mt-1 mb-3 text-right">{text.length}/500</div>
+            <div className="flex gap-2">
+              <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-[13px] font-semibold text-stone-600">Annuller</button>
+              <button
+                onClick={send}
+                disabled={!text.trim() || busy}
+                className="flex-1 py-2.5 rounded-xl text-white text-[13px] font-bold disabled:bg-stone-200 disabled:text-stone-400"
+                style={text.trim() && !busy ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : undefined}
+              >
+                {busy ? "Sender..." : "Send"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // ============ PROFILEN KUNNE IKKE HENTES ============
@@ -1806,14 +1886,21 @@ const MenuButton = ({ icon, label, danger, onClick }) => (
 const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged }) => {
   const [section, setSection] = useState("overview");
   const [pendingCount, setPendingCount] = useState(0);
+  const [approvalCount, setApprovalCount] = useState(0);
   const [openSignups, setOpenSignups] = useState(null);
   const currentUserRole = currentUser?.role;
   const isSuperAdmin = currentUserRole === "super_admin";
 
-  // Tæller på fanen, så ingen glemmer at gøre tjanserne op.
+  // Tællere på fanerne, så ingen glemmer at gøre tjanserne op — eller at
+  // godkende et nyt medlem. Godkendelses-tallet stod hårdkodet til 0, så et
+  // medlem kunne melde sig og vente i dagevis uden at nogen så det.
   const refreshPending = async () => {
-    const { data } = await supabase.rpc("admin_pending_confirmations");
-    setPendingCount((data || []).reduce((n, r) => n + r.pending, 0));
+    const [bekraeft, medlemmer] = await Promise.all([
+      supabase.rpc("admin_pending_confirmations"),
+      supabase.rpc("admin_list_members"),
+    ]);
+    setPendingCount((bekraeft.data || []).reduce((n, r) => n + r.pending, 0));
+    setApprovalCount((medlemmer.data || []).filter((m) => !m.approved).length);
   };
 
   // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
@@ -1825,7 +1912,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
   const sections = [
     { id: "overview",  label: "Oversigt",      icon: Activity,    superOnly: false },
     { id: "confirm",   label: "Bekræft",       icon: CheckCircle2, superOnly: false, badge: pendingCount },
-    { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: 0 },
+    { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: approvalCount },
     { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
     { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
     { id: "teams",     label: "Hold",           icon: Users,       superOnly: true  },
@@ -1874,7 +1961,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
       <div className="px-5 mt-5">
         {section === "overview"  && <AdminOverview tasks={tasks} currentUser={currentUser} />}
         {section === "confirm"   && <AdminConfirmations currentUser={currentUser} onOpenTask={(id) => { setOpenSignups(id); setSection("tasks"); }} />}
-        {section === "approvals" && <AdminApprovals />}
+        {section === "approvals" && <AdminApprovals onChanged={refreshPending} />}
         {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} openSignups={openSignups} onSignupsOpened={() => setOpenSignups(null)} onConfirmed={() => { refreshPending(); onPointsChanged?.(); }} />}
         {section === "members"   && <AdminMembers currentUserRole={currentUserRole} currentUser={currentUser} />}
         {section === "teams"     && isSuperAdmin && <AdminTeams />}
@@ -2028,7 +2115,7 @@ const AuditPreview = () => {
 };
 
 // ---- GODKENDELSER ----
-const AdminApprovals = () => {
+const AdminApprovals = ({ onChanged }) => {
   const [pending, setPending] = useState([]);
   const [done, setDone]       = useState([]);
   const [expanded, setExpanded] = useState(null);
@@ -2061,6 +2148,7 @@ const AdminApprovals = () => {
     setDone((d) => [{ ...a, action: "approved" }, ...d]);
     setExpanded(null);
     setApprovalError(null);
+    onChanged?.();
   };
 
   const reject  = async (a) => {
@@ -2080,6 +2168,7 @@ const AdminApprovals = () => {
     setDone((d) => [{ ...a, action: "rejected", reason }, ...d]);
     setRejecting(null); setReason("");
     setApprovalError(null);
+    onChanged?.();
   };
 
   return (
@@ -4326,14 +4415,16 @@ const AdminAuditLog = () => {
       <div className="space-y-3">
         <div className="flex gap-1.5">
           <button onClick={() => setView("actions")} className="px-3 py-1.5 rounded-lg text-[12px] font-semibold bg-stone-100 text-stone-600">Handlinger</button>
-          <button className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>Fejl ({errors.length})</button>
+          <button className="px-3 py-1.5 rounded-lg text-[12px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${theme.pink}, ${theme.purple})` }}>Fejl & beskeder ({errors.length})</button>
         </div>
 
         <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
           <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
           <p className="text-[11px] text-violet-900 leading-relaxed">
-            Uventede fejl fra medlemmernes telefoner. Før endte de i browserens konsol, hvor ingen så dem.
-            Samme fejl hos mange på én gang betyder som regel, at noget er gået i stykker for alle. Fejl ældre end 90 dage slettes.
+            To slags linjer: uventede fejl fra medlemmernes telefoner, som før endte i browserens
+            konsol hvor ingen så dem — og beskeder, medlemmerne selv har skrevet via
+            <strong> Noget der driller?</strong> på profilskærmen. Samme fejl hos mange på én gang
+            betyder som regel, at noget er gået i stykker for alle. Alt ældre end 90 dage slettes.
           </p>
         </div>
 
@@ -4347,16 +4438,26 @@ const AdminAuditLog = () => {
             {errors.map((e) => (
               <div key={e.id} className="bg-white rounded-xl border border-stone-100 shadow-sm p-3">
                 <div className="flex items-start gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0">
-                    <AlertTriangle className="w-3.5 h-3.5" />
+                  {/* En besked skrevet af et menneske skal ikke ligne et nedbrud.
+                      Under en prøvekørsel er det de fleste af linjerne her. */}
+                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                    e.source === "feedback" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"}`}>
+                    {e.source === "feedback"
+                      ? <MessageSquare className="w-3.5 h-3.5" />
+                      : <AlertTriangle className="w-3.5 h-3.5" />}
                   </div>
                   <div className="flex-1 min-w-0">
+                    {e.source === "feedback" && (
+                      <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-700 mb-0.5">
+                        Besked fra medlem
+                      </div>
+                    )}
                     <div className="text-[12px] font-semibold text-stone-900 break-words">{e.message}</div>
                     <div className="text-[11px] text-stone-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span>{e.profiles?.name || "ukendt medlem"}</span>
                       <span>·</span>
                       <span>{new Date(e.created_at).toLocaleString("da-DK")}</span>
-                      {e.source && <><span>·</span><span className="mono">{e.source}</span></>}
+                      {e.source && e.source !== "feedback" && <><span>·</span><span className="mono">{e.source}</span></>}
                     </div>
                     {e.stack && (
                       <details className="mt-1.5">
@@ -4641,6 +4742,7 @@ export default function App() {
   const [selectedTask, setSelectedTask] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [legalDoc, setLegalDoc] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [pointGoal, setPointGoal] = useState(100);
 
   const claimedIds = useMemo(
@@ -5033,6 +5135,10 @@ export default function App() {
 
   // Vilkår og privatlivspolitik lægger sig OVENPÅ skærmen, så en halvt
   // udfyldt oprettelsesformular ikke går tabt, når man læser dem.
+  const feedbackOverlay = showFeedback && (
+    <FeedbackModal onClose={() => setShowFeedback(false)} />
+  );
+
   const legalOverlay = legalDoc && (
     <div className="fixed inset-0 z-[60] overflow-y-auto bg-stone-50">
       <div className="max-w-md mx-auto bg-white min-h-screen shadow-xl">
@@ -5047,6 +5153,7 @@ export default function App() {
         <style>{`@keyframes slideup { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slideup { animation: slideup 0.3s cubic-bezier(0.16, 1, 0.3, 1); } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
         <AuthScreen onAuthenticated={handleAuth} onShowLegal={setLegalDoc} />
         {legalOverlay}
+        {feedbackOverlay}
       </div>
     );
   }
@@ -5094,6 +5201,7 @@ export default function App() {
           </div>
         </div>
         {legalOverlay}
+        {feedbackOverlay}
       </div>
     );
   }
@@ -5190,6 +5298,7 @@ export default function App() {
                     </button>
                   )}
                   {currentUser?.role === "user" && <RequestAdminButton currentUser={currentUser} setToast={setToast} />}
+                  <button onClick={() => setShowFeedback(true)} className="w-full bg-white border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><AlertTriangle className="w-4 h-4 text-amber-500" />Noget der driller?</button>
                   <button onClick={handleLogout} className="w-full bg-stone-100 border border-stone-200 rounded-xl py-3 text-[13px] font-semibold text-stone-700 flex items-center justify-center gap-2 hover:bg-stone-50"><LogOut className="w-4 h-4" />Log ud</button>
 
                   <div className="flex items-center justify-center gap-4 pt-2 pb-1">
@@ -5207,6 +5316,7 @@ export default function App() {
         {!showCalendar && !showSwaps && !showAdmin && !selectedTask && <BottomNav active={tab} onChange={setTab} />}
 
         {legalOverlay}
+        {feedbackOverlay}
 
         {/* Notification drawer */}
         {showNotif && (
