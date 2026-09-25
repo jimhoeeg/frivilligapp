@@ -487,7 +487,10 @@ const AuthField = ({ icon, label, type = "text", name, autoComplete, value, onCh
   </div>
 );
 
-const LEGAL_UPDATED = "10. september 2026";
+// Bestyrelsen godkendte teksterne den 25. september 2026. Datoen staar
+// nederst paa begge dokumenter, saa et medlem kan se, hvad de har sagt ja
+// til — og hvornaar. Retter nogen i teksten, skal den her med.
+const LEGAL_UPDATED = "25. september 2026";
 const LEGAL_CONTACT = "kontakt@randersvk.dk";
 
 const LEGAL_DOCS = {
@@ -567,13 +570,6 @@ const LegalScreen = ({ doc, onBack }) => {
       </div>
 
       <div className="px-5 mt-5">
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5 mb-4">
-          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-          <p className="text-[11px] text-amber-900 leading-relaxed">
-            <strong>Udkast.</strong> Teksten skal godkendes af bestyrelsen, før appen sendes ud til medlemmerne.
-          </p>
-        </div>
-
         <div className="bg-white rounded-2xl border border-stone-100 shadow-sm divide-y divide-stone-100">
           {d.sections.map((sec) => (
             <div key={sec.h} className="p-4">
@@ -585,7 +581,7 @@ const LegalScreen = ({ doc, onBack }) => {
           ))}
         </div>
 
-        <p className="text-[11px] text-stone-400 mt-4 text-center">Senest opdateret {LEGAL_UPDATED}</p>
+        <p className="text-[11px] text-stone-400 mt-4 text-center">Godkendt af bestyrelsen {LEGAL_UPDATED}</p>
       </div>
     </div>
   );
