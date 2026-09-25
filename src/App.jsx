@@ -1668,17 +1668,40 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
   const rem = 7 - (days.length % 7);
   if (rem < 7) for (let i = 1; i <= rem; i++) days.push({ d: new Date(year, month + 1, i), cur: false });
 
-  // Map tasks to day-of-month within current month
+  // Opgaver fordelt paa dage i den viste maaned.
+  //
+  // Foer laeste den her den danske TEKST med et regulaert udtryk og slog
+  // maaneden op i en tabel med seks maaneder:
+  //
+  //     { apr: 3, maj: 4, jun: 5, jul: 6, aug: 7, sep: 8 }
+  //
+  // Oktober til marts fandtes slet ikke, saa de opgaver var usynlige i
+  // kalenderen. Aarstallet blev heller ikke set paa, saa en opgave i
+  // september 2027 ville dukke op i september 2026.
+  //
+  // parseTaskDate() kan det hele i forvejen: den bruger ISO-datoen naar den
+  // findes, og kender alle tolv danske maaneder som reserve.
   const tasksByDay = {};
   tasks.forEach((t) => {
-    const m = t.date.match(/(\d+)\.\s*(\w+)/);
-    if (!m) return;
-    const day = parseInt(m[1]);
-    const mo = { apr: 3, maj: 4, jun: 5, jul: 6, aug: 7, sep: 8 }[m[2]];
-    if (mo === month) {
-      if (!tasksByDay[day]) tasksByDay[day] = [];
-      tasksByDay[day].push(t);
-    }
+    const d = parseTaskDate(t);
+    if (!d) return;
+    if (d.getFullYear() !== year || d.getMonth() !== month) return;
+    const day = d.getDate();
+    (tasksByDay[day] ||= []).push(t);
+  });
+
+  // Opgaver, der loeber over flere maaneder (uge, maaned, halv saeson, saeson)
+  // og daekker den viste maaned uden at STARTE i den. De ville ellers vaere
+  // usynlige hele vejen, og det er netop de store, faste tjanser.
+  const maanedStart = new Date(year, month, 1, 12);
+  const maanedSlut  = new Date(year, month + 1, 0, 12);
+  const loebende = tasks.filter((t) => {
+    if (!t.dateEnd) return false;
+    const start = parseTaskDate(t);
+    const slut  = new Date(t.dateEnd + "T12:00:00");
+    if (!start || isNaN(slut)) return false;
+    if (start.getFullYear() === year && start.getMonth() === month) return false; // vist i gitteret
+    return start <= maanedSlut && slut >= maanedStart;
   });
 
   return (
@@ -1728,9 +1751,15 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
           </div>
         ) : (
           <div className="space-y-2.5">
-            {tasks.sort((a, b) => {
-              const ad = parseInt((a.date.match(/(\d+)/) || [])[1] || 0);
-              const bd = parseInt((b.date.match(/(\d+)/) || [])[1] || 0);
+            {/* .sort() aendrer arrayet, den kaldes paa — og her var det props
+                fra foraelderen. Kopiér foerst. Og sorter paa den rigtige dato:
+                foer sorterede den kun paa DAGEN i maaneden, saa 3. november
+                lagde sig foer 20. oktober. */}
+            {[...tasks].sort((a, b) => {
+              const ad = parseTaskDate(a), bd = parseTaskDate(b);
+              if (!ad && !bd) return 0;
+              if (!ad) return 1;
+              if (!bd) return -1;
               return ad - bd;
             }).map((t) => (
               <button key={t.id} onClick={() => onTaskClick(t)} className="w-full text-left bg-white rounded-xl p-3.5 border border-stone-100 shadow-sm hover:border-emerald-300 flex items-center gap-3 active:scale-[0.99] transition-all">
@@ -1744,6 +1773,33 @@ const CalendarScreen = ({ tasks, claimedTasks, onTaskClick, onBack }) => {
             ))}
           </div>
         )}
+        {/* Sæson- og månedsopgaver, der løber gennem denne måned uden at
+            starte i den. De har ingen enkelt dag at sidde på i gitteret. */}
+        {viewMode === "month" && loebende.length > 0 && (
+          <div className="mt-4">
+            <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-2">
+              Løber hele {monthNames[month]}
+            </h2>
+            <div className="space-y-2">
+              {loebende.map((t) => (
+                <button key={t.id} onClick={() => onTaskClick(t)}
+                        className="w-full text-left bg-white rounded-xl p-3 border border-violet-200 shadow-sm hover:border-violet-300 flex items-center gap-3 active:scale-[0.99] transition-all">
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0"
+                       style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                    <CalendarDays className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-[13px] text-stone-900 truncate">{t.title}</div>
+                    <div className="text-[11px] text-stone-500">{t.date}</div>
+                  </div>
+                  <div className="px-2 py-0.5 rounded-full text-white text-[11px] font-black shrink-0"
+                       style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>+{t.points}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
           <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
           <p className="text-[11px] text-violet-900 leading-relaxed">Prikker under datoer viser opgaver. Klik på en dato for at se detaljer om opgaven.</p>
@@ -2859,10 +2915,48 @@ const AdminConfirmations = ({ currentUser, onOpenTask }) => {
   );
 };
 
+const SORTERINGER = [
+  { id: "dato",     label: "Dato" },
+  { id: "mangler",  label: "Mangler folk" },
+  { id: "point",    label: "Point" },
+  { id: "titel",    label: "Titel" },
+  { id: "oprettet", label: "Oprettet" },
+];
+
 const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened, onConfirmed }) => {
   const [showNew, setShowNew]       = useState(false);
   const [editTask, setEditTask]     = useState(null);
   const [menuOpen, setMenuOpen]     = useState(null);
+  const [sortering, setSortering]   = useState("dato");
+
+  // Listen laa foer i den raekkefoelge, opgaverne var OPRETTET i. Det siger
+  // ingenting om, hvad der er naeste gang nogen skal moede op. Standarden er
+  // nu udfoerelsesdato, med de naermeste oeverst.
+  //
+  // tasks er props — kopiér foer sortering, ellers aendres foraelderens array.
+  const sorterede = useMemo(() => {
+    const kopi = [...tasks];
+    const efterDato = (a, b) => {
+      const ad = parseTaskDate(a), bd = parseTaskDate(b);
+      if (!ad && !bd) return 0;
+      if (!ad) return 1;            // opgaver uden laesbar dato nederst
+      if (!bd) return -1;
+      return ad - bd;
+    };
+    switch (sortering) {
+      case "mangler":
+        // Dem der mangler flest folk foerst – det er dem, der haster.
+        return kopi.sort((a, b) => (b.spotsLeft - a.spotsLeft) || efterDato(a, b));
+      case "point":
+        return kopi.sort((a, b) => (b.points - a.points) || efterDato(a, b));
+      case "titel":
+        return kopi.sort((a, b) => a.title.localeCompare(b.title, "da"));
+      case "oprettet":
+        return kopi;                // rækkefølgen fra serveren er created_at
+      default:
+        return kopi.sort(efterDato);
+    }
+  }, [tasks, sortering]);
   // Kommer man hertil fra bekræftelseslisten, åbnes den valgte opgave direkte.
   // Komponenten monteres på ny, hver gang man skifter til Opgaver-fanen, så
   // prop'en kan læses i en initializer — det er hverken nødvendigt eller
@@ -2954,11 +3048,24 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
     return <AdminTaskSignups task={signupsTask} onClose={closeSignups} setTasks={setTasks} currentUser={currentUser} onConfirmed={onConfirmed} />;
   }
 
+
   return (
     <div className="space-y-4">
       <button onClick={() => setShowNew(true)} className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
         <Plus className="w-4 h-4" />Opret ny opgave
       </button>
+
+      <ScrollRow className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+        <span className="shrink-0 self-center text-[11px] font-semibold text-stone-400 pr-1">Sortér:</span>
+        {SORTERINGER.map((v) => (
+          <button key={v.id} data-active={sortering === v.id} onClick={() => setSortering(v.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${
+              sortering === v.id ? "text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}
+            style={sortering === v.id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+            {v.label}
+          </button>
+        ))}
+      </ScrollRow>
 
       {saveError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-start gap-2">
@@ -2969,7 +3076,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
       )}
 
       <div className="space-y-2.5">
-        {tasks.map((t) => {
+        {sorterede.map((t) => {
           const filled = t.spotsTotal - t.spotsLeft;
           const pct    = Math.round((filled / t.spotsTotal) * 100);
           return (
@@ -3120,6 +3227,31 @@ const TaskDatePicker = ({ value, onChange }) => {
   );
 };
 
+// ============ FORESLAAET POINTTAL ============
+//
+// Tallene er ikke fundet paa. De er laest ud af klubbens egne 40 skabeloner,
+// saa et forslag ligner det, klubben allerede har besluttet:
+//
+//   Let      5-25 pt   (median 10)  - en enkelt vagt
+//   Medium  15-50 pt   (median 40)  - 15 for en kraevende enkeltvagt,
+//                                     40-50 for en saesonrolle
+//   Hård    75-100 pt  (median 75)  - seks af syv saesonroller staar paa 75
+//
+// Varigheden er den staerkeste faktor, ikke svaerhedsgraden alene: "Formand
+// for festudvalget (Sæson)" og "Materialeansvarlig (Sæson)" er begge Hård og
+// begge 75, mens "Dømme kampe" er Medium og 15. Derfor en tabel frem for en
+// formel — den rammer de tal, klubben faktisk bruger.
+//
+// Det er et FORSLAG. Skriver en admin selv et tal, roerer appen det ikke igen.
+const POINT_FORSLAG = {
+  Let:    { single: 10, week: 15, month: 20, half_season: 30, year: 40 },
+  Medium: { single: 15, week: 25, month: 40, half_season: 50, year: 50 },
+  "Hård": { single: 25, week: 40, month: 60, half_season: 75, year: 75 },
+};
+
+const foreslaaPoint = (difficulty, durationType) =>
+  POINT_FORSLAG[difficulty]?.[durationType] ?? POINT_FORSLAG[difficulty]?.single ?? 10;
+
 const DURATION_OPTIONS = [
   { id: "single",      label: "Enkelt dag",   desc: "Én bestemt dato" },
   { id: "week",        label: "En uge",       desc: "7 dage fra startdato" },
@@ -3247,6 +3379,9 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const [time, setTime]             = useState(task?.time || "");
   const [location, setLocation]     = useState(task?.location || "");
   const [points, setPoints]     = useState(task?.points || 15);
+  // Har admin selv skrevet et tal? Saa holder appen fingrene fra det.
+  // En opgave, der redigeres, taeller som "roert": tallet er allerede valgt.
+  const [pointRoert, setPointRoert] = useState(!!task);
   const [spots, setSpots]       = useState(task?.spotsTotal || 2);
   const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
   const [urgent, setUrgent]     = useState(task?.urgent || false);
@@ -3264,12 +3399,26 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
     return () => { ignore = true; };
   }, [isNew, task?.id]);
 
-  const pointsChanged = !isNew && parseInt(points) !== (task?.points ?? null);
+  // Foreslaaet tal ud fra svaerhedsgrad og varighed.
+  const forslag = foreslaaPoint(difficulty, durationType);
+
+  // Det tal, formularen arbejder med. Har admin ikke selv skrevet noget, ER
+  // det forslaget — det gemmes ikke i state og synkroniseres ikke i en
+  // effect, men udledes. Saa kan de to vaerdier aldrig komme ud af trit, og
+  // vi undgaar en kaskade af renders.
+  const visPoints = pointRoert ? points : forslag;
+
+  const forslagAfviger = pointRoert && parseInt(visPoints) !== forslag;
+
+  const pointsChanged = !isNew && parseInt(visPoints) !== (task?.points ?? null);
   const affected      = (claimCounts?.signed_up || 0) + (claimCounts?.completed || 0);
 
   const applyTemplate = (tpl, catLabel, catIcon, ekstra) => {
     setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
     setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
+    // Skabelonens pointtal er et bevidst valg – det maa forslaget ikke
+    // skrive hen over, naar svaerhedsgraden saettes lige ovenfor.
+    setPointRoert(true);
     // Klubbens egne skabeloner husker ogsaa pladser, tidsrum og sted — det er
     // netop dét, der goer dem bedre end appens generiske forslag. Datoen
     // huskes med vilje IKKE: den er ny hver gang.
@@ -3294,7 +3443,7 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
 
   const handleSave = () => {
     if (!title.trim() || !dateISO) return;
-    onSave({ title, category, icon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
+    onSave({ title, category, icon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description });
   };
 
   // Klubbens egne skabeloner, gemt i databasen. De staar side om side med
@@ -3316,7 +3465,7 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
     setGemmerTpl(true);
     setTplBesked(null);
     const { error } = await supabase.from("task_templates").upsert({
-      category, title: title.trim(), points: parseInt(points) || 10,
+      category, title: title.trim(), points: parseInt(visPoints) || 10,
       difficulty, spots_total: parseInt(spots) || 2, duration_type: durationType,
       time: time || null, location: location || null, icon,
       description: description || null,
@@ -3483,16 +3632,42 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
           <AdminInput label="Lokation" placeholder="Bane 1, Arena Randers" icon={<MapPin className="w-4 h-4" />} value={location} onChange={(e) => setLocation(e.target.value)} />
 
           <div className="grid grid-cols-2 gap-3">
-            <AdminInput label="Point" type="number" placeholder="15" icon={<Zap className="w-4 h-4" />} value={points} onChange={(e) => setPoints(e.target.value)} />
+            <AdminInput label="Point" type="number" placeholder="15" icon={<Zap className="w-4 h-4" />} value={visPoints}
+              onChange={(e) => { setPointRoert(true); setPoints(e.target.value); }} />
             <AdminInput label="Pladser" type="number" placeholder="2" icon={<Users className="w-4 h-4" />} value={spots} onChange={(e) => setSpots(e.target.value)} />
           </div>
+
+          {/* Forslaget. Uden om vejen: har admin ikke roert tallet, staar det
+              allerede paa forslaget, og saa er der ikke noget at sige. Har de
+              skrevet noget andet, faar de forslaget at se — men vi retter
+              ikke i deres tal uden at spoerge. */}
+          {!pointRoert ? (
+            <p className="text-[11px] text-stone-400 -mt-1 leading-relaxed">
+              Foreslået ud fra <strong>{difficulty.toLowerCase()}</strong> og{" "}
+              <strong>{(DURATION_OPTIONS.find((d) => d.id === durationType)?.label || "enkelt dag").toLowerCase()}</strong>.
+              Skriv et andet tal, hvis opgaven fortjener det.
+            </p>
+          ) : forslagAfviger ? (
+            <button
+              type="button"
+              onClick={() => setPoints(forslag)}
+              className="w-full -mt-1 text-left bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded-xl px-3 py-2 flex items-center gap-2"
+            >
+              <Zap className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+              <span className="text-[11px] text-stone-600 flex-1">
+                Klubben plejer at give <strong className="text-stone-900">{forslag} point</strong> for{" "}
+                {difficulty.toLowerCase()} · {(DURATION_OPTIONS.find((d) => d.id === durationType)?.label || "enkelt dag").toLowerCase()}
+              </span>
+              <span className="text-[11px] font-bold text-emerald-700 shrink-0">Brug</span>
+            </button>
+          ) : null}
 
           {pointsChanged && affected > 0 && (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <p className="text-[11px] text-amber-900 leading-relaxed">
                 <strong>{affected}</strong> {affected === 1 ? "person står" : "personer står"} allerede på opgaven.
-                Ændrer du pointtallet fra {task.points} til {parseInt(points) || 0}, følger deres point med
+                Ændrer du pointtallet fra {task.points} til {parseInt(visPoints) || 0}, følger deres point med
                 {claimCounts.completed > 0 && <> — og {claimCounts.completed === 1 ? "den ene, der allerede er godkendt, får" : `de ${claimCounts.completed} der allerede er godkendt, får`} summen justeret og besked om det</>}.
               </p>
             </div>
@@ -5013,6 +5188,16 @@ export default function App() {
   // ikke afbryder en hentning der er paa vej.
   const henterProfilRef = useRef(false);
 
+  // Den hentning der er i gang, hvis der er en. Flere ting kan finde paa at
+  // bede om profilen i samme sekund — getSession ved opstart, auth-lytteren,
+  // en gentilslutning. De skal dele ét svar, ikke sende hvert sit kald.
+  const profilKaldRef = useRef(null);
+
+  // Samme historie for opgavelisten: getSession og auth-lytteren beder om
+  // den i samme sekund ved en almindelig aabning (supabase-js sender baade
+  // SIGNED_IN og INITIAL_SESSION for den samme gemte session).
+  const opgaveKaldRef = useRef(null);
+
   const [authLoading, setAuthLoading] = useState(() =>
     !(typeof window !== "undefined" && window.location.hash.includes("type=recovery")));
   const [currentUser, setCurrentUser] = useState(null);
@@ -5067,7 +5252,7 @@ export default function App() {
   const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
 
   // Load profile from Supabase and update currentUser
-  const loadProfile = async (userId) => {
+  const hentOgSaetProfil = async (userId) => {
     // Er appen allerede i gang? Så er dette en baggrundsopdatering — ved
     // tokenfornyelse, når telefonen vågner, eller når fanen får fokus igen.
     // En fejl dér må ALDRIG overtage skærmen: medlemmet står måske midt i at
@@ -5162,6 +5347,83 @@ export default function App() {
     }
   };
 
+  // Hentning af opgavelisten.
+  //
+  // Foer laa den i sin egen mount-effekt og hentede paa egen haand,
+  // ogsaa naar ingen var logget ind: 31 gange i doegnet svarede serveren
+  // 401 paa /tasks, fordi kaldet blev sendt med en noegle, ingen havde
+  // tjekket foerst. Nu kaldes den fra auth-effekten, naar der er en
+  // session — og saa samtidig med profilen, ikke efter.
+  const hentOpgaver = async () => {
+    // Fejlen blev foer kastet vaek. Afviste serveren kaldet — fx fordi
+    // token'et var udloebet, mens telefonen laa i lommen — saa medlemmet
+    // en tom opgaveliste og troede, der ikke var nogen tjanser. Det er
+    // vaerre end en fejlbesked, fordi ingen opdager det.
+    const { data: taskRows, error } = await medFornyetSession(() =>
+      supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true })
+    );
+
+    if (error) {
+      reportError(`Kunne ikke hente opgaver: ${error.message}`, "tasks");
+      setToast("Kunne ikke hente opgaverne. Luk appen og aabn den igen.");
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
+
+    if (taskRows && taskRows.length > 0) {
+      const mapped = taskRows.map((t) => ({
+        id: t.id,
+        title: t.title,
+        category: t.category,
+        icon: t.icon || "setup",
+        date: t.date,
+        dateFull: t.date_full || t.date,
+        dateEnd: t.date_end || "",
+        durationType: t.duration_type || "single",
+        time: t.time,
+        location: t.location,
+        points: t.points,
+        difficulty: t.difficulty,
+        urgent: t.urgent,
+        spotsLeft: t.spots_left,
+        spotsTotal: t.spots_total,
+        description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
+      }));
+      setTasks(mapped);
+    }
+  };
+
+  // Én hentning af opgavelisten ad gangen, af samme grund som for profilen.
+  const loadTasks = () => {
+    if (opgaveKaldRef.current) return opgaveKaldRef.current;
+    const loefte = hentOpgaver().finally(() => {
+      if (opgaveKaldRef.current === loefte) opgaveKaldRef.current = null;
+    });
+    opgaveKaldRef.current = loefte;
+    return loefte;
+  };
+
+  // Én profilhentning ad gangen.
+  //
+  // Maalt paa et doegn i produktion: 80 af 173 app-aabninger sendte to eller
+  // flere ens my_profile-kald inden for samme sekund, seksten sendte fire.
+  // Det kom af, at baade getSession ved opstart og auth-lytteren bad om den
+  // samme profil. Kaldene stod i koe efter hinanden paa en Micro-instans, og
+  // skaermen ventede paa det foerste.
+  //
+  // Beder nogen om profilen, mens en hentning er undervejs, faar de svaret
+  // fra den i stedet for at starte en ny.
+  const loadProfile = (userId) => {
+    const igang = profilKaldRef.current;
+    if (igang && igang.userId === userId) return igang.loefte;
+
+    const loefte = hentOgSaetProfil(userId).finally(() => {
+      if (profilKaldRef.current?.loefte === loefte) profilKaldRef.current = null;
+    });
+    profilKaldRef.current = { userId, loefte };
+    return loefte;
+  };
+
   // Initial session check + auth state listener
   useEffect(() => {
     let mounted = true;
@@ -5178,12 +5440,25 @@ export default function App() {
       }
     }, 6000);
 
-    // Check current session immediately on mount
+    // Én sessionhentning — og foerst derefter data.
+    //
+    // getSession() fornyer selv noeglen, hvis den er udloebet eller udloeber
+    // inden for halvandet minut. Ved at vente paa den ene gang henter vi
+    // profil og opgaver med en noegle, vi ved er gyldig, i stedet for at
+    // sende dem af sted og faa 401 tilbage. Den gamle vej var: kald fejler,
+    // forny (op til fem sekunder), kald igen — flere sekunders
+    // "Indlaeser..." hver gang telefonen havde ligget i lommen.
+    //
+    // De to hentninger startes SAMTIDIG. Opgavelisten skal ikke vente paa
+    // profilen; den skal bare ikke vaere foer sessionen.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       if (session?.user) {
         loadProfile(session.user.id);
+        loadTasks();
       } else {
+        // Ingen session: hent ingenting. Login-skaermen har ikke brug for
+        // opgavelisten, og maa heller ikke se den.
         setAuthLoading(false);
       }
     }).catch((e) => {
@@ -5192,15 +5467,35 @@ export default function App() {
     });
 
     // Listen for future changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    //
+    // VIGTIGT: lytteren maa ikke vente paa et supabase-kald. supabase-js
+    // kalder den, mens den selv holder sin laas paa sessionen, og ethvert
+    // kald indefra skal bruge den samme laas. Venter vi, staar de og venter
+    // paa hinanden, og appen bliver staaende paa "Indlaeser...", til laasen
+    // bliver revet fri fem sekunder senere. Derfor: ingen await herinde —
+    // arbejdet lægges udenfor med setTimeout(..., 0).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       if (event === "PASSWORD_RECOVERY") {
         setRecoveryMode(true);
         setAuthLoading(false);
         return;
       }
+      // INITIAL_SESSION er den samme session, som getSession lige har hentet,
+      // og TOKEN_REFRESHED er en ny noegle til den samme person. Ingen af
+      // delene er en ny profil, og hentede vi paa dem, betalte medlemmet for
+      // det samme svar to gange.
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+
       if (session?.user) {
-        await loadProfile(session.user.id);
+        const uid = session.user.id;
+        setTimeout(() => {
+          if (!mounted) return;
+          loadProfile(uid);
+          // Man kan vaere kommet ind ved at logge ind: saa er opgavelisten
+          // ikke hentet endnu, for der var ingen session ved opstart.
+          loadTasks();
+        }, 0);
       } else {
         // Ingen session: ryd også et hængende profilproblem, ellers bliver
         // fejlskærmen stående efter en udlogning.
@@ -5212,50 +5507,9 @@ export default function App() {
     });
 
     return () => { mounted = false; clearTimeout(safety); subscription.unsubscribe(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load tasks from Supabase (with steps)
-  useEffect(() => {
-    const loadTasks = async () => {
-      // Fejlen blev foer kastet vaek. Afviste serveren kaldet — fx fordi
-      // token'et var udloebet, mens telefonen laa i lommen — saa medlemmet
-      // en tom opgaveliste og troede, der ikke var nogen tjanser. Det er
-      // vaerre end en fejlbesked, fordi ingen opdager det.
-      const { data: taskRows, error } = await medFornyetSession(() =>
-        supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true })
-      );
-
-      if (error) {
-        reportError(`Kunne ikke hente opgaver: ${error.message}`, "tasks");
-        setToast("Kunne ikke hente opgaverne. Luk appen og aabn den igen.");
-        setTimeout(() => setToast(null), 5000);
-        return;
-      }
-
-      if (taskRows && taskRows.length > 0) {
-        const mapped = taskRows.map((t) => ({
-          id: t.id,
-          title: t.title,
-          category: t.category,
-          icon: t.icon || "setup",
-          date: t.date,
-          dateFull: t.date_full || t.date,
-          dateEnd: t.date_end || "",
-          durationType: t.duration_type || "single",
-          time: t.time,
-          location: t.location,
-          points: t.points,
-          difficulty: t.difficulty,
-          urgent: t.urgent,
-          spotsLeft: t.spots_left,
-          spotsTotal: t.spots_total,
-          description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
-        }));
-        setTasks(mapped);
-      }
-    };
-    loadTasks();
-  }, []);
 
   const loadNotifications = async (userId = currentUser?.id) => {
     if (!userId) return;

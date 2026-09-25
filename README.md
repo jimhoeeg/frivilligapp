@@ -223,6 +223,59 @@ Klassen `scrollbar-hide` stod i markup'en længe uden at være defineret nogen
 steder — hverken Tailwind eller et plugin leverer den. Den er nu i
 `src/index.css`.
 
+## Indlæsningstid
+
+Appen var nogle gange meget længe om at komme frem. Målt i produktion over et
+døgn var databasen ikke skyld i det: `my_profile()` kører på **1,97 ms** i
+snit i Postgres, opgavelisten på 4,6 ms. Tiden gik fire andre steder.
+
+**Låsen, der holdt appen fast.** supabase-js kalder `onAuthStateChange`,
+mens biblioteket selv holder en lås på sessionen — og ethvert kald indefra
+skal bruge den samme lås. Lytteren stod med `await loadProfile(...)` og
+ventede derfor på en lås, der ventede på den. Låsen bliver revet fri efter
+fem sekunder ad gangen, og derefter startede hentningen forfra.
+
+Målt på den samme testopsætning, med en session gemt i telefonen:
+
+| | Før | Efter |
+|---|---|---|
+| Skærmen er klar | **31,6 sekunder** | **0,7 sekunder** |
+| `my_profile`-kald | 4 | 1 |
+
+Det stemmer med produktionsloggen: 80 af 173 app-åbninger sendte to eller
+flere ens `my_profile`-kald inden for samme sekund, seksten sendte fire.
+Lytteren venter ikke længere på noget — arbejdet lægges uden for låsen med
+`setTimeout(..., 0)`. **Kald aldrig supabase med `await` inde i
+`onAuthStateChange`.**
+
+**Én hentning ad gangen.** Både `getSession` ved opstart og auth-lytteren
+beder om profilen og opgavelisten ved en almindelig åbning (supabase-js
+sender både `SIGNED_IN` og `INITIAL_SESSION` for den samme gemte session).
+`loadProfile` og `loadTasks` deler nu ét svar, hvis der allerede er en
+hentning undervejs, og lytteren springer `INITIAL_SESSION` og
+`TOKEN_REFRESHED` over — en ny nøgle til den samme person er ikke en ny
+profil.
+
+**Ingen kald før sessionen er kendt.** Opgavelisten hentede før på egen hånd
+ved mount, også når ingen var logget ind: 31 gange i døgnet svarede serveren
+401 på `/tasks`, hvorefter appen fornyede nøglen (op til fem sekunder) og
+prøvede igen. Nu venter begge hentninger på den ene `getSession()`, som selv
+fornyer nøglen, hvis den er udløbet — og starter så **samtidig**.
+
+**Skærmen er ikke hvid imens.** `index.html` har fået klubbens
+indlæsningsskærm med samme farver og spinner som appens egen, så der ikke er
+noget spring, når React tager over. Den toner først frem efter et kvart
+sekund: går det hurtigt, ser man den aldrig. Samme fil har nu en `preconnect`
+til Supabase, så forbindelsen til databasen åbnes, mens app-koden hentes —
+200-500 ms på mobilnet.
+
+Prøv efter: `node varm-check.js` og `node hurtig-check.js`.
+
+**Tilbage at hente:** app-koden er 638 kB i én fil (166 kB pakket), og
+medlemmerne downloader hele admin-panelet uden nogensinde at bruge det. Det
+kræver, at `App.jsx` deles op i flere filer. Dertil kunne profilen huskes
+lokalt og vises med det samme, mens den hentes forfra i baggrunden.
+
 ## Drift
 
 ### Fejl fra medlemmernes telefoner
@@ -370,6 +423,31 @@ Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
 Kør den manuelt: `select public.auto_confirm_due_claims(true);`
 Se hvad der venter: `select * from public.auto_confirm_preview();`
 
+### Appens pointforslag
+
+Når en admin opretter en opgave, foreslår appen et antal point. Forslaget
+ændrer sig, når sværhedsgraden eller varigheden ændres:
+
+| Sværhed | Enkelt dag | En uge | En måned | Halv sæson | Helt år |
+|---------|-----------|--------|----------|------------|---------|
+| Let     | 10        | 15     | 20       | 30         | 40      |
+| Medium  | 15        | 25     | 40       | 50         | 50      |
+| Hård    | 25        | 40     | 60       | 75         | 75      |
+
+Tallene er ikke fundet på: de er læst ud af klubbens egne 40 skabeloner
+(`TASK_TEMPLATES`). Medianen der er 10 for Let, 15 for Medium og 75 for Hård,
+og seks af syv sæsonroller står på præcis 75. Derfor en tabel frem for en
+formel — en formel ville ramme ved siden af de tal, klubben faktisk bruger.
+
+Varigheden vejer tungest. "Formand for festudvalget (Sæson)" og
+"Materialeansvarlig (Sæson)" er begge Hård og begge 75, mens "Dømme kampe"
+er Medium og 15.
+
+Det er et **forslag**, ikke en regel. Skriver en admin selv et tal, rører
+appen det aldrig igen — så står forslaget som en linje under feltet med en
+**Brug**-knap, man kan trykke på eller lade være. Redigerer man en
+eksisterende opgave, er feltet dens eget tal fra første sekund.
+
 ## Skabeloner
 
 Appen har en fast liste af skabeloner i koden (`TASK_TEMPLATES`). Den kan
@@ -400,6 +478,35 @@ Navnene hentes med `task_signups()`. Den giver **ikke** e-mail eller telefon —
 at vide hvem man står på vagt med er ikke det samme som at få deres
 kontaktoplysninger. Antal tagne pladser regnes ud fra listen, ikke fra
 opgavens `spots_left`, som kan være forældet på en åben detaljeside.
+
+## Opgavelisten i admin
+
+**Admin → Opgaver** sorterer efter **dato for udførsel**, nærmeste først.
+Det er den rækkefølge, man arbejder i: det, der skal ske på lørdag, ligger
+øverst. Opgaver uden læsbar dato ligger nederst frem for at støje foroven.
+
+Rækkefølgen kan skiftes med knapperne over listen:
+
+| Sortering      | Bruges til                                                |
+|----------------|-----------------------------------------------------------|
+| Dato           | Standard. Nærmeste udførsel først.                         |
+| Mangler folk   | Ubesatte pladser øverst — hvem skal der rykkes for?        |
+| Point          | Højeste point først.                                       |
+| Titel          | Alfabetisk, når man leder efter en bestemt opgave.         |
+| Nyeste         | Sidst oprettet først.                                      |
+
+## Kalenderen
+
+Kalenderen viste kun tjanser i september. Den grupperede opgaverne efter
+dag-i-måneden alene og så hverken på måned eller år, så den 15. marts landede
+under den 15. september, og listevisningen sorterede efter det samme tal.
+
+Nu læses hele datoen (`parseTaskDate`), og en dag får kun en prik, hvis
+opgavens år **og** måned passer. Listen sorteres på den rigtige dato.
+
+Opgaver, der strækker sig over flere måneder — en sæsonrolle, en måned i
+kiosken — står under **Løber hele \<måned\>** i hver måned, de dækker, og
+tælles ikke med to gange i den måned, de begynder.
 
 ## Eksport af klubdata
 
