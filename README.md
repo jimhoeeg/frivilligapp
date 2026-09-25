@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de tolv migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de tretten migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -76,6 +76,7 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919160000_season_reset.sql` | Nulstil sæsonen — med arkiv af stillingen og en lås, så det ikke sker ved et uheld. |
 | `20260922180000_teams_readable_at_signup.sql` | Holdlisten skal kunne læses uden login — oprettelsesskærmen henter den, før der findes en session. |
 | `20260925140000_task_templates.sql` | Klubbens egne skabeloner, og hvem der står på en opgave. |
+| `20260925220000_badges.sql` | 30 skjulte mærker: `member_badges` og `my_badges()`. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -471,7 +472,7 @@ dækket.
 ### Support
 
 Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx`, i dag
-`kontakt@randersvk.dk`. Det er den adresse, en anmodning om indsigt,
+`randersvolleyball@gmail.com`. Det er den adresse, en anmodning om indsigt,
 rettelse eller sletning lander på. Aftal hvem der læser den.
 
 ## Ikoner
@@ -505,6 +506,49 @@ Skabeloner husker ikonet. Klubbens egne skabeloner tager det med tilbage;
 appens indbyggede forslag har ikke noget eget ikon, for dér er titlen bedre.
 
 Prøv efter: `node ikon-check.js` (11 checks).
+
+## Mærker
+
+Appen havde seks mærker, regnet ud i browseren af to tal — point og antal
+tjanser — og de var alle sammen synlige, de ulåste bare nedtonet. De bliver,
+hvor de er, som **mål**. Ovenpå ligger nu **30 skjulte mærker**, der først
+dukker op, når de er fundet.
+
+Et mål virker kun, hvis man kan se det. En opdagelse virker kun, hvis man
+ikke kan. Dashboardet viser derfor de fundne ved navn og resten som et tal:
+*"27 venter på at blive fundet."*
+
+| Gruppe | Mærker |
+|---|---|
+| Vedholdenhed | Kom godt i gang · Arbejdshesten · Klubbens rygrad · Uundværlig · Stimen · Trofast |
+| Bredde | Alsidig · Altmuligmand · Hele klubben rundt · Fast ved dommerbordet · Kioskens ven · Chaufføren · Stævneholdet · Pedellen · Klubbens stemme |
+| Timing | Først på pletten · Sidste udkald · Redningsmanden · Den oversete tjans · Dobbeltdag · Weekendkrigeren |
+| Omfang | Modig · Jernvilje · Den lange bane · Måneden ud · Brandslukkeren |
+| Fællesskab | Byttecentralen · Nye ansigter · Tidligt i mål · Sæson to |
+
+**Reglerne ligger i databasen** (`my_badges()`), ikke i browseren — samme
+grund som for pointene: dér kan de ikke regnes forkert, og de kan ikke læses
+af andre. Teksterne (`MAERKER` i `App.jsx`) er kun navne og forklaringer.
+
+Tre ting, der er bevidste:
+
+- **Kun bekræftede tjanser tæller.** Ellers kunne et mærke samles ved at
+  melde sig til alt og ikke møde op, og så er det ingenting værd.
+- **Et fundet mærke gemmes** i `member_badges` med et tidspunkt. Så forsvinder
+  det ikke igen, hvis klubben ændrer en regel eller nulstiller sæsonen — og
+  appen kan sige "nyt mærke" præcis én gang.
+- **Datobaserede mærker springer gamle opgaver over.** De læser kun datoen,
+  når den er en rigtig ISO-dato; opgaver med kun en dansk datotekst tæller
+  ikke med. Bedre at springe over end at gætte.
+
+Den ene fælde undervejs var værd at skrive ned: en sætning ser tabellen, som
+den så ud, da sætningen begyndte. Den første version indsatte de nye mærker
+og læste tabellen i **samme** sætning — så kom de nye ikke med i svaret, og
+`er_ny` var aldrig sand. Nu læses de gamle før indsættelsen, og de nye kommer
+fra `returning`.
+
+Prøv efter: `node maerke-check.js` (13 checks) og
+`psql -f supabase/tests/60_badges.sql` (9 afsnit).
 
 ## Pointmodel
 
