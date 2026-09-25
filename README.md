@@ -127,11 +127,15 @@ ordentligt. Sørg for **mindst to** super admins.
 `VITE_SUPABASE_URL` og `VITE_SUPABASE_ANON_KEY` under Settings →
 Environment Variables.
 
-**5. Godkend teksterne**
+**5. Teksterne**
 
-Vilkår og privatlivspolitik i `src/App.jsx` (`LEGAL_DOCS`) er **et udkast**.
-Bestyrelsen skal læse dem igennem, og `LEGAL_CONTACT` skal rettes til klubbens
-rigtige adresse, før appen sendes ud.
+Vilkår og privatlivspolitik i `src/App.jsx` (`LEGAL_DOCS`) er **godkendt af
+bestyrelsen den 25. september 2026**. Datoen står nederst på begge dokumenter
+i appen (`LEGAL_UPDATED`) — retter nogen i teksten, skal den med.
+
+`LEGAL_CONTACT` er den adresse, medlemmerne henvises til, når de vil have
+deres oplysninger rettet eller slettet. Den skal være en adresse, nogen
+faktisk læser.
 
 **6. Prøvekør med 3–5 personer**
 
@@ -434,6 +438,21 @@ Begge skriver til `client_errors`, så det kan ses under **Admin → Audit log �
 Fejl**. PostgREST svarer `PGRST116` på `.single()` ved nul rækker, og den kode
 er det eneste, der skiller "ingen profil" fra "serverfejl".
 
+### Vilkår og privatlivspolitik
+
+Teksterne står i `LEGAL_DOCS` i `src/App.jsx` og blev godkendt af
+bestyrelsen den **25. september 2026**. Datoen vises nederst på begge
+dokumenter som "Godkendt af bestyrelsen", så et medlem kan se, hvad de
+har sagt ja til — og hvornår.
+
+Retter nogen i teksten, skal `LEGAL_UPDATED` med. Ellers står der en dato,
+bestyrelsen ikke har set.
+
+Medlemmerne møder dem to steder: som links i samtykketeksten ved oprettelse,
+og nederst på profilsiden.
+
+Prøv efter: `node jura-check.js` (8 checks).
+
 ### Backup
 
 **Tjek hvilken Supabase-plan I er på.** På gratisplanen er der ingen
@@ -451,9 +470,9 @@ dækket.
 
 ### Support
 
-Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx` (nu
-`kontakt@randersvk.dk` — ret den). Aftal hvem der læser den adresse, før
-linket sendes ud.
+Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx`, i dag
+`kontakt@randersvk.dk`. Det er den adresse, en anmodning om indsigt,
+rettelse eller sletning lander på. Aftal hvem der læser den.
 
 ## Ikoner
 
@@ -668,8 +687,11 @@ select * from public.admin_season_list();                   -- arkivet
 ## Køreplan
 
 - [ ] E-mailnotifikationer (i dag kun beskeder inde i appen)
+- [ ] SMTP via Resend — uden et verificeret domæne når "glemt adgangskode"
+      kun projektets egne adresser
 - [ ] Rigtigt domæne (fx `frivillig.randersvk.dk`) i stedet for Vercel-adressen
-- [ ] Del `App.jsx` op i filer
+- [x] Del `App.jsx` op i filer — `App.jsx`, `admin.jsx`, `shared.jsx`
+- [x] Vilkår og privatlivspolitik godkendt af bestyrelsen (25. september 2026)
 
 ## License
 

@@ -130,7 +130,11 @@ create policy "profiles_insert" on public.profiles for insert
 
 insert into public.settings (key, value) values
   ('point_goal',        '100'),
-  ('contribution_kr',   '1500'),
+  -- Klubbens frivilligbidrag er 400 kr. Tallet stod på 1500 her, mens
+  -- databasen har haft 400 siden juni; on conflict do nothing betyder, at
+  -- det aldrig nåede at gøre skade i den kørende database — men et nyt
+  -- opsæt ville have fået det forkerte tal.
+  ('contribution_kr',   '400'),
   ('season_start',      '2025-08-01'),
   ('season_end',        '2026-06-30'),
   ('auto_confirm_days', '7')
