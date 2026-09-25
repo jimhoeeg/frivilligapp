@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <title>RVK Frivillig – Randers Volleyballklub</title>
+
+    <!-- Databasen ligger paa et andet domaene, og foerste kald dertil skal
+         ellers foerst slaa op og lave en TLS-forbindelse forfra. Paa mobilnet
+         er det 200-500 ms, vi kan bruge paa noget bedre. Forbindelsen aabnes
+         nu, mens appen hentes. -->
+    <link rel="preconnect" href="https://mohrmjirotuabsjppank.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://mohrmjirotuabsjppank.supabase.co" />
+
     <meta name="description" content="RVK Frivillig – tilmeld dig opgaver, optjen point og hjælp Randers Volleyballklub." />
 
     <!-- Ikoner. icon.svg er klubbens eget mærke; PNG'erne er til de
@@ -22,7 +30,23 @@
     <meta name="apple-mobile-web-app-title" content="RVK Frivillig" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Indtil app-koden er hentet og koert, er skaermen ellers helt hvid.
+         Det her er den samme indlaesningsskaerm, som appen selv viser — samme
+         farver, samme spinner — saa der ikke er noget spring, naar den tager
+         over. main.jsx fjerner den. Den toner foerst frem efter et kvart
+         sekund: gaar det hurtigt, naar man aldrig at se den. -->
+    <div id="root">
+      <div id="boot" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#fafaf9;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;opacity:0;animation:boot-frem .3s ease .25s forwards">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+          <div style="width:40px;height:40px;border:4px solid #a7f3d0;border-top-color:#059669;border-radius:9999px;animation:boot-snurre .8s linear infinite"></div>
+          <div style="font-size:14px;font-weight:500;color:#78716c">Indlæser...</div>
+        </div>
+      </div>
+    </div>
+    <style>
+      @keyframes boot-snurre { to { transform: rotate(360deg) } }
+      @keyframes boot-frem { to { opacity: 1 } }
+    </style>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

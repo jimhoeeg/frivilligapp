@@ -5188,6 +5188,16 @@ export default function App() {
   // ikke afbryder en hentning der er paa vej.
   const henterProfilRef = useRef(false);
 
+  // Den hentning der er i gang, hvis der er en. Flere ting kan finde paa at
+  // bede om profilen i samme sekund — getSession ved opstart, auth-lytteren,
+  // en gentilslutning. De skal dele ét svar, ikke sende hvert sit kald.
+  const profilKaldRef = useRef(null);
+
+  // Samme historie for opgavelisten: getSession og auth-lytteren beder om
+  // den i samme sekund ved en almindelig aabning (supabase-js sender baade
+  // SIGNED_IN og INITIAL_SESSION for den samme gemte session).
+  const opgaveKaldRef = useRef(null);
+
   const [authLoading, setAuthLoading] = useState(() =>
     !(typeof window !== "undefined" && window.location.hash.includes("type=recovery")));
   const [currentUser, setCurrentUser] = useState(null);
@@ -5242,7 +5252,7 @@ export default function App() {
   const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
 
   // Load profile from Supabase and update currentUser
-  const loadProfile = async (userId) => {
+  const hentOgSaetProfil = async (userId) => {
     // Er appen allerede i gang? Så er dette en baggrundsopdatering — ved
     // tokenfornyelse, når telefonen vågner, eller når fanen får fokus igen.
     // En fejl dér må ALDRIG overtage skærmen: medlemmet står måske midt i at
@@ -5337,6 +5347,83 @@ export default function App() {
     }
   };
 
+  // Hentning af opgavelisten.
+  //
+  // Foer laa den i sin egen mount-effekt og hentede paa egen haand,
+  // ogsaa naar ingen var logget ind: 31 gange i doegnet svarede serveren
+  // 401 paa /tasks, fordi kaldet blev sendt med en noegle, ingen havde
+  // tjekket foerst. Nu kaldes den fra auth-effekten, naar der er en
+  // session — og saa samtidig med profilen, ikke efter.
+  const hentOpgaver = async () => {
+    // Fejlen blev foer kastet vaek. Afviste serveren kaldet — fx fordi
+    // token'et var udloebet, mens telefonen laa i lommen — saa medlemmet
+    // en tom opgaveliste og troede, der ikke var nogen tjanser. Det er
+    // vaerre end en fejlbesked, fordi ingen opdager det.
+    const { data: taskRows, error } = await medFornyetSession(() =>
+      supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true })
+    );
+
+    if (error) {
+      reportError(`Kunne ikke hente opgaver: ${error.message}`, "tasks");
+      setToast("Kunne ikke hente opgaverne. Luk appen og aabn den igen.");
+      setTimeout(() => setToast(null), 5000);
+      return;
+    }
+
+    if (taskRows && taskRows.length > 0) {
+      const mapped = taskRows.map((t) => ({
+        id: t.id,
+        title: t.title,
+        category: t.category,
+        icon: t.icon || "setup",
+        date: t.date,
+        dateFull: t.date_full || t.date,
+        dateEnd: t.date_end || "",
+        durationType: t.duration_type || "single",
+        time: t.time,
+        location: t.location,
+        points: t.points,
+        difficulty: t.difficulty,
+        urgent: t.urgent,
+        spotsLeft: t.spots_left,
+        spotsTotal: t.spots_total,
+        description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
+      }));
+      setTasks(mapped);
+    }
+  };
+
+  // Én hentning af opgavelisten ad gangen, af samme grund som for profilen.
+  const loadTasks = () => {
+    if (opgaveKaldRef.current) return opgaveKaldRef.current;
+    const loefte = hentOpgaver().finally(() => {
+      if (opgaveKaldRef.current === loefte) opgaveKaldRef.current = null;
+    });
+    opgaveKaldRef.current = loefte;
+    return loefte;
+  };
+
+  // Én profilhentning ad gangen.
+  //
+  // Maalt paa et doegn i produktion: 80 af 173 app-aabninger sendte to eller
+  // flere ens my_profile-kald inden for samme sekund, seksten sendte fire.
+  // Det kom af, at baade getSession ved opstart og auth-lytteren bad om den
+  // samme profil. Kaldene stod i koe efter hinanden paa en Micro-instans, og
+  // skaermen ventede paa det foerste.
+  //
+  // Beder nogen om profilen, mens en hentning er undervejs, faar de svaret
+  // fra den i stedet for at starte en ny.
+  const loadProfile = (userId) => {
+    const igang = profilKaldRef.current;
+    if (igang && igang.userId === userId) return igang.loefte;
+
+    const loefte = hentOgSaetProfil(userId).finally(() => {
+      if (profilKaldRef.current?.loefte === loefte) profilKaldRef.current = null;
+    });
+    profilKaldRef.current = { userId, loefte };
+    return loefte;
+  };
+
   // Initial session check + auth state listener
   useEffect(() => {
     let mounted = true;
@@ -5353,12 +5440,25 @@ export default function App() {
       }
     }, 6000);
 
-    // Check current session immediately on mount
+    // Én sessionhentning — og foerst derefter data.
+    //
+    // getSession() fornyer selv noeglen, hvis den er udloebet eller udloeber
+    // inden for halvandet minut. Ved at vente paa den ene gang henter vi
+    // profil og opgaver med en noegle, vi ved er gyldig, i stedet for at
+    // sende dem af sted og faa 401 tilbage. Den gamle vej var: kald fejler,
+    // forny (op til fem sekunder), kald igen — flere sekunders
+    // "Indlaeser..." hver gang telefonen havde ligget i lommen.
+    //
+    // De to hentninger startes SAMTIDIG. Opgavelisten skal ikke vente paa
+    // profilen; den skal bare ikke vaere foer sessionen.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       if (session?.user) {
         loadProfile(session.user.id);
+        loadTasks();
       } else {
+        // Ingen session: hent ingenting. Login-skaermen har ikke brug for
+        // opgavelisten, og maa heller ikke se den.
         setAuthLoading(false);
       }
     }).catch((e) => {
@@ -5367,15 +5467,35 @@ export default function App() {
     });
 
     // Listen for future changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    //
+    // VIGTIGT: lytteren maa ikke vente paa et supabase-kald. supabase-js
+    // kalder den, mens den selv holder sin laas paa sessionen, og ethvert
+    // kald indefra skal bruge den samme laas. Venter vi, staar de og venter
+    // paa hinanden, og appen bliver staaende paa "Indlaeser...", til laasen
+    // bliver revet fri fem sekunder senere. Derfor: ingen await herinde —
+    // arbejdet lægges udenfor med setTimeout(..., 0).
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (!mounted) return;
       if (event === "PASSWORD_RECOVERY") {
         setRecoveryMode(true);
         setAuthLoading(false);
         return;
       }
+      // INITIAL_SESSION er den samme session, som getSession lige har hentet,
+      // og TOKEN_REFRESHED er en ny noegle til den samme person. Ingen af
+      // delene er en ny profil, og hentede vi paa dem, betalte medlemmet for
+      // det samme svar to gange.
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+
       if (session?.user) {
-        await loadProfile(session.user.id);
+        const uid = session.user.id;
+        setTimeout(() => {
+          if (!mounted) return;
+          loadProfile(uid);
+          // Man kan vaere kommet ind ved at logge ind: saa er opgavelisten
+          // ikke hentet endnu, for der var ingen session ved opstart.
+          loadTasks();
+        }, 0);
       } else {
         // Ingen session: ryd også et hængende profilproblem, ellers bliver
         // fejlskærmen stående efter en udlogning.
@@ -5387,50 +5507,9 @@ export default function App() {
     });
 
     return () => { mounted = false; clearTimeout(safety); subscription.unsubscribe(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load tasks from Supabase (with steps)
-  useEffect(() => {
-    const loadTasks = async () => {
-      // Fejlen blev foer kastet vaek. Afviste serveren kaldet — fx fordi
-      // token'et var udloebet, mens telefonen laa i lommen — saa medlemmet
-      // en tom opgaveliste og troede, der ikke var nogen tjanser. Det er
-      // vaerre end en fejlbesked, fordi ingen opdager det.
-      const { data: taskRows, error } = await medFornyetSession(() =>
-        supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true })
-      );
-
-      if (error) {
-        reportError(`Kunne ikke hente opgaver: ${error.message}`, "tasks");
-        setToast("Kunne ikke hente opgaverne. Luk appen og aabn den igen.");
-        setTimeout(() => setToast(null), 5000);
-        return;
-      }
-
-      if (taskRows && taskRows.length > 0) {
-        const mapped = taskRows.map((t) => ({
-          id: t.id,
-          title: t.title,
-          category: t.category,
-          icon: t.icon || "setup",
-          date: t.date,
-          dateFull: t.date_full || t.date,
-          dateEnd: t.date_end || "",
-          durationType: t.duration_type || "single",
-          time: t.time,
-          location: t.location,
-          points: t.points,
-          difficulty: t.difficulty,
-          urgent: t.urgent,
-          spotsLeft: t.spots_left,
-          spotsTotal: t.spots_total,
-          description: (t.task_steps || []).sort((a, b) => a.step_order - b.step_order).map((s) => s.text),
-        }));
-        setTasks(mapped);
-      }
-    };
-    loadTasks();
-  }, []);
 
   const loadNotifications = async (userId = currentUser?.id) => {
     if (!userId) return;

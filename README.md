@@ -223,6 +223,59 @@ Klassen `scrollbar-hide` stod i markup'en længe uden at være defineret nogen
 steder — hverken Tailwind eller et plugin leverer den. Den er nu i
 `src/index.css`.
 
+## Indlæsningstid
+
+Appen var nogle gange meget længe om at komme frem. Målt i produktion over et
+døgn var databasen ikke skyld i det: `my_profile()` kører på **1,97 ms** i
+snit i Postgres, opgavelisten på 4,6 ms. Tiden gik fire andre steder.
+
+**Låsen, der holdt appen fast.** supabase-js kalder `onAuthStateChange`,
+mens biblioteket selv holder en lås på sessionen — og ethvert kald indefra
+skal bruge den samme lås. Lytteren stod med `await loadProfile(...)` og
+ventede derfor på en lås, der ventede på den. Låsen bliver revet fri efter
+fem sekunder ad gangen, og derefter startede hentningen forfra.
+
+Målt på den samme testopsætning, med en session gemt i telefonen:
+
+| | Før | Efter |
+|---|---|---|
+| Skærmen er klar | **31,6 sekunder** | **0,7 sekunder** |
+| `my_profile`-kald | 4 | 1 |
+
+Det stemmer med produktionsloggen: 80 af 173 app-åbninger sendte to eller
+flere ens `my_profile`-kald inden for samme sekund, seksten sendte fire.
+Lytteren venter ikke længere på noget — arbejdet lægges uden for låsen med
+`setTimeout(..., 0)`. **Kald aldrig supabase med `await` inde i
+`onAuthStateChange`.**
+
+**Én hentning ad gangen.** Både `getSession` ved opstart og auth-lytteren
+beder om profilen og opgavelisten ved en almindelig åbning (supabase-js
+sender både `SIGNED_IN` og `INITIAL_SESSION` for den samme gemte session).
+`loadProfile` og `loadTasks` deler nu ét svar, hvis der allerede er en
+hentning undervejs, og lytteren springer `INITIAL_SESSION` og
+`TOKEN_REFRESHED` over — en ny nøgle til den samme person er ikke en ny
+profil.
+
+**Ingen kald før sessionen er kendt.** Opgavelisten hentede før på egen hånd
+ved mount, også når ingen var logget ind: 31 gange i døgnet svarede serveren
+401 på `/tasks`, hvorefter appen fornyede nøglen (op til fem sekunder) og
+prøvede igen. Nu venter begge hentninger på den ene `getSession()`, som selv
+fornyer nøglen, hvis den er udløbet — og starter så **samtidig**.
+
+**Skærmen er ikke hvid imens.** `index.html` har fået klubbens
+indlæsningsskærm med samme farver og spinner som appens egen, så der ikke er
+noget spring, når React tager over. Den toner først frem efter et kvart
+sekund: går det hurtigt, ser man den aldrig. Samme fil har nu en `preconnect`
+til Supabase, så forbindelsen til databasen åbnes, mens app-koden hentes —
+200-500 ms på mobilnet.
+
+Prøv efter: `node varm-check.js` og `node hurtig-check.js`.
+
+**Tilbage at hente:** app-koden er 638 kB i én fil (166 kB pakket), og
+medlemmerne downloader hele admin-panelet uden nogensinde at bruge det. Det
+kræver, at `App.jsx` deles op i flere filer. Dertil kunne profilen huskes
+lokalt og vises med det samme, mens den hentes forfra i baggrunden.
+
 ## Drift
 
 ### Fejl fra medlemmernes telefoner
