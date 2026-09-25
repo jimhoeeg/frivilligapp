@@ -370,6 +370,31 @@ Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
 Kør den manuelt: `select public.auto_confirm_due_claims(true);`
 Se hvad der venter: `select * from public.auto_confirm_preview();`
 
+### Appens pointforslag
+
+Når en admin opretter en opgave, foreslår appen et antal point. Forslaget
+ændrer sig, når sværhedsgraden eller varigheden ændres:
+
+| Sværhed | Enkelt dag | En uge | En måned | Halv sæson | Helt år |
+|---------|-----------|--------|----------|------------|---------|
+| Let     | 10        | 15     | 20       | 30         | 40      |
+| Medium  | 15        | 25     | 40       | 50         | 50      |
+| Hård    | 25        | 40     | 60       | 75         | 75      |
+
+Tallene er ikke fundet på: de er læst ud af klubbens egne 40 skabeloner
+(`TASK_TEMPLATES`). Medianen der er 10 for Let, 15 for Medium og 75 for Hård,
+og seks af syv sæsonroller står på præcis 75. Derfor en tabel frem for en
+formel — en formel ville ramme ved siden af de tal, klubben faktisk bruger.
+
+Varigheden vejer tungest. "Formand for festudvalget (Sæson)" og
+"Materialeansvarlig (Sæson)" er begge Hård og begge 75, mens "Dømme kampe"
+er Medium og 15.
+
+Det er et **forslag**, ikke en regel. Skriver en admin selv et tal, rører
+appen det aldrig igen — så står forslaget som en linje under feltet med en
+**Brug**-knap, man kan trykke på eller lade være. Redigerer man en
+eksisterende opgave, er feltet dens eget tal fra første sekund.
+
 ## Skabeloner
 
 Appen har en fast liste af skabeloner i koden (`TASK_TEMPLATES`). Den kan
@@ -400,6 +425,35 @@ Navnene hentes med `task_signups()`. Den giver **ikke** e-mail eller telefon —
 at vide hvem man står på vagt med er ikke det samme som at få deres
 kontaktoplysninger. Antal tagne pladser regnes ud fra listen, ikke fra
 opgavens `spots_left`, som kan være forældet på en åben detaljeside.
+
+## Opgavelisten i admin
+
+**Admin → Opgaver** sorterer efter **dato for udførsel**, nærmeste først.
+Det er den rækkefølge, man arbejder i: det, der skal ske på lørdag, ligger
+øverst. Opgaver uden læsbar dato ligger nederst frem for at støje foroven.
+
+Rækkefølgen kan skiftes med knapperne over listen:
+
+| Sortering      | Bruges til                                                |
+|----------------|-----------------------------------------------------------|
+| Dato           | Standard. Nærmeste udførsel først.                         |
+| Mangler folk   | Ubesatte pladser øverst — hvem skal der rykkes for?        |
+| Point          | Højeste point først.                                       |
+| Titel          | Alfabetisk, når man leder efter en bestemt opgave.         |
+| Nyeste         | Sidst oprettet først.                                      |
+
+## Kalenderen
+
+Kalenderen viste kun tjanser i september. Den grupperede opgaverne efter
+dag-i-måneden alene og så hverken på måned eller år, så den 15. marts landede
+under den 15. september, og listevisningen sorterede efter det samme tal.
+
+Nu læses hele datoen (`parseTaskDate`), og en dag får kun en prik, hvis
+opgavens år **og** måned passer. Listen sorteres på den rigtige dato.
+
+Opgaver, der strækker sig over flere måneder — en sæsonrolle, en måned i
+kiosken — står under **Løber hele \<måned\>** i hver måned, de dækker, og
+tælles ikke med to gange i den måned, de begynder.
 
 ## Eksport af klubdata
 
