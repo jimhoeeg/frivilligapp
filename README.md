@@ -307,6 +307,8 @@ ESLints `no-undef` regel den vigtigste kontrol her — den fanger præcis det
 — og hele testsættet kører på de tre filer bagefter.
 
 Prøv efter: `node chunk-check.js` (6 checks — henter et medlem admin-filen?)
+og `node admin-smoke.js`, der åbner alle ni admin-faner og ser efter
+JS-fejl på hver enkelt.
 
 
 ### Den huskede profil
