@@ -187,7 +187,9 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 ## Project Structure
 
 ```
-src/App.jsx                    # hele appen
+src/App.jsx                    # medlemmernes app
+src/admin.jsx                  # admin-panelet – hentes først når det åbnes
+src/shared.jsx                 # det, begge bruger (tema, ikoner, hjælpere)
 supabase/RUN_ALL.sql           # alle migrationer samlet – ét indsæt
 supabase/build_run_all.sh      # genskaber RUN_ALL.sql fra migrations/
 supabase/VERIFY.sql            # eftersyn efter migrationerne – læser kun
@@ -271,10 +273,74 @@ til Supabase, så forbindelsen til databasen åbnes, mens app-koden hentes —
 
 Prøv efter: `node varm-check.js` og `node hurtig-check.js`.
 
-**Tilbage at hente:** app-koden er 638 kB i én fil (166 kB pakket), og
-medlemmerne downloader hele admin-panelet uden nogensinde at bruge det. Det
-kræver, at `App.jsx` deles op i flere filer. Dertil kunne profilen huskes
-lokalt og vises med det samme, mens den hentes forfra i baggrunden.
+### Admin-panelet hentes først, når det åbnes
+
+Hele appen lå i én fil, så enhver telefon hentede admin-panelet ved hvert
+besøg — også de mange medlemmer, der aldrig åbner det. Koden er nu delt i
+tre:
+
+| Fil | Hvad | Hvem henter den |
+|---|---|---|
+| `src/App.jsx` | Medlemmernes app | alle |
+| `src/admin.jsx` | Hele admin-panelet | kun den, der åbner panelet |
+| `src/shared.jsx` | Det, begge bruger | alle |
+
+`shared.jsx` findes, fordi to filer ikke kan importere hinanden uden at løbe
+i ring. Der ligger `theme`, `CategoryIcon` og ikonkataloget, `ScrollRow`,
+`parseTaskDate`, `RoleBadge`, `logAction` og et par andre — resten bliver,
+hvor det hører hjemme.
+
+`App.jsx` henter admin med `lazy(() => import("./admin.jsx"))` og viser
+appens egen indlæsningsskærm imens. Det sker én gang, første gang panelet
+åbnes.
+
+| | Før | Efter |
+|---|---|---|
+| Medlem henter | 171 kB | **145 kB** |
+| Admin henter (ved åbning af panelet) | 171 kB | 145 + 29 kB |
+
+26 kB mindre for alle, der ikke er admins — 15 % af hele downloaden.
+
+Flytningen er mekanisk og derfor farlig: et navn, der ikke kom med over,
+bliver først til en fejl, når nogen åbner netop den skærm. Derfor er
+ESLints `no-undef` regel den vigtigste kontrol her — den fanger præcis det
+— og hele testsættet kører på de tre filer bagefter.
+
+Prøv efter: `node chunk-check.js` (6 checks — henter et medlem admin-filen?)
+og `node admin-smoke.js`, der åbner alle ni admin-faner og ser efter
+JS-fejl på hver enkelt.
+
+
+### Den huskede profil
+
+Et gensyn med appen skal ikke føles som en ny installation. Navnet, holdet og
+pointene lå allerede på telefonen sidst, så de vises med det samme, mens den
+rigtige profil hentes i baggrunden. Er der sket noget — flere point, ny rolle
+— retter det sig selv et øjeblik senere.
+
+Målt med en server, der er sat til at svare på tre sekunder:
+
+| | Første gang | Gensyn |
+|---|---|---|
+| Appen er fremme | 3.130 ms | **72 ms** |
+
+Fire forbehold, som koden holder fast i:
+
+- **Det er en genvej til visningen, ikke en adgangsbillet.** Alt, hvad appen
+  laver, går gennem databasens egne regler med medlemmets egen nøgle. En
+  forgyldt profil i telefonen giver ikke adgang til noget.
+- Et medlem, der **ikke er godkendt**, lukkes aldrig ind på en gemt kopi —
+  dér venter appen på serveren.
+- Den huskede profil **slettes ved log ud**, og hvis serveren siger, at
+  profilen ikke findes. Næste, der logger ind på telefonen, er måske en anden.
+- Efter **en uge** bruges den ikke. Så er tallene gamle nok til, at et kort
+  øjeblik med en spinner er bedre end at vise noget forkert.
+
+Fejler hentningen, mens den gemte profil er fremme, bliver medlemmet stående
+i appen med en lille besked i stedet for en fejlskærm. Man står måske midt i
+hallen og er ved at tage en tjans.
+
+Prøv efter: `node cache-check.js` (10 checks).
 
 ## Drift
 
