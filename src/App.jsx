@@ -25,6 +25,24 @@ const theme = {
   muted: "#6B7F77",
 };
 
+// Ét forsøg på at hente egen profil, med en tidsgrænse der rydder op efter
+// sig. 8 sekunder var for stramt: et medlem på mobilnet i en hal med dårlig
+// dækning rammer det jævnligt, uden at der er noget galt.
+//
+// Ligger uden for komponenten, fordi den ikke rører React-state — og fordi
+// den så ikke tæller med som afhængighed i auth-lytterens effect.
+const hentProfil = async (ms = 15000) => {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error(`Profilen svarede ikke inden ${ms / 1000} sekunder`)), ms);
+  });
+  try {
+    return await Promise.race([supabase.rpc("my_profile").single(), timeout]);
+  } finally {
+    clearTimeout(t);
+  }
+};
+
 // ============ SIG TIL, HVIS NOGET DRILLER ============
 //
 // Under en prøvekørsel er forskellen på brugbar og ubrugelig tilbagemelding,
@@ -4737,6 +4755,15 @@ export default function App() {
   // null = alt vel. "missing" = ingen profilraekke. "error" = serveren svarede ikke.
   const [profileProblem, setProfileProblem] = useState(null);
 
+  // Har vi allerede en profil paa skaermen? Ref, ikke state: auth-lytteren
+  // registreres een gang og ville ellers se en foraeldet vaerdi resten af
+  // sessionen.
+  const harProfilRef = useRef(false);
+
+  // Er en profilhentning i gang lige nu? Bruges af sikkerhedsnettet, saa det
+  // ikke afbryder en hentning der er paa vej.
+  const henterProfilRef = useRef(false);
+
   const [authLoading, setAuthLoading] = useState(() =>
     !(typeof window !== "undefined" && window.location.hash.includes("type=recovery")));
   const [currentUser, setCurrentUser] = useState(null);
@@ -4792,27 +4819,57 @@ export default function App() {
 
   // Load profile from Supabase and update currentUser
   const loadProfile = async (userId) => {
+    // Er appen allerede i gang? Så er dette en baggrundsopdatering — ved
+    // tokenfornyelse, når telefonen vågner, eller når fanen får fokus igen.
+    // En fejl dér må ALDRIG overtage skærmen: medlemmet står måske midt i at
+    // tage en tjans. Ref frem for state, fordi lytteren registreres én gang
+    // og ellers ville se en forældet værdi for evigt.
+    const iBaggrunden = harProfilRef.current;
+    henterProfilRef.current = true;
+
+    const gikGalt = (besked, stack) => {
+      console.error("loadProfile:", besked);
+      reportError(besked, "auth", stack);
+      if (iBaggrunden) {
+        setToast("Forbindelsen blev afbrudt et øjeblik");
+        setTimeout(() => setToast(null), 3500);
+      } else {
+        setProfileProblem("error");
+      }
+    };
+
     try {
-      // my_profile() henter egen profil inkl. e-mail og telefon. Selve
-      // tabellen udleverer ikke kontaktoplysninger til klienten længere.
-      const query = supabase.rpc("my_profile").single();
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Profile load timeout")), 8000));
-      const { data, error } = await Promise.race([query, timeout]);
+      let svar;
+      try {
+        svar = await hentProfil();
+      } catch {
+        // Timeout eller netværk. Ét ekstra forsøg — de fleste af disse er ét
+        // enkelt hik, og at smide medlemmet ud på grund af det er for hårdt.
+        await new Promise((r) => setTimeout(r, 1500));
+        svar = await hentProfil();
+      }
+
+      let { data, error } = svar;
 
       // PostgREST svarer PGRST116 på .single(), når der ikke er nogen række.
       // Det er ikke en serverfejl — det er en bruger uden medlemsprofil, og
       // de to skal ikke have samme besked.
-      const ingenRaekke = error?.code === "PGRST116";
+      let ingenRaekke = error?.code === "PGRST116";
 
       if (error && !ingenRaekke) {
-        console.error("Profile load error:", error);
-        reportError(`my_profile() fejlede: ${error.message}`, "auth");
-        setProfileProblem("error");
+        await new Promise((r) => setTimeout(r, 1500));
+        ({ data, error } = await hentProfil());
+        ingenRaekke = error?.code === "PGRST116";
+      }
+
+      if (error && !ingenRaekke) {
+        gikGalt(`my_profile() fejlede: ${error.message}`);
         return;
       }
 
       if (data && userId && data.id !== userId) {
         console.warn("Profilen matcher ikke sessionen – logger ud");
+        harProfilRef.current = false;
         await supabase.auth.signOut();
         setIsAuthenticated(false);
         return;
@@ -4820,14 +4877,17 @@ export default function App() {
 
       // Gyldig session, men ingen medlemsprofil. Tidligere faldt vi bare
       // igennem her, og medlemmet endte på login-skærmen igen uden at vide
-      // hvorfor.
+      // hvorfor. Det her er værd at vise, også midt i en session: er profilen
+      // slettet under en, kan man alligevel ikke gøre mere.
       if (ingenRaekke || !data) {
         reportError("Logget ind, men my_profile() gav ingen række", "auth");
+        harProfilRef.current = false;
         setProfileProblem("missing");
         return;
       }
 
       {
+        harProfilRef.current = true;
         setProfileProblem(null);
         setCurrentUser({
           id: data.id,
@@ -4846,10 +4906,9 @@ export default function App() {
         setIsAuthenticated(true);
       }
     } catch (e) {
-      console.error("loadProfile failed:", e);
-      reportError(`loadProfile: ${e.message}`, "auth", e.stack);
-      setProfileProblem("error");
+      gikGalt(`loadProfile: ${e.message}`, e.stack);
     } finally {
+      henterProfilRef.current = false;
       setAuthLoading(false);
     }
   };
@@ -4858,9 +4917,13 @@ export default function App() {
   useEffect(() => {
     let mounted = true;
 
-    // Safety net: never stay on loading screen for more than 6 seconds
+    // Sikkerhedsnet, saa man aldrig haenger paa indlaesningsskaermen for
+    // evigt. Men det maa ikke fyre, MENS profilen er undervejs: foer sad det
+    // paa 6 sekunder og smed medlemmet tilbage paa login-skaermen midt i en
+    // langsom hentning. loadProfile har sin egen tidsgraense og rydder op
+    // efter sig, saa det her er kun en bagstopper.
     const safety = setTimeout(() => {
-      if (mounted) {
+      if (mounted && !henterProfilRef.current) {
         console.warn("Auth loading timeout — forcing render");
         setAuthLoading(false);
       }
@@ -4892,6 +4955,7 @@ export default function App() {
       } else {
         // Ingen session: ryd også et hængende profilproblem, ellers bliver
         // fejlskærmen stående efter en udlogning.
+        harProfilRef.current = false;
         setProfileProblem(null);
         setIsAuthenticated(false);
         setAuthLoading(false);
@@ -5002,13 +5066,17 @@ export default function App() {
   }, [currentUser?.id]);
 
 
+  // Kaldes naar login eller oprettelse er lykkedes.
+  //
+  // Den roerer IKKE authLoading. Det gjorde den foer, og det var en faelde:
+  // supabase-js koerer auth-lytteren faerdig, FOER signInWithPassword giver
+  // svar tilbage, saa paa en langsom forbindelse naaede loadProfile at blive
+  // faerdig og slukke indlaesningsskaermen — hvorefter handleAuth taendte den
+  // igen. Derefter var der ingenting tilbage til at slukke den, og appen
+  // haengte paa "Indlaeser..." for evigt.
+  //
+  // Nu ejer loadProfile den skaerm alene, fra start til slut.
   const handleAuth = (authData) => {
-    // Show global spinner while profile loads in the background.
-    // loadProfile will set authLoading=false in its finally block.
-    if (authData.userId) {
-      setAuthLoading(true);
-      loadProfile(authData.userId);
-    }
     const first = authData.name ? authData.name.split(" ")[0] : "";
     setWelcomeToast(authData.isNew ? `Velkommen til RVK, ${first}! 🎉` : `Velkommen tilbage!`);
     setTimeout(() => setWelcomeToast(null), 3000);
@@ -5129,6 +5197,7 @@ export default function App() {
           }
         }}
         onSignOut={async () => {
+          harProfilRef.current = false;
           await supabase.auth.signOut();
           setProfileProblem(null);
           setIsAuthenticated(false);

@@ -246,6 +246,28 @@ af et menneske vises anderledes end en stakspor, med hvem der skrev og hvornår.
 Databasens grænse på 20 pr. bruger i timen gælder også her, og alt ældre end
 90 dage slettes.
 
+### Indlæsning af profilen
+
+Tre ting styrer, hvad der sker mellem "logget ind" og "inde i appen". De har
+alle tre været kilde til fejl, så de står her:
+
+1. **`loadProfile` ejer indlæsningsskærmen alene.** `handleAuth` rørte den
+   også, og det var en fælde: supabase-js kører auth-lytteren færdig, *før*
+   `signInWithPassword` giver svar tilbage. På en langsom forbindelse nåede
+   `loadProfile` derfor at blive færdig og slukke skærmen, hvorefter
+   `handleAuth` tændte den igen — og så var der ingenting tilbage til at
+   slukke den. Appen hang på "Indlæser..." for evigt.
+2. **Profilen hentes én gang.** Både `handleAuth` og auth-lytteren kaldte
+   `loadProfile`, og de to kald blev serialiseret. Det fordoblede ventetiden
+   på en langsom forbindelse.
+3. **Tidsgrænsen er 15 sekunder med ét ekstra forsøg.** Den var 8 sekunder
+   uden forsøg, hvilket et medlem på mobilnet i en hal rammer uden at der er
+   noget galt.
+
+Sikkerhedsnettet, der forhindrer en evig indlæsningsskærm, fyrer ikke, mens
+en hentning er undervejs — ellers river det skærmen væk midt i en langsom
+indlæsning.
+
 ### Når profilen ikke kan hentes
 
 Login kan lykkes i Supabase, uden at appen kan hente medlemsprofilen. Det sker
@@ -257,6 +279,11 @@ sit kodeord, der sker ingenting, man skriver det igen. To konti i den rigtige
 database stod præcis sådan.
 
 Nu vises en skærm, der skelner:
+
+En fejl i en **baggrundsopdatering** — når profilen hentes igen, mens appen
+allerede er i gang — overtager aldrig skærmen. Medlemmet står måske midt i at
+tage en tjans; så er en fuldskærmsfejl det forkerte svar. Der vises i stedet
+en kort besked, og skærmen bliver stående.
 
 - **Din profil mangler** — kontoen findes, men der er ingen medlemsprofil.
   Det kan medlemmet ikke rette selv, så skærmen henviser til `LEGAL_CONTACT`.
