@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de elleve migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de tolv migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -75,6 +75,7 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260919140000_lock_function_execute.sql` | Kun indloggede må kalde databasens funktioner, og kun dem appen bruger. |
 | `20260919160000_season_reset.sql` | Nulstil sæsonen — med arkiv af stillingen og en lås, så det ikke sker ved et uheld. |
 | `20260922180000_teams_readable_at_signup.sql` | Holdlisten skal kunne læses uden login — oprettelsesskærmen henter den, før der findes en session. |
+| `20260925140000_task_templates.sql` | Klubbens egne skabeloner, og hvem der står på en opgave. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -90,7 +91,7 @@ Den læser kun og ændrer ingenting. Resultatet er 20 linjer, der hver siger
 | 8–12 | GDPR-hullet lukket, e-mail og telefon skjult, og at ingen kan hæve sin egen rolle eller sine egne point |
 | 13–16 | At pointsummer, tilstande, ledige pladser og indstillinger stemmer |
 | 17–18 | At hold og mindst to super admins er oprettet (trin 3) |
-| 18.5–18.6 | At ingen funktion står åben for anonyme, og at kun appens 23 egne er åbne for indloggede |
+| 18.5–18.6 | At ingen funktion står åben for anonyme, og at kun appens 24 egne er åbne for indloggede |
 | 19–20 | INFO: hvor mange venter på godkendelse og bekræftelse |
 
 **Alt skal stå `OK`, på nær `INFO`-linjerne.** Linje 17 og 18 står som `FEJL`,
@@ -368,6 +369,37 @@ Indstillinger**; 0 slår det fra. Reglen er bevidst forsigtig:
 
 Kør den manuelt: `select public.auto_confirm_due_claims(true);`
 Se hvad der venter: `select * from public.auto_confirm_preview();`
+
+## Skabeloner
+
+Appen har en fast liste af skabeloner i koden (`TASK_TEMPLATES`). Den kan
+klubben ikke rette i, så admins kan nu gemme deres egne.
+
+Under **Admin → Opgaver → Ny opgave** fylder man formularen ud og trykker
+**Gem som skabelon i "<kategori>"**. Den gemmes i `task_templates` og dukker op
+øverst i skabelonvælgeren under *Klubbens egne*, med appens forslag nedenunder.
+
+En skabelon husker titel, kategori, point, sværhed, **pladser, tidsrum og
+sted** — men bevidst **ikke datoen**. Den er ny hver gang, og det er netop det,
+der gør en skabelon nyttig.
+
+Samme titel i samme kategori overskriver den gamle (`unique (category, title)`),
+så man kan rette en skabelon ved at gemme den igen. Slet med skraldespanden i
+vælgeren. Alle indloggede kan læse skabelonerne; kun admins kan gemme og slette.
+
+## Hvem står på en opgave
+
+På opgavesiden, lige over **Tag tjansen**, står hvem der allerede har taget
+den — navn, initialer og hold, med et flueben ved dem, hvis tjans er godkendt.
+Ens eget navn er fremhævet.
+
+Det er den hyppigste grund til at sige ja: man tager en vagt, fordi man kan se,
+hvem man kommer til at stå der med.
+
+Navnene hentes med `task_signups()`. Den giver **ikke** e-mail eller telefon —
+at vide hvem man står på vagt med er ikke det samme som at få deres
+kontaktoplysninger. Antal tagne pladser regnes ud fra listen, ikke fra
+opgavens `spots_left`, som kan være forældet på en åben detaljeside.
 
 ## Eksport af klubdata
 

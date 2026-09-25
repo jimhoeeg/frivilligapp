@@ -242,6 +242,87 @@ const ProfileProblemScreen = ({ kind, onRetry, onSignOut, busy }) => {
   );
 };
 
+// ============ HVEM STAAR PAA OPGAVEN ============
+//
+// Et medlem skal kunne se, hvem der allerede har taget tjansen, FOER de selv
+// melder sig. Det er den hyppigste grund til at sige ja: man tager en vagt,
+// fordi man kan se, hvem man kommer til at staa der med.
+//
+// Kun navn, initialer og hold — ikke e-mail og ikke telefon. At vide hvem man
+// staar paa vagt med er ikke det samme som at faa deres kontaktoplysninger.
+const TaskSignups = ({ taskId, spotsTotal, currentUserId, erTilmeldt }) => {
+  const [folk, setFolk] = useState(null);
+
+  // erTilmeldt er med i afhaengighederne med vilje: melder man til eller fra,
+  // skal listen hente sig selv igen med det samme. Ellers staar man og kigger
+  // paa en liste, man lige er kommet med paa, uden at vaere der.
+  useEffect(() => {
+    if (!taskId) return;
+    let ignore = false;
+    supabase.rpc("task_signups", { p_task: taskId }).then(({ data, error }) => {
+      if (ignore) return;
+      if (error) { reportError(`task_signups: ${error.message}`, "tasks"); setFolk([]); return; }
+      setFolk(data || []);
+    });
+    return () => { ignore = true; };
+  }, [taskId, erTilmeldt]);
+
+  // Tallene regnes ud fra den liste, vi lige har hentet — ikke fra opgavens
+  // spotsLeft, som kan vaere forAeldet paa den aabne detaljeside.
+  const taget = folk?.length ?? 0;
+  const spotsLeft = Math.max(0, (spotsTotal ?? 0) - taget);
+
+  return (
+    <div className="px-5 pb-6">
+      <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">
+        Hvem er med? {folk !== null && <span className="text-stone-400 normal-case tracking-normal font-semibold">· {taget} af {spotsTotal} pladser taget</span>}
+      </h2>
+
+      {folk === null ? (
+        <div className="text-[13px] text-stone-400">Henter...</div>
+      ) : folk.length === 0 ? (
+        <div className="bg-stone-50 border border-dashed border-stone-200 rounded-xl px-4 py-3">
+          <p className="text-[13px] text-stone-600 font-semibold">Ingen har taget den endnu</p>
+          <p className="text-[12px] text-stone-500 mt-0.5">Du bliver den første.</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {folk.map((f) => {
+            const erMig = f.user_id === currentUserId;
+            return (
+              <div key={f.user_id}
+                   className={`flex items-center gap-2.5 rounded-xl px-3 py-2 border ${
+                     erMig ? "bg-emerald-50 border-emerald-200" : "bg-white border-stone-200"}`}>
+                <div className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-[11px] font-bold"
+                     style={{ background: erMig
+                       ? `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})`
+                       : `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+                  {f.initials || (f.name || "?").slice(0, 1)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold text-stone-900 truncate">
+                    {f.name}{erMig && <span className="text-emerald-700 font-bold"> · dig</span>}
+                  </div>
+                  {f.team && <div className="text-[11px] text-stone-500 truncate">{f.team}</div>}
+                </div>
+                {f.status === "completed" && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+              </div>
+            );
+          })}
+
+          {(spotsLeft ?? 0) > 0 && (
+            <div className="text-[12px] text-stone-500 pt-1">
+              {spotsLeft === 1 ? "Der er én plads tilbage." : `Der er ${spotsLeft} pladser tilbage.`}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============ VANDRET LISTE ============
 //
 // Appen har syv rækker, der er bredere end skærmen: kategorifiltre, badges,
@@ -2930,7 +3011,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
         })}
       </div>
 
-      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} />}
+      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} currentUser={currentUser} />}
     </div>
   );
 };
@@ -3152,7 +3233,7 @@ const TASK_TEMPLATES = [
   },
 ];
 
-const TaskFormModal = ({ task, onClose, onSave }) => {
+const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const isNew = !task;
   const [step, setStep]             = useState(isNew ? "pick" : "form");
   const [tplCat, setTplCat]         = useState(TASK_TEMPLATES[0].label);
@@ -3186,9 +3267,18 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
   const pointsChanged = !isNew && parseInt(points) !== (task?.points ?? null);
   const affected      = (claimCounts?.signed_up || 0) + (claimCounts?.completed || 0);
 
-  const applyTemplate = (tpl, catLabel, catIcon) => {
+  const applyTemplate = (tpl, catLabel, catIcon, ekstra) => {
     setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
     setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
+    // Klubbens egne skabeloner husker ogsaa pladser, tidsrum og sted — det er
+    // netop dét, der goer dem bedre end appens generiske forslag. Datoen
+    // huskes med vilje IKKE: den er ny hver gang.
+    if (ekstra) {
+      if (ekstra.spots)        setSpots(ekstra.spots);
+      if (ekstra.time)         setTime(ekstra.time);
+      if (ekstra.location)     setLocation(ekstra.location);
+      if (ekstra.durationType) setDuration(ekstra.durationType);
+    }
     setStep("form");
   };
 
@@ -3207,7 +3297,50 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
     onSave({ title, category, icon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(points), spots: parseInt(spots), difficulty, urgent, description });
   };
 
+  // Klubbens egne skabeloner, gemt i databasen. De staar side om side med
+  // appens indbyggede i vaelgeren.
+  const [egne, setEgne] = useState([]);
+  const [gemmerTpl, setGemmerTpl] = useState(false);
+  const [tplBesked, setTplBesked] = useState(null);
+
+  const hentEgne = useCallback(() => {
+    supabase.from("task_templates").select("*").order("title").then(({ data }) => setEgne(data || []));
+  }, []);
+  useEffect(hentEgne, [hentEgne]);
+
+  // Gem den udfyldte opgave som skabelon. Dato, tidspunkt og pladser er det,
+  // der skifter fra gang til gang — titel, point, vejledning og kategori er
+  // det, man ikke gider skrive igen.
+  const gemSomSkabelon = async () => {
+    if (!title.trim()) return;
+    setGemmerTpl(true);
+    setTplBesked(null);
+    const { error } = await supabase.from("task_templates").upsert({
+      category, title: title.trim(), points: parseInt(points) || 10,
+      difficulty, spots_total: parseInt(spots) || 2, duration_type: durationType,
+      time: time || null, location: location || null, icon,
+      description: description || null,
+      created_by: currentUser?.id || null,
+    }, { onConflict: "category,title" });
+    setGemmerTpl(false);
+    if (error) {
+      setTplBesked({ type: "fejl", text: `Kunne ikke gemme skabelonen: ${error.message}` });
+      return;
+    }
+    setTplBesked({ type: "ok", text: `Gemt som skabelon under "${category}"` });
+    hentEgne();
+    setTimeout(() => setTplBesked(null), 4000);
+  };
+
+  const sletSkabelon = async (id) => {
+    await supabase.from("task_templates").delete().eq("id", id);
+    hentEgne();
+  };
+
   const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
+
+  // Klubbens egne i den valgte kategori
+  const egneIKategori = egne.filter((t) => t.category === tplCat);
 
   if (step === "pick") {
     return (
@@ -3231,6 +3364,43 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
           </ScrollRow>
           {/* Template list */}
           <div className="overflow-y-auto flex-1 p-4 space-y-2 pb-24">
+            {/* Klubbens egne foerst — det er dem, admin selv har bygget */}
+            {egneIKategori.length > 0 && (
+              <>
+                <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-700 pt-1">
+                  Klubbens egne
+                </div>
+                {egneIKategori.map((tpl) => (
+                  <div key={tpl.id} className="relative group">
+                    <button
+                      onClick={() => applyTemplate(
+                        { title: tpl.title, points: tpl.points, difficulty: tpl.difficulty, description: tpl.description || "" },
+                        tpl.category, tpl.icon,
+                        { spots: tpl.spots_total, time: tpl.time, location: tpl.location, durationType: tpl.duration_type }
+                      )}
+                      className="w-full text-left bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 pr-11 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
+                        <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full whitespace-nowrap">{tpl.points} pt</span>
+                      </div>
+                      <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-stone-200 text-stone-600">{tpl.difficulty}</span>
+                    </button>
+                    <button
+                      onClick={() => sletSkabelon(tpl.id)}
+                      title="Slet skabelon"
+                      className="absolute top-2.5 right-2.5 p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 pt-3">
+                  Appens forslag
+                </div>
+              </>
+            )}
+
             {activeTplGroup.templates.map((tpl) => (
               <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label, activeTplGroup.icon)}
                 className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all">
@@ -3349,11 +3519,32 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
           <AdminInput label="Vejledning (ét trin pr. linje)" placeholder={"Mød op 15 min før...\nTjek udstyr...\nAflever skema..."} textarea value={description} onChange={(e) => setDesc(e.target.value)} />
         </div>
 
-        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 flex gap-2">
-          <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
-          <button onClick={handleSave} disabled={!title.trim() || !dateISO} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
-            <Save className="w-4 h-4" />{task ? "Gem ændringer" : "Opret opgave"}
+        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-4 space-y-2">
+          {tplBesked && (
+            <div className={`rounded-xl px-3 py-2 text-[12px] font-semibold ${
+              tplBesked.type === "ok" ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                      : "bg-red-50 text-red-800 border border-red-200"}`}>
+              {tplBesked.text}
+            </div>
+          )}
+
+          {/* Gem den udfyldte opgave til naeste gang. Kraever kun en titel —
+              dato og tidspunkt er netop det, en skabelon IKKE skal huske. */}
+          <button
+            onClick={gemSomSkabelon}
+            disabled={!title.trim() || gemmerTpl}
+            className="w-full py-2.5 rounded-xl border border-stone-200 text-stone-700 font-semibold text-[13px] flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-stone-50"
+          >
+            <Copy className="w-4 h-4 text-stone-500" />
+            {gemmerTpl ? "Gemmer..." : `Gem som skabelon i "${category}"`}
           </button>
+
+          <div className="flex gap-2">
+            <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>
+            <button onClick={handleSave} disabled={!title.trim() || !dateISO} className="flex-[2] py-3 rounded-xl text-white font-bold shadow-lg disabled:opacity-50 flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+              <Save className="w-4 h-4" />{task ? "Gem ændringer" : "Opret opgave"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -5398,6 +5589,13 @@ export default function App() {
                 <h2 className="text-[11px] uppercase tracking-widest font-bold text-stone-500 mb-3">Sådan løser du opgaven</h2>
                 <ol className="space-y-3">{selectedTask.description.map((step, i) => <li key={i} className="flex gap-3"><div className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{i + 1}</div><p className="text-[14px] text-stone-700 leading-relaxed pt-0.5">{step}</p></li>)}</ol>
               </div>
+
+              <TaskSignups
+                taskId={selectedTask.id}
+                spotsTotal={selectedTask.spotsTotal}
+                currentUserId={currentUser?.id}
+                erTilmeldt={claimedIds.has(selectedTask.id)}
+              />
             </div>
 
             {/* Sticky button — never overlaps content */}
