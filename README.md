@@ -271,10 +271,42 @@ til Supabase, så forbindelsen til databasen åbnes, mens app-koden hentes —
 
 Prøv efter: `node varm-check.js` og `node hurtig-check.js`.
 
-**Tilbage at hente:** app-koden er 638 kB i én fil (166 kB pakket), og
-medlemmerne downloader hele admin-panelet uden nogensinde at bruge det. Det
-kræver, at `App.jsx` deles op i flere filer. Dertil kunne profilen huskes
-lokalt og vises med det samme, mens den hentes forfra i baggrunden.
+**Tilbage at hente:** app-koden er 651 kB i én fil (171 kB pakket), og
+medlemmerne downloader hele admin-panelet uden nogensinde at bruge det.
+Admin-delen fylder omkring 39 kB pakket af `App.jsx` — cirka hvert femte
+byte, en almindelig frivillig henter. Det kræver, at `App.jsx` deles op i
+flere filer.
+
+### Den huskede profil
+
+Et gensyn med appen skal ikke føles som en ny installation. Navnet, holdet og
+pointene lå allerede på telefonen sidst, så de vises med det samme, mens den
+rigtige profil hentes i baggrunden. Er der sket noget — flere point, ny rolle
+— retter det sig selv et øjeblik senere.
+
+Målt med en server, der er sat til at svare på tre sekunder:
+
+| | Første gang | Gensyn |
+|---|---|---|
+| Appen er fremme | 3.130 ms | **72 ms** |
+
+Fire forbehold, som koden holder fast i:
+
+- **Det er en genvej til visningen, ikke en adgangsbillet.** Alt, hvad appen
+  laver, går gennem databasens egne regler med medlemmets egen nøgle. En
+  forgyldt profil i telefonen giver ikke adgang til noget.
+- Et medlem, der **ikke er godkendt**, lukkes aldrig ind på en gemt kopi —
+  dér venter appen på serveren.
+- Den huskede profil **slettes ved log ud**, og hvis serveren siger, at
+  profilen ikke findes. Næste, der logger ind på telefonen, er måske en anden.
+- Efter **en uge** bruges den ikke. Så er tallene gamle nok til, at et kort
+  øjeblik med en spinner er bedre end at vise noget forkert.
+
+Fejler hentningen, mens den gemte profil er fremme, bliver medlemmet stående
+i appen med en lille besked i stedet for en fejlskærm. Man står måske midt i
+hallen og er ved at tage en tjans.
+
+Prøv efter: `node cache-check.js` (10 checks).
 
 ## Drift
 

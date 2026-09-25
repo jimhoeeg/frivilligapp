@@ -70,6 +70,54 @@ const medFornyetSession = async (kald) => {
   return kald();
 };
 
+// ============ DEN HUSKEDE PROFIL ============
+//
+// Et gensyn med appen skal ikke foele sig som en ny installation. Navnet,
+// holdet og pointene laa allerede paa telefonen sidst — der er ingen grund
+// til at stirre paa en spinner, mens serveren siger det samme igen.
+//
+// Derfor: vis den gemte profil med det samme, og hent den rigtige i
+// baggrunden. Er der sket noget (flere point, ny rolle, slettet profil),
+// retter det sig selv et oejeblik senere.
+//
+// Det her er en GENVEJ TIL VISNINGEN, ikke en adgangsbillet. Alt, hvad appen
+// laver, gaar gennem databasens egne regler (row level security) med
+// medlemmets egen noegle. Ligger der en forgyldt profil i telefonen, giver
+// den ikke adgang til noget som helst.
+const PROFIL_NOEGLE = "rvk-profil";
+
+// En uge. Derefter er tallene gamle nok til, at et kort hvidt oejeblik er
+// bedre end at vise noget forkert.
+const PROFIL_MAX_ALDER = 7 * 24 * 60 * 60 * 1000;
+
+const laesProfilCache = (userId) => {
+  try {
+    const raa = localStorage.getItem(PROFIL_NOEGLE);
+    if (!raa) return null;
+    const { gemt, profil } = JSON.parse(raa);
+    if (!profil || profil.id !== userId) return null;
+    if (!gemt || Date.now() - gemt > PROFIL_MAX_ALDER) return null;
+    // Et medlem, der endnu ikke er godkendt, skal ikke lukkes ind paa en
+    // gammel kopi. Dér venter vi paa serveren.
+    if (profil.approved !== true) return null;
+    return profil;
+  } catch {
+    // Privat vindue, ryddet lager, fuld disk. Det er en genvej — den maa
+    // aldrig staa i vejen.
+    return null;
+  }
+};
+
+const gemProfilCache = (profil) => {
+  try {
+    localStorage.setItem(PROFIL_NOEGLE, JSON.stringify({ gemt: Date.now(), profil }));
+  } catch { /* ignoreres med vilje */ }
+};
+
+const ryddProfilCache = () => {
+  try { localStorage.removeItem(PROFIL_NOEGLE); } catch { /* ignoreres */ }
+};
+
 // Ét forsøg på at hente egen profil, med en tidsgrænse der rydder op efter
 // sig. 8 sekunder var for stramt: et medlem på mobilnet i en hal med dårlig
 // dækning rammer det jævnligt, uden at der er noget galt.
@@ -5484,6 +5532,7 @@ export default function App() {
       if (data && userId && data.id !== userId) {
         console.warn("Profilen matcher ikke sessionen – logger ud");
         harProfilRef.current = false;
+        ryddProfilCache();
         await supabase.auth.signOut();
         setIsAuthenticated(false);
         return;
@@ -5496,6 +5545,7 @@ export default function App() {
       if (ingenRaekke || !data) {
         reportError("Logget ind, men my_profile() gav ingen række", "auth");
         harProfilRef.current = false;
+        ryddProfilCache();
         setProfileProblem("missing");
         return;
       }
@@ -5503,7 +5553,7 @@ export default function App() {
       {
         harProfilRef.current = true;
         setProfileProblem(null);
-        setCurrentUser({
+        const profil = {
           id: data.id,
           name: data.name,
           email: data.email,
@@ -5516,7 +5566,9 @@ export default function App() {
           avatarUrl: data.avatar_url || null,
           approved: data.approved === true,
           adminRequested: data.admin_requested === true,
-        });
+        };
+        setCurrentUser(profil);
+        gemProfilCache(profil);
         setIsAuthenticated(true);
       }
     } catch (e) {
@@ -5634,6 +5686,17 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       if (session?.user) {
+        // Kender vi personen fra sidst, saa vis appen NU og hent profilen i
+        // baggrunden. harProfilRef saettes med vilje foer: saa ved
+        // loadProfile, at den ikke maa overtage skaermen med en fejlskaerm,
+        // hvis nettet driller — medlemmet staar maaske midt i hallen.
+        const husket = laesProfilCache(session.user.id);
+        if (husket) {
+          harProfilRef.current = true;
+          setCurrentUser(husket);
+          setIsAuthenticated(true);
+          setAuthLoading(false);
+        }
         loadProfile(session.user.id);
         loadTasks();
       } else {
@@ -5678,8 +5741,10 @@ export default function App() {
         }, 0);
       } else {
         // Ingen session: ryd også et hængende profilproblem, ellers bliver
-        // fejlskærmen stående efter en udlogning.
+        // fejlskærmen stående efter en udlogning. Og den huskede profil skal
+        // væk — næste, der logger ind på telefonen, er måske en anden.
         harProfilRef.current = false;
+        ryddProfilCache();
         setProfileProblem(null);
         setIsAuthenticated(false);
         setAuthLoading(false);
