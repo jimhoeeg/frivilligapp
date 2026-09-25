@@ -187,7 +187,9 @@ projektet (fx `frivillig.randersvk.dk`) under Settings → Domains.
 ## Project Structure
 
 ```
-src/App.jsx                    # hele appen
+src/App.jsx                    # medlemmernes app
+src/admin.jsx                  # admin-panelet – hentes først når det åbnes
+src/shared.jsx                 # det, begge bruger (tema, ikoner, hjælpere)
 supabase/RUN_ALL.sql           # alle migrationer samlet – ét indsæt
 supabase/build_run_all.sh      # genskaber RUN_ALL.sql fra migrations/
 supabase/VERIFY.sql            # eftersyn efter migrationerne – læser kun
@@ -271,11 +273,41 @@ til Supabase, så forbindelsen til databasen åbnes, mens app-koden hentes —
 
 Prøv efter: `node varm-check.js` og `node hurtig-check.js`.
 
-**Tilbage at hente:** app-koden er 651 kB i én fil (171 kB pakket), og
-medlemmerne downloader hele admin-panelet uden nogensinde at bruge det.
-Admin-delen fylder omkring 39 kB pakket af `App.jsx` — cirka hvert femte
-byte, en almindelig frivillig henter. Det kræver, at `App.jsx` deles op i
-flere filer.
+### Admin-panelet hentes først, når det åbnes
+
+Hele appen lå i én fil, så enhver telefon hentede admin-panelet ved hvert
+besøg — også de mange medlemmer, der aldrig åbner det. Koden er nu delt i
+tre:
+
+| Fil | Hvad | Hvem henter den |
+|---|---|---|
+| `src/App.jsx` | Medlemmernes app | alle |
+| `src/admin.jsx` | Hele admin-panelet | kun den, der åbner panelet |
+| `src/shared.jsx` | Det, begge bruger | alle |
+
+`shared.jsx` findes, fordi to filer ikke kan importere hinanden uden at løbe
+i ring. Der ligger `theme`, `CategoryIcon` og ikonkataloget, `ScrollRow`,
+`parseTaskDate`, `RoleBadge`, `logAction` og et par andre — resten bliver,
+hvor det hører hjemme.
+
+`App.jsx` henter admin med `lazy(() => import("./admin.jsx"))` og viser
+appens egen indlæsningsskærm imens. Det sker én gang, første gang panelet
+åbnes.
+
+| | Før | Efter |
+|---|---|---|
+| Medlem henter | 171 kB | **145 kB** |
+| Admin henter (ved åbning af panelet) | 171 kB | 145 + 29 kB |
+
+26 kB mindre for alle, der ikke er admins — 15 % af hele downloaden.
+
+Flytningen er mekanisk og derfor farlig: et navn, der ikke kom med over,
+bliver først til en fejl, når nogen åbner netop den skærm. Derfor er
+ESLints `no-undef` regel den vigtigste kontrol her — den fanger præcis det
+— og hele testsættet kører på de tre filer bagefter.
+
+Prøv efter: `node chunk-check.js` (6 checks — henter et medlem admin-filen?)
+
 
 ### Den huskede profil
 
