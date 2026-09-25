@@ -285,7 +285,7 @@ const RowArrow = ({ dir, show, onClick, arrowClass }) => (
   </button>
 );
 
-const ScrollRow = ({ children, className = "", arrowClass = "" }) => {
+const ScrollRow = ({ children, className = "", arrowClass = "", wrapperClassName = "" }) => {
   const ref = useRef(null);
   const [edge, setEdge] = useState({ left: false, right: false });
 
@@ -338,7 +338,10 @@ const ScrollRow = ({ children, className = "", arrowClass = "" }) => {
     : "";
 
   return (
-    <div className="relative">
+    // wrapperClassName er til layout-klasser, der hoerer til den YDRE kasse —
+    // fx shrink-0, naar raekken sidder i en flex-kolonne. Laegges de kun paa
+    // den indre, klemmer flexboksen wrapperen flad, og raekken forsvinder.
+    <div className={`relative ${wrapperClassName}`}>
       <div ref={ref} onScroll={update} onWheel={onWheel} className={`${className} ${mask}`}>
         {children}
       </div>
@@ -2945,6 +2948,16 @@ const formatDateDanish = (d) => {
   return `${day.charAt(0).toUpperCase() + day.slice(1)} ${date}. ${mon}`;
 };
 
+// En dato som ÅÅÅÅ-MM-DD, laest af de LOKALE felter.
+//
+// Det fristende ".toISOString().slice(0, 10)" er forkert her: new Date(år,
+// måned, dag) er lokal midnat, og toISOString regner om til UTC. I dansk
+// sommertid er 5. oktober kl. 00:00 lig 4. oktober kl. 22:00 UTC — så
+// kalenderen gemte dagen FØR den, man trykkede på, og man skulle vælge en
+// dag for sent for at ramme rigtigt.
+const isoLokal = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 const TaskDatePicker = ({ value, onChange }) => {
   const today = new Date();
   const [current, setCurrent] = useState(() => {
@@ -2966,10 +2979,10 @@ const TaskDatePicker = ({ value, onChange }) => {
   if (rem < 7) for (let i = 1; i <= rem; i++) days.push({ d: new Date(year, month + 1, i), cur: false });
 
   const selectedISO = value || "";
-  const todayISO    = today.toISOString().slice(0, 10);
+  const todayISO    = isoLokal(today);
 
   const pick = (d) => {
-    const iso = d.toISOString().slice(0, 10);
+    const iso = isoLokal(d);
     onChange(iso, formatDateDanish(d));
   };
 
@@ -2992,7 +3005,7 @@ const TaskDatePicker = ({ value, onChange }) => {
         {/* Day grid */}
         <div className="grid grid-cols-7 px-2 pb-2 gap-y-0.5">
           {days.map(({ d, cur }, i) => {
-            const iso      = d.toISOString().slice(0, 10);
+            const iso      = isoLokal(d);
             const selected = iso === selectedISO;
             const isToday  = iso === todayISO;
             const past     = iso < todayISO;
@@ -3207,7 +3220,7 @@ const TaskFormModal = ({ task, onClose, onSave }) => {
             <button onClick={onClose} className="p-1.5 hover:bg-stone-100 rounded-lg mt-2"><X className="w-5 h-5" /></button>
           </div>
           {/* Category tabs */}
-          <ScrollRow className="shrink-0 flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
+          <ScrollRow wrapperClassName="shrink-0" className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
             {TASK_TEMPLATES.map((g) => (
               <button key={g.label} onClick={() => setTplCat(g.label)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === g.label ? "text-white" : "bg-stone-100 text-stone-700"}`}
@@ -3951,7 +3964,7 @@ const downloadCSV = (filename, csv) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => isoLokal(new Date());
 
 // ---- EKSPORT AF KLUBDATA ----
 //
