@@ -8,7 +8,10 @@ import {
   Save, ArrowRight, CheckCircle2, AtSign, Plus, MoreVertical,
   ShieldCheck, UserPlus, DollarSign, AlertTriangle, Activity, FileText,
   Pencil, Copy, UserCheck, UserX, ThumbsUp, BellRing,
-  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft, MessageSquare
+  ArrowLeftRight, CalendarDays, List, Grid3x3, ChevronLeft, MessageSquare,
+  ClipboardList, Timer, Mic, Volleyball, Tent, Table, ShoppingCart, Utensils,
+  Car, Bus, KeyRound, SprayCan, Wrench, Package, Shirt, Megaphone, Newspaper,
+  Monitor, Briefcase, Banknote, Handshake, PartyPopper, Cake, Heart
 } from "lucide-react";
 
 const theme = {
@@ -511,14 +514,125 @@ export class ErrorBoundary extends Component {
   }
 }
 
-const CategoryIcon = ({ type, className = "w-5 h-5" }) => {
-  const icons = {
-    whistle: <svg viewBox="0 0 24 24" fill="none" className={className} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="13" r="5" /><path d="M14 13h8" /><path d="M22 10v6" /><circle cx="9" cy="13" r="1" fill="currentColor" /></svg>,
-    coffee: <Coffee className={className} />,
-    setup: <svg viewBox="0 0 24 24" fill="none" className={className} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-6 9 6" /><path d="M5 9v11h14V9" /><path d="M9 20v-6h6v6" /></svg>,
-    cake: <svg viewBox="0 0 24 24" fill="none" className={className} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 21h16v-7H4z" /><path d="M4 14v-3a2 2 0 012-2h12a2 2 0 012 2v3" /><path d="M8 9V6M12 9V4M16 9V6" /></svg>,
-  };
-  return icons[type] || icons.setup;
+// ============ IKONKATALOG ============
+//
+// Foer fandtes der fire ikoner i hele appen — floejte, kaffekop, hus og kage —
+// og de blev valgt ud fra KATEGORIEN. Derfor stod "Fotograf til kampdag" og
+// "Dele flyers ud ved sprogcentret" begge med en kaffekop, og bestyrelsen med
+// et hus. Ikonet sagde altsaa ikke noget om opgaven.
+//
+// De fire gamle id'er staar foerst i hver gruppe og er beholdt, saa opgaver i
+// databasen beholder deres ikon. Et ukendt id falder tilbage paa "setup".
+//
+// tegn() faar klassen med, saa det samme ikon kan vaere 12px i en liste og
+// 40px paa en opgaveside.
+const IKON_KATALOG = [
+  { gruppe: "Kamp", ikoner: [
+    { id: "whistle",   navn: "Dommer",       tegn: (c) => <svg viewBox="0 0 24 24" fill="none" className={c} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="13" r="5" /><path d="M14 13h8" /><path d="M22 10v6" /><circle cx="9" cy="13" r="1" fill="currentColor" /></svg> },
+    { id: "scorecard", navn: "Sekretærbord", tegn: (c) => <ClipboardList className={c} /> },
+    { id: "timer",     navn: "Tidtagning",   tegn: (c) => <Timer className={c} /> },
+    { id: "speaker",   navn: "Speaker",      tegn: (c) => <Mic className={c} /> },
+    { id: "net",       navn: "Bane og net",  tegn: (c) => <Volleyball className={c} /> },
+    { id: "setup",     navn: "Hallen",       tegn: (c) => <svg viewBox="0 0 24 24" fill="none" className={c} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-6 9 6" /><path d="M5 9v11h14V9" /><path d="M9 20v-6h6v6" /></svg> },
+  ]},
+  { gruppe: "Stævne", ikoner: [
+    { id: "trophy",    navn: "Stævne",       tegn: (c) => <Trophy className={c} /> },
+    { id: "table",     navn: "Stævnebord",   tegn: (c) => <Table className={c} /> },
+    { id: "tent",      navn: "Overnatning",  tegn: (c) => <Tent className={c} /> },
+  ]},
+  { gruppe: "Mad og kiosk", ikoner: [
+    { id: "cake",      navn: "Kage",         tegn: (c) => <Cake className={c} /> },
+    { id: "coffee",    navn: "Kaffe",        tegn: (c) => <Coffee className={c} /> },
+    { id: "kiosk",     navn: "Kiosk",        tegn: (c) => <ShoppingCart className={c} /> },
+    { id: "food",      navn: "Mad",          tegn: (c) => <Utensils className={c} /> },
+    { id: "grill",     navn: "Grill",        tegn: (c) => <Flame className={c} /> },
+  ]},
+  { gruppe: "Transport", ikoner: [
+    { id: "car",       navn: "Kørsel",       tegn: (c) => <Car className={c} /> },
+    { id: "bus",       navn: "Bus",          tegn: (c) => <Bus className={c} /> },
+  ]},
+  { gruppe: "Faciliteter", ikoner: [
+    { id: "key",       navn: "Nøgler",       tegn: (c) => <KeyRound className={c} /> },
+    { id: "clean",     navn: "Rengøring",    tegn: (c) => <SprayCan className={c} /> },
+    { id: "tools",     navn: "Værktøj",      tegn: (c) => <Wrench className={c} /> },
+    { id: "gear",      navn: "Materialer",   tegn: (c) => <Package className={c} /> },
+    { id: "laundry",   navn: "Vask",         tegn: (c) => <Shirt className={c} /> },
+  ]},
+  { gruppe: "Kommunikation", ikoner: [
+    { id: "camera",    navn: "Foto",         tegn: (c) => <Camera className={c} /> },
+    { id: "megaphone", navn: "SoMe og PR",   tegn: (c) => <Megaphone className={c} /> },
+    { id: "flyer",     navn: "Flyers",       tegn: (c) => <Newspaper className={c} /> },
+    { id: "web",       navn: "Hjemmeside",   tegn: (c) => <Monitor className={c} /> },
+  ]},
+  { gruppe: "Klubben", ikoner: [
+    { id: "board",     navn: "Bestyrelse",   tegn: (c) => <Briefcase className={c} /> },
+    { id: "money",     navn: "Økonomi",      tegn: (c) => <Banknote className={c} /> },
+    { id: "sponsor",   navn: "Sponsor",      tegn: (c) => <Handshake className={c} /> },
+    { id: "committee", navn: "Udvalg",       tegn: (c) => <Users className={c} /> },
+    { id: "party",     navn: "Fest",         tegn: (c) => <PartyPopper className={c} /> },
+    { id: "heart",     navn: "Hjælp",        tegn: (c) => <Heart className={c} /> },
+  ]},
+];
+
+const IKONER = Object.fromEntries(
+  IKON_KATALOG.flatMap((g) => g.ikoner.map((i) => [i.id, i]))
+);
+
+const ikonNavn = (id) => IKONER[id]?.navn || IKONER.setup.navn;
+
+const CategoryIcon = ({ type, className = "w-5 h-5" }) =>
+  (IKONER[type] || IKONER.setup).tegn(className);
+
+// Ikonet foelger ORDENE i titlen, ikke kategorien. Raekkefoelgen er ikke
+// tilfaeldig: det mest bestemte ord vinder. "Stævnebord" skal ramme bordet,
+// foer "stævne" rammer pokalen, og "stævneudvalg" er et udvalg, ikke et
+// staevne. Kategorien er reserve, naar titlen ikke siger noget.
+const IKON_ORD = [
+  [/stævnebord|kampbord/i,                          "table"],
+  [/udvalg/i,                                       "committee"],
+  [/sekretær|holdkort|kampskema|resultat/i,         "scorecard"],
+  [/dommer|fløjt|træner/i,                          "whistle"],
+  [/speaker|mikrofon|annonc/i,                      "speaker"],
+  [/tidtag|kampur|stopur/i,                         "timer"],
+  [/boldrum|materiale|udstyr|depot/i,               "gear"],
+  [/bane|net |nettet|opsætning|nedtagning/i,        "net"],
+  [/overnat|natvagt/i,                              "tent"],
+  [/foto|billed/i,                                  "camera"],
+  [/some|sociale medier|presse|markedsføring|pr\b/i, "megaphone"],
+  [/flyer|plakat|stand |uddel/i,                    "flyer"],
+  [/hjemmeside|webmaster|web\b/i,                   "web"],
+  [/kiosk|indkøb|varer/i,                           "kiosk"],
+  [/kage|bag(e|ning)/i,                             "cake"],
+  [/mad|spisning|madpakke|køkken/i,                 "food"],
+  [/grill/i,                                        "grill"],
+  [/kaffe/i,                                        "coffee"],
+  [/kørsel|kør |transport|hente|aflever/i,          "car"],
+  [/bus/i,                                          "bus"],
+  [/nøgle|halsover|låse|lukke hallen/i,             "key"],
+  [/rengør|oprydning|rydde|vaske gulv/i,            "clean"],
+  [/vask|spillertøj|trøjer/i,                       "laundry"],
+  [/værktøj|reparation|vedligehold/i,               "tools"],
+  [/bestyrels|formand|næstformand|referat/i,        "board"],
+  [/kasser|økonomi|regnskab|budget|kontingent/i,    "money"],
+  [/sponsor/i,                                      "sponsor"],
+  [/fest|arrangement|hygge|socialt/i,               "party"],
+  [/stævne/i,                                       "trophy"],
+];
+
+const KATEGORI_IKON = {
+  "Kampafvikling & Sekretærbord":    "whistle",
+  "Hygge og Socialt":                "party",
+  "Holdleder & Transport":           "car",
+  "Stævneplanlægning og Afholdelse": "trophy",
+  "Kommunikation & PR":              "megaphone",
+  "Faciliteter & Materialer":        "gear",
+  "Klubadministration":              "board",
+};
+
+const foreslaaIkon = (titel, kategori) => {
+  const t = titel || "";
+  for (const [ord, id] of IKON_ORD) if (ord.test(t)) return id;
+  return KATEGORI_IKON[kategori] || "setup";
 };
 
 const DifficultyPill = ({ level }) => {
@@ -3372,6 +3486,10 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const [title, setTitle]           = useState(task?.title || "");
   const [category, setCategory]     = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]             = useState(task?.icon || "whistle");
+  // Har admin selv valgt et ikon? Samme regel som for pointtallet: en opgave,
+  // der redigeres, har allerede et valgt ikon, og det roerer appen ikke.
+  const [ikonRoert, setIkonRoert]   = useState(!!task);
+  const [ikonAabent, setIkonAabent] = useState(false);
   const [date, setDate]             = useState(task?.date || "");
   const [dateISO, setDateISO]       = useState(task?.dateFull || "");
   const [durationType, setDuration] = useState(task?.durationType || "single");
@@ -3408,13 +3526,21 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   // vi undgaar en kaskade af renders.
   const visPoints = pointRoert ? points : forslag;
 
+  // Ikonet udledes af titlen paa samme maade — ikke gemt i state, saa de to
+  // aldrig kan komme ud af trit.
+  const visIkon = ikonRoert ? icon : foreslaaIkon(title, category);
+
   const forslagAfviger = pointRoert && parseInt(visPoints) !== forslag;
 
   const pointsChanged = !isNew && parseInt(visPoints) !== (task?.points ?? null);
   const affected      = (claimCounts?.signed_up || 0) + (claimCounts?.completed || 0);
 
-  const applyTemplate = (tpl, catLabel, catIcon, ekstra) => {
-    setTitle(tpl.title); setCategory(catLabel); setIcon(catIcon);
+  const applyTemplate = (tpl, catLabel, ekstra) => {
+    setTitle(tpl.title); setCategory(catLabel);
+    // Klubbens egne skabeloner husker det ikon, admin valgte. Appens egne
+    // forslag har ikke noget eget ikon — der er titlen bedre end kategorien.
+    if (ekstra?.icon) { setIcon(ekstra.icon); setIkonRoert(true); }
+    else { setIkonRoert(false); }
     setPoints(tpl.points); setDiff(tpl.difficulty); setDesc(tpl.description);
     // Skabelonens pointtal er et bevidst valg – det maa forslaget ikke
     // skrive hen over, naar svaerhedsgraden saettes lige ovenfor.
@@ -3431,19 +3557,12 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
     setStep("form");
   };
 
-  const categories = [
-    { label: "Kampafvikling & Sekretærbord",      icon: "whistle" },
-    { label: "Hygge og Socialt",                  icon: "cake"    },
-    { label: "Holdleder & Transport",             icon: "setup"   },
-    { label: "Stævneplanlægning og Afholdelse",   icon: "whistle" },
-    { label: "Kommunikation & PR",                icon: "coffee"  },
-    { label: "Faciliteter & Materialer",          icon: "setup"   },
-    { label: "Klubadministration",                icon: "setup"   },
-  ];
+  // Kategorierne og deres reserveikon staar ét sted nu: KATEGORI_IKON.
+  const categories = Object.keys(KATEGORI_IKON);
 
   const handleSave = () => {
     if (!title.trim() || !dateISO) return;
-    onSave({ title, category, icon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description });
+    onSave({ title, category, icon: visIkon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description });
   };
 
   // Klubbens egne skabeloner, gemt i databasen. De staar side om side med
@@ -3467,7 +3586,7 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
     const { error } = await supabase.from("task_templates").upsert({
       category, title: title.trim(), points: parseInt(visPoints) || 10,
       difficulty, spots_total: parseInt(spots) || 2, duration_type: durationType,
-      time: time || null, location: location || null, icon,
+      time: time || null, location: location || null, icon: visIkon,
       description: description || null,
       created_by: currentUser?.id || null,
     }, { onConflict: "category,title" });
@@ -3524,8 +3643,8 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
                     <button
                       onClick={() => applyTemplate(
                         { title: tpl.title, points: tpl.points, difficulty: tpl.difficulty, description: tpl.description || "" },
-                        tpl.category, tpl.icon,
-                        { spots: tpl.spots_total, time: tpl.time, location: tpl.location, durationType: tpl.duration_type }
+                        tpl.category,
+                        { spots: tpl.spots_total, time: tpl.time, location: tpl.location, durationType: tpl.duration_type, icon: tpl.icon }
                       )}
                       className="w-full text-left bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 pr-11 transition-all"
                     >
@@ -3551,7 +3670,7 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
             )}
 
             {activeTplGroup.templates.map((tpl) => (
-              <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label, activeTplGroup.icon)}
+              <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label)}
                 className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all">
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
@@ -3589,14 +3708,75 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
 
           {/* Kategori + ikon */}
           <div>
-            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Kategori</label>
-            <div className="relative">
-              <select value={category} onChange={(e) => { const cat = categories.find((c) => c.label === e.target.value); setCategory(e.target.value); if (cat) setIcon(cat.icon); }}
-                className="w-full px-3 py-3 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none appearance-none pr-8">
-                {categories.map((c) => <option key={c.label} value={c.label}>{c.label}</option>)}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-2">Kategori og ikon</label>
+            <div className="flex gap-2">
+              <div className="relative flex-1 min-w-0">
+                <select value={category} onChange={(e) => setCategory(e.target.value)}
+                  className="w-full px-3 py-3 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none appearance-none pr-8">
+                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400 pointer-events-none" />
+              </div>
+              {/* Ikonet foelger titlen af sig selv. Knappen er der for de
+                  gange, hvor appen gaetter forkert — ikke som en pligt. */}
+              <button
+                type="button"
+                onClick={() => setIkonAabent((v) => !v)}
+                aria-label={`Ikon: ${ikonNavn(visIkon)}. Tryk for at vælge et andet`}
+                className={`shrink-0 w-[52px] rounded-xl border flex flex-col items-center justify-center gap-0.5 transition-all ${ikonAabent ? "border-violet-400 bg-violet-50 text-violet-700" : "border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300"}`}
+              >
+                <CategoryIcon type={visIkon} className="w-5 h-5" />
+                <span className="text-[8px] font-bold uppercase tracking-wide">Ikon</span>
+              </button>
             </div>
+
+            {!ikonAabent && (
+              <p className="text-[11px] text-stone-400 mt-1.5 px-1">
+                {ikonRoert
+                  ? <>Ikon: <strong className="text-stone-600">{ikonNavn(visIkon)}</strong>. Tryk på det for at skifte.</>
+                  : <>Appen vælger <strong className="text-stone-600">{ikonNavn(visIkon)}</strong> ud fra titlen. Tryk på ikonet for at vælge selv.</>}
+              </p>
+            )}
+
+            {ikonAabent && (
+              <div className="mt-2 border border-stone-200 rounded-xl p-3 bg-stone-50/60 max-h-64 overflow-y-auto">
+                {!ikonRoert && (
+                  <p className="text-[10px] text-stone-400 mb-2">
+                    Appen har valgt <strong className="text-stone-600">{ikonNavn(visIkon)}</strong> ud fra titlen.
+                  </p>
+                )}
+                {IKON_KATALOG.map((g) => (
+                  <div key={g.gruppe} className="mb-3 last:mb-0">
+                    <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 mb-1.5">{g.gruppe}</div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {g.ikoner.map((ik) => {
+                        const valgt = ik.id === visIkon;
+                        return (
+                          <button
+                            key={ik.id}
+                            type="button"
+                            onClick={() => { setIcon(ik.id); setIkonRoert(true); setIkonAabent(false); }}
+                            className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border transition-all ${valgt ? "border-violet-400 bg-violet-50 text-violet-700" : "border-transparent bg-white text-stone-600 hover:border-stone-200"}`}
+                          >
+                            <CategoryIcon type={ik.id} className="w-5 h-5" />
+                            <span className="text-[9px] font-semibold leading-tight text-center">{ik.navn}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {ikonRoert && (
+                  <button
+                    type="button"
+                    onClick={() => { setIkonRoert(false); setIkonAabent(false); }}
+                    className="w-full text-[11px] font-semibold text-stone-500 hover:text-stone-800 py-2"
+                  >
+                    Lad appen vælge ud fra titlen
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           <TaskDatePicker value={dateISO} onChange={(iso) => {

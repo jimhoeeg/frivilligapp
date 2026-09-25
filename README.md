@@ -389,6 +389,38 @@ Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx` (nu
 `kontakt@randersvk.dk` — ret den). Aftal hvem der læser den adresse, før
 linket sendes ud.
 
+## Ikoner
+
+Appen havde fire ikoner: fløjte, kaffekop, hus og kage. De blev valgt ud fra
+**kategorien**, så "Fotograf til kampdag" og "Dele flyers ud ved sprogcentret"
+stod begge med en kaffekop, og bestyrelsen med et hus. Ikonet sagde altså
+ikke noget om opgaven.
+
+Nu er der et katalog på 31 ikoner i syv grupper — Kamp, Stævne, Mad og kiosk,
+Transport, Faciliteter, Kommunikation, Klubben — hver med et dansk navn.
+`IKON_KATALOG` i `App.jsx` er den ene liste, både vælgeren og opslaget bruger.
+De fire gamle id'er (`whistle`, `coffee`, `setup`, `cake`) står der stadig, så
+opgaver i databasen beholder deres ikon, og et ukendt id falder tilbage på
+`setup`.
+
+**Ikonet følger titlen, ikke kategorien.** `foreslaaIkon()` læser ordene:
+"kiosk" → indkøbskurv, "kørsel" → bil, "nøgle" eller "halsover" → nøgle,
+"foto" → kamera, "SoMe" → megafon, "bestyrelse" → mappe. Rækkefølgen i
+`IKON_ORD` er ikke tilfældig — det mest bestemte ord vinder, så "stævnebord"
+rammer bordet før "stævne" rammer pokalen, og "stævneudvalg" er et udvalg.
+Siger titlen ingenting, bruges kategoriens ikon.
+
+**Admin kan altid overtrumfe.** Ikonet står som en knap ved siden af
+kategorien; tryk på det, og hele kataloget folder sig ud. Har admin først
+valgt selv, rører appen det aldrig igen — heller ikke når titlen ændres.
+"Lad appen vælge ud fra titlen" giver den tilbage. Samme princip som
+pointforslaget: et forslag, ikke en pligt.
+
+Skabeloner husker ikonet. Klubbens egne skabeloner tager det med tilbage;
+appens indbyggede forslag har ikke noget eget ikon, for dér er titlen bedre.
+
+Prøv efter: `node ikon-check.js` (11 checks).
+
 ## Pointmodel
 
 En tilmelding har tre tilstande:
