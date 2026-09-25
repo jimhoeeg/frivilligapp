@@ -11,17 +11,17 @@
 select * from (
 
 -- ---------------------------------------------------------------- SKEMA ----
-select 1::numeric as nr, 'Alle 12 tabeller findes' as tjek,
+select 1::numeric as nr, 'Alle 13 tabeller findes' as tjek,
   case when (select count(*) from pg_tables
               where schemaname='public'
                 and tablename in ('profiles','teams','tasks','task_steps','task_claims',
                                   'swap_offers','notifications','audit_log','settings',
-                                  'client_errors','season_results','task_templates')) = 12
+                                  'client_errors','season_results','task_templates','member_badges')) = 13
        then 'OK' else 'FEJL' end as resultat,
   (select string_agg(tablename, ', ' order by tablename) from pg_tables
     where schemaname='public'
       and tablename in ('profiles','teams','tasks','task_steps','task_claims',
-                        'swap_offers','notifications','audit_log','settings','client_errors','season_results','task_templates')
+                        'swap_offers','notifications','audit_log','settings','client_errors','season_results','task_templates','member_badges')
   ) as detalje
 
 union all
@@ -95,7 +95,8 @@ select 7, 'Alle funktioner appen kalder findes',
         ('admin_pending_confirmations'),('admin_task_signups'),('auto_confirm_due_claims'),
         ('auto_confirm_preview'),('task_claim_counts'),('log_client_error'),
         ('get_my_role'),('is_approved'),('admin_reset_season'),
-        ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows'),('task_signups')
+        ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows'),('task_signups'),
+        ('my_badges')
       ) as f(navn)
       where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                          where n.nspname='public' and p.proname=f.navn)) = 0
@@ -228,10 +229,10 @@ union all
 select 18.6, 'Kun appens egne funktioner er aabne for indloggede',
   case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public'
-                and has_function_privilege('authenticated', p.oid, 'execute')) = 24
+                and has_function_privilege('authenticated', p.oid, 'execute')) = 25
        then 'OK' else 'FEJL' end,
   (select count(*) filter (where has_function_privilege('authenticated', p.oid, 'execute'))::text
-          || ' af ' || count(*)::text || ' – forventet 24'
+          || ' af ' || count(*)::text || ' – forventet 25'
      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public')
 
 union all

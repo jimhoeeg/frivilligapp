@@ -491,7 +491,7 @@ const AuthField = ({ icon, label, type = "text", name, autoComplete, value, onCh
 // nederst paa begge dokumenter, saa et medlem kan se, hvad de har sagt ja
 // til — og hvornaar. Retter nogen i teksten, skal den her med.
 const LEGAL_UPDATED = "25. september 2026";
-const LEGAL_CONTACT = "kontakt@randersvk.dk";
+const LEGAL_CONTACT = "randersvolleyball@gmail.com";
 
 const LEGAL_DOCS = {
   terms: {
@@ -1133,6 +1133,82 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
   );
 };
 
+// ============ DE SKJULTE MÆRKER ============
+//
+// Reglerne staar i databasen (my_badges()), ikke her. Det her er kun
+// teksterne — hvad mærket hedder, og hvad man gjorde for at faa det.
+//
+// Et mærke, man ikke har fundet, staar IKKE paa listen. Et maal virker kun,
+// hvis man kan se det; en opdagelse virker kun, hvis man ikke kan. Derfor
+// viser appen de seks maal som foer, og taeller de skjulte: "23 venter".
+const MAERKER = {
+  // Vedholdenhed
+  kom_godt_igang:    { emoji: "🌾", navn: "Kom godt i gang",     tekst: "Tre bekræftede tjanser" },
+  arbejdshesten:     { emoji: "🐴", navn: "Arbejdshesten",       tekst: "Ti bekræftede tjanser" },
+  rygraden:          { emoji: "🦴", navn: "Klubbens rygrad",     tekst: "Tyve bekræftede tjanser" },
+  uundvaerlig:       { emoji: "💎", navn: "Uundværlig",          tekst: "Femogtredive bekræftede tjanser" },
+  stimen:            { emoji: "🔗", navn: "Stimen",              tekst: "Tjanser fire uger i træk" },
+  trofast:           { emoji: "📅", navn: "Trofast",             tekst: "Tjanser i tre forskellige måneder" },
+  // Bredde
+  alsidig:           { emoji: "🎭", navn: "Alsidig",             tekst: "Tjanser i tre forskellige kategorier" },
+  altmuligmand:      { emoji: "🧰", navn: "Altmuligmand",        tekst: "Tjanser i fem kategorier" },
+  hele_klubben:      { emoji: "🌍", navn: "Hele klubben rundt",  tekst: "Mindst én tjans i alle syv kategorier" },
+  dommerbordet:      { emoji: "📋", navn: "Fast ved dommerbordet", tekst: "Tre gange i Kampafvikling & Sekretærbord" },
+  kiosken:           { emoji: "☕", navn: "Kioskens ven",        tekst: "Tre gange i Hygge og Socialt" },
+  "chaufføren":      { emoji: "🚗", navn: "Chaufføren",          tekst: "Tre gange i Holdleder & Transport" },
+  staevneholdet:     { emoji: "🏆", navn: "Stævneholdet",        tekst: "Tre gange i Stævneplanlægning" },
+  pedellen:          { emoji: "🔧", navn: "Pedellen",            tekst: "Tre gange i Faciliteter & Materialer" },
+  klubbens_stemme:   { emoji: "📣", navn: "Klubbens stemme",     tekst: "Tre gange i Kommunikation & PR" },
+  // Timing
+  foerst_paa_pletten:{ emoji: "⚡", navn: "Først på pletten",    tekst: "Tog en opgave inden for en time efter den blev oprettet" },
+  sidste_udkald:     { emoji: "⏰", navn: "Sidste udkald",       tekst: "Tog en opgave under et døgn før den skulle udføres" },
+  redningsmanden:    { emoji: "🛟", navn: "Redningsmanden",      tekst: "Tog den sidste ledige plads på en opgave" },
+  den_oversete:      { emoji: "🕸️", navn: "Den oversete tjans",  tekst: "Tog en opgave, der havde stået ubesat i fjorten dage" },
+  dobbeltdag:        { emoji: "☀️", navn: "Dobbeltdag",          tekst: "To tjanser på den samme dag" },
+  weekendkrigeren:   { emoji: "🎽", navn: "Weekendkrigeren",     tekst: "Fem tjanser på en lørdag eller søndag" },
+  // Omfang og sværhed
+  modig:             { emoji: "🦁", navn: "Modig",               tekst: "Første opgave markeret Hård" },
+  jernvilje:         { emoji: "⚒️", navn: "Jernvilje",           tekst: "Tre hårde opgaver" },
+  den_lange_bane:    { emoji: "🛤️", navn: "Den lange bane",      tekst: "Gennemført en sæsonrolle" },
+  maaneden_ud:       { emoji: "🌙", navn: "Måneden ud",          tekst: "Gennemført en månedsopgave" },
+  brandslukkeren:    { emoji: "🚒", navn: "Brandslukkeren",      tekst: "Tre opgaver, der hastede" },
+  // Fællesskab og sæson
+  byttecentralen:    { emoji: "🔄", navn: "Byttecentralen",      tekst: "Tre gennemførte bytter" },
+  nye_ansigter:      { emoji: "👥", navn: "Nye ansigter",        tekst: "Stået på opgave med ti forskellige medlemmer" },
+  tidligt_i_maal:    { emoji: "🚀", navn: "Tidligt i mål",       tekst: "Halvsmålet nået inden 1. december" },
+  saeson_to:         { emoji: "🎖️", navn: "Sæson to",            tekst: "Tjanser i to forskellige sæsoner" },
+};
+
+const ANTAL_MAERKER = Object.keys(MAERKER).length;
+
+// Kvittering for et nyfundet mærke. Den kommer én gang — databasen siger
+// selv, hvornår et mærke er nyt, og siger det kun den ene gang.
+const NyeMaerkerModal = ({ maerker, onClose }) => (
+  <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6" onClick={onClose}>
+    <div className="bg-white rounded-3xl w-full max-w-sm p-6 text-center animate-slideup" onClick={(e) => e.stopPropagation()}>
+      <div className="text-[11px] uppercase tracking-widest font-bold text-violet-600 mb-1">
+        {maerker.length === 1 ? "Nyt mærke" : `${maerker.length} nye mærker`}
+      </div>
+      <h3 className="text-lg font-bold text-stone-900 mb-4">Du fandt noget</h3>
+      <div className="space-y-2.5 mb-5">
+        {maerker.map((m) => (
+          <div key={m.id} className="flex items-center gap-3 text-left bg-stone-50 rounded-2xl p-3 border border-stone-100">
+            <span className="text-3xl shrink-0">{m.emoji}</span>
+            <div className="min-w-0">
+              <div className="font-bold text-[14px] text-stone-900">{m.navn}</div>
+              <div className="text-[11px] text-stone-500 leading-snug">{m.tekst}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <button onClick={onClose} className="w-full py-3 rounded-xl font-bold text-white text-[14px]"
+        style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+        Fedt
+      </button>
+    </div>
+  </div>
+);
+
 // Mærkerne følger klubbens pointmål, som sættes i admin-panelet.
 const badgeDefs = (halfGoal) => [
   { id: "signup",   emoji: "🌱", label: "Frivillig",     desc: "Tilmeldt som frivillig",                      req: () => true },
@@ -1143,7 +1219,7 @@ const badgeDefs = (halfGoal) => [
   { id: "fullgoal", emoji: "🏆", label: "Sæsonmål",      desc: `${halfGoal * 2} point – hele sæsonen`,        req: (e) => e >= halfGoal * 2 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [] }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
@@ -1222,8 +1298,8 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
       <div className="px-5 mt-5 grid grid-cols-3 gap-2.5">
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm"><div className="text-xl font-black text-stone-900">{openTasks.length}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Kommende</div></div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm">
-          <div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{earnedBadges.length}</div>
-          <div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Badges</div>
+          <div className="text-xl font-black" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{earnedBadges.length + fundneMaerker.length}</div>
+          <div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Mærker</div>
         </div>
         <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm">
           <div className="text-xl font-black text-stone-900">{rank != null ? `#${rank}` : "–"}</div>
@@ -1234,7 +1310,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
       {/* Badges */}
       {earnedBadges.length > 0 && (
         <div className="px-5 mt-5">
-          <h2 className="text-sm font-bold text-stone-900 mb-2">Mine badges</h2>
+          <h2 className="text-sm font-bold text-stone-900 mb-2">Mine mål</h2>
           <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
             {badges.map((b) => {
               const unlocked = b.req(earned, tasks);
@@ -1248,6 +1324,45 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
           </ScrollRow>
         </div>
       )}
+
+      {/* De skjulte mærker. Kun de fundne staar her — resten er et tal. */}
+      <div className="px-5 mt-5">
+        <div className="flex items-baseline justify-between mb-2">
+          <h2 className="text-sm font-bold text-stone-900">Fundne mærker</h2>
+          <span className="text-[11px] font-semibold text-stone-400">
+            {fundneMaerker.length} af {ANTAL_MAERKER}
+          </span>
+        </div>
+        {fundneMaerker.length === 0 ? (
+          <div className="bg-white rounded-xl p-4 border border-dashed border-stone-200 text-center">
+            <div className="text-2xl mb-1">🔒</div>
+            <p className="text-[12px] text-stone-500 leading-snug">
+              Der er <strong className="text-stone-700">{ANTAL_MAERKER} skjulte mærker</strong> at finde.
+            </p>
+            <p className="text-[11px] text-stone-400 mt-0.5">Tag tjanser, så dukker de op af sig selv.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {fundneMaerker.map((m) => (
+              <div key={m.id} className="bg-white rounded-xl border border-stone-100 shadow-sm p-2.5 flex items-center gap-2">
+                <span className="text-xl shrink-0">{m.emoji}</span>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-stone-900 leading-tight truncate">{m.navn}</div>
+                  <div className="text-[9px] text-stone-400 leading-tight line-clamp-2">{m.tekst}</div>
+                </div>
+              </div>
+            ))}
+            {fundneMaerker.length < ANTAL_MAERKER && (
+              <div className="rounded-xl border border-dashed border-stone-200 p-2.5 flex items-center gap-2 bg-stone-50/60">
+                <span className="text-xl shrink-0 opacity-50">🔒</span>
+                <div className="text-[10px] text-stone-400 leading-tight">
+                  <strong className="text-stone-500">{ANTAL_MAERKER - fundneMaerker.length}</strong> venter på at blive fundet
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="px-5 mt-6">
         <div className="flex items-center justify-between mb-3"><h2 className="text-sm font-bold text-stone-900">Mine tjanser</h2></div>
@@ -2034,6 +2149,9 @@ export default function App() {
   // Tilmeldingerne gemmes nu med deres tilstand, fordi point først tæller
   // når en admin har bekræftet, at tjansen er gennemført.
   const [myClaims, setMyClaims] = useState([]);
+  // Mærkerne kommer fra databasen: hvad man har fundet, og om noget er nyt.
+  const [maerker, setMaerker] = useState([]);
+  const [nyeMaerker, setNyeMaerker] = useState([]);
   const [toast, setToast] = useState(null);
   const [welcomeToast, setWelcomeToast] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -2419,6 +2537,25 @@ export default function App() {
   // ikke noget. Er det ikke, sker opgørelsen her i stedet — funktionen har en
   // spærretid på en time, så den kører højst én gang i timen uanset hvor
   // mange der åbner appen.
+  // Mærkerne hentes, naar profilen er der, og igen naar pointene aendrer sig —
+  // en bekraeftet tjans er lige praecis det, der kan laase et mærke op.
+  //
+  // my_badges() gemmer selv de nye og siger kun ÉN gang, at de er nye. Derfor
+  // maa svaret ikke kastes vaek: gaar det galt her, er kvitteringen tabt.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase.rpc("my_badges").then(({ data, error }) => {
+      if (error) { console.warn("my_badges:", error.message); return; }
+      const fundne = (data || [])
+        .filter((r) => MAERKER[r.badge_id])
+        .map((r) => ({ id: r.badge_id, ...MAERKER[r.badge_id], erNy: r.er_ny }));
+      setMaerker(fundne);
+      const nye = fundne.filter((m) => m.erNy);
+      if (nye.length) setNyeMaerker(nye);
+    });
+     
+  }, [currentUser?.id, currentUser?.pointsEarned, currentUser?.tasksCompleted]);
+
   useEffect(() => {
     if (!currentUser?.id) return;
     supabase.rpc("auto_confirm_due_claims").then(({ data, error }) => {
@@ -2732,7 +2869,7 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
@@ -2779,6 +2916,12 @@ export default function App() {
 
         {legalOverlay}
         {feedbackOverlay}
+
+        {/* Kvitteringen for et nyfundet mærke. Den ligger yderst, saa den
+            ogsaa kommer, hvis man staar paa en anden fane. */}
+        {nyeMaerker.length > 0 && (
+          <NyeMaerkerModal maerker={nyeMaerker} onClose={() => setNyeMaerker([])} />
+        )}
 
         {/* Notification drawer */}
         {showNotif && (
