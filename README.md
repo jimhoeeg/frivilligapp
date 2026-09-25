@@ -246,6 +246,25 @@ af et menneske vises anderledes end en stakspor, med hvem der skrev og hvornår.
 Databasens grænse på 20 pr. bruger i timen gælder også her, og alt ældre end
 90 dage slettes.
 
+### Udløbet session
+
+En telefon, der har ligget i lommen, vågner med et forældet token og sender
+det af sted, før `supabase-js` når at forny det. Serveren svarer `401`. Det er
+set i produktionen — tre gange den 23. september, fra en iPhone og en Android,
+på `/rest/v1/tasks`.
+
+Konsekvensen var forskellig og begge dele dårlige: profilen gav fuldskærmsfejl,
+og opgavelisten gav **ingenting** — fejlen blev kastet væk, så medlemmet så en
+tom skærm og troede, der ikke var nogen tjanser.
+
+`medFornyetSession()` fornyer nu sessionen og prøver kaldet igen. Fornyelsen
+har selv en grænse på 5 sekunder, så en halvdød forbindelse ikke kan låse
+kaldet fast, og der prøves igen uanset om fornyelsen lykkedes — `supabase-js`
+kan have fornyet i baggrunden imens. Er sessionen reelt død, ender man på
+login-skærmen, hvilket er det rigtige svar.
+
+Opgavelisten siger desuden fra i stedet for at vise en tom liste.
+
 ### Indlæsning af profilen
 
 Tre ting styrer, hvad der sker mellem "logget ind" og "inde i appen". De har

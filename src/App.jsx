@@ -25,6 +25,48 @@ const theme = {
   muted: "#6B7F77",
 };
 
+// ============ UDLØBET SESSION ============
+//
+// En telefon, der har ligget i lommen, vågner med et forældet token. Appen
+// sender det af sted, før supabase-js når at forny det, og serveren svarer
+// 401. Det er set i produktionen: tre gange den 23. september, fra en iPhone
+// og en Android, på opgavelisten.
+//
+// Konsekvensen var forskellig og begge dele dårlige: profilen gav
+// fuldskærmsfejl, og opgavelisten gav ingenting — medlemmet så en tom skærm
+// og troede, der ikke var nogen tjanser.
+//
+// Her fornyes sessionen i stedet, og kaldet prøves igen. Det er ét ekstra
+// rundtur, og medlemmet mærker det ikke.
+const erSessionUdloebet = (error) =>
+  !!error && (
+    error.code === "PGRST301" ||
+    error.status === 401 ||
+    /jwt|token/i.test(error.message || "")
+  );
+
+const medFornyetSession = async (kald) => {
+  const svar = await kald();
+  if (!erSessionUdloebet(svar?.error)) return svar;
+
+  // Proev at forny — men med en snor i. Svarer fornyelsen aldrig (det sker,
+  // naar forbindelsen er halvdoed), maa den ikke kunne laase kaldet fast for
+  // evigt. Fem sekunder, saa gaar vi videre uanset.
+  //
+  // Lykkes fornyelsen ikke, proever vi ALLIGEVEL en gang til: supabase-js kan
+  // have fornyet i baggrunden imens, og et ekstra kald koster ingenting mod
+  // at efterlade medlemmet med en tom skaerm.
+  try {
+    await Promise.race([
+      supabase.auth.refreshSession(),
+      new Promise((r) => setTimeout(r, 5000)),
+    ]);
+  } catch {
+    // ignoreres med vilje – forsoeget nedenfor afgoer sagen
+  }
+  return kald();
+};
+
 // Ét forsøg på at hente egen profil, med en tidsgrænse der rydder op efter
 // sig. 8 sekunder var for stramt: et medlem på mobilnet i en hal med dårlig
 // dækning rammer det jævnligt, uden at der er noget galt.
@@ -37,7 +79,10 @@ const hentProfil = async (ms = 15000) => {
     t = setTimeout(() => reject(new Error(`Profilen svarede ikke inden ${ms / 1000} sekunder`)), ms);
   });
   try {
-    return await Promise.race([supabase.rpc("my_profile").single(), timeout]);
+    return await Promise.race([
+      medFornyetSession(() => supabase.rpc("my_profile").single()),
+      timeout,
+    ]);
   } finally {
     clearTimeout(t);
   }
@@ -4968,7 +5013,21 @@ export default function App() {
   // Load tasks from Supabase (with steps)
   useEffect(() => {
     const loadTasks = async () => {
-      const { data: taskRows } = await supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true });
+      // Fejlen blev foer kastet vaek. Afviste serveren kaldet — fx fordi
+      // token'et var udloebet, mens telefonen laa i lommen — saa medlemmet
+      // en tom opgaveliste og troede, der ikke var nogen tjanser. Det er
+      // vaerre end en fejlbesked, fordi ingen opdager det.
+      const { data: taskRows, error } = await medFornyetSession(() =>
+        supabase.from("tasks").select("*, task_steps(step_order, text)").order("created_at", { ascending: true })
+      );
+
+      if (error) {
+        reportError(`Kunne ikke hente opgaver: ${error.message}`, "tasks");
+        setToast("Kunne ikke hente opgaverne. Luk appen og aabn den igen.");
+        setTimeout(() => setToast(null), 5000);
+        return;
+      }
+
       if (taskRows && taskRows.length > 0) {
         const mapped = taskRows.map((t) => ({
           id: t.id,
