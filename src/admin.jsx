@@ -135,7 +135,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
 
 // ---- OVERSIGT ----
 const AdminOverview = ({ tasks, currentUser }) => {
-  const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0 });
+  const [stats, setStats] = useState({ total: 0, goalReached: 0, behind: 0, avg: 0, hjaelpere: 0 });
   const [goal, setGoal] = useState(100);
   const [contribution, setContribution] = useState(0);
   const [exporting, setExporting] = useState(false);
@@ -144,8 +144,13 @@ const AdminOverview = ({ tasks, currentUser }) => {
     // Målet og bidraget står i indstillingerne. Tallene var hårdkodet til 100
     // og 50 her, så ændrede en super admin halvsmålet, sagde denne skærm
     // stadig "≥100 pt" — og bidragslisten ville have udpeget de forkerte.
+    //
+    // Og det er BIDRAGSTALLET, der gøres op — ikke ranglistens. Læses points
+    // i stedet, står en mor, hvis far har taget alle tjanserne, som bagud og
+    // får en regning, klubben aldrig mente at sende. Hjælperne selv er ikke
+    // med i opgørelsen: de er ikke medlemmer og betaler ikke bidrag.
     Promise.all([
-      supabase.from("profiles").select("points"),
+      supabase.rpc("admin_list_members"),
       supabase.from("settings").select("key,value"),
     ]).then(([{ data }, { data: cfg }]) => {
       const map = Object.fromEntries((cfg || []).map((r) => [r.key, r.value]));
@@ -153,11 +158,15 @@ const AdminOverview = ({ tasks, currentUser }) => {
       setGoal(g);
       setContribution(parseInt(map.contribution_kr) || 0);
       if (data && data.length > 0) {
-        const total = data.length;
-        const goalReached = data.filter((m) => m.points >= g).length;
-        const behind = data.filter((m) => m.points < g / 2).length;
-        const avg = Math.round(data.reduce((s, m) => s + m.points, 0) / total);
-        setStats({ total, goalReached, behind, avg });
+        const hjaelpere = data.filter((m) => m.er_hjaelper).length;
+        const rows  = data.filter((m) => !m.er_hjaelper);
+        const total = rows.length;
+        if (total === 0) { setStats({ total: 0, goalReached: 0, behind: 0, avg: 0, hjaelpere }); return; }
+        const pt = (m) => m.bidrag ?? m.points ?? 0;
+        const goalReached = rows.filter((m) => pt(m) >= g).length;
+        const behind = rows.filter((m) => pt(m) < g / 2).length;
+        const avg = Math.round(rows.reduce((s, m) => s + pt(m), 0) / total);
+        setStats({ total, goalReached, behind, avg, hjaelpere });
       }
     });
   }, []);
@@ -167,20 +176,23 @@ const AdminOverview = ({ tasks, currentUser }) => {
     try {
       const { data, error } = await supabase.rpc("admin_list_members");
       if (error) throw error;
+      // Hjælpere står ikke på listen. De er ikke medlemmer, de skal ikke
+      // betale — og deres point er allerede talt med hos den, de hjalp.
       const rows = (data || [])
-        .slice()
-        .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "da"))
+        .filter((m) => !m.er_hjaelper)
+        .map((m) => ({ ...m, pt: m.bidrag ?? m.points ?? 0 }))
+        .sort((a, b) => b.pt - a.pt || a.name.localeCompare(b.name, "da"))
         .map((m) => [
-          m.name, m.team, m.points, goal,
-          m.points >= goal ? "Nået målet" : m.points >= goal / 2 ? "På vej" : "Bagud",
-          m.points >= goal ? 0 : contribution,
+          m.name, m.team, m.pt, m.fra_hjaelpere ?? 0, m.hjaelper_for || "", goal,
+          m.pt >= goal ? "Nået målet" : m.pt >= goal / 2 ? "På vej" : "Bagud",
+          m.pt >= goal ? 0 : contribution,
         ]);
       if (!rows.length) { setExporting(false); return; }
       downloadCSV(
         `rvk-bidragsliste-${today()}.csv`,
-        toCSV(["Navn", "Hold", "Point", "Maal", "Status", "Bidrag (kr)"], rows)
+        toCSV(["Navn", "Hold", "Bidragspoint", "Heraf fra hjaelpere", "Hjaelpere", "Maal", "Status", "Bidrag (kr)"], rows)
       );
-      const skyldige = rows.filter((r) => r[5] > 0).length;
+      const skyldige = rows.filter((r) => r[7] > 0).length;
       await logAction("settings",
         `Eksporterede bidragsliste (${rows.length} medlemmer, ${skyldige} under målet)`, currentUser);
     } finally {
@@ -239,8 +251,14 @@ const AdminOverview = ({ tasks, currentUser }) => {
         </button>
         {contribution > 0 && (
           <p className="text-[11px] text-stone-400 mt-2 leading-snug">
-            Listen viser hvert medlems point mod målet på {goal} pt, og hvem der efter den
-            opgørelse skal betale {contribution} kr.
+            Listen viser hvert medlems bidragspoint mod målet på {goal} pt, og hvem der efter den
+            opgørelse skal betale {contribution} kr. Point fra hjælpere er lagt til hos medlemmet.
+          </p>
+        )}
+        {stats.hjaelpere > 0 && (
+          <p className="text-[11px] text-stone-400 mt-1.5 leading-snug">
+            {stats.hjaelpere} hjælper{stats.hjaelpere > 1 ? "e" : ""} er ikke med i opgørelsen —
+            de er ikke medlemmer og betaler ikke bidrag. Deres point er talt med hos dem, de hjælper.
           </p>
         )}
       </div>
@@ -282,6 +300,11 @@ const AdminApprovals = ({ onChanged }) => {
   const [rejecting, setRejecting] = useState(null);
   const [reason, setReason]    = useState("");
   const [approvalError, setApprovalError] = useState(null);
+  // Hjælperkoblingen laves i SAMME handling som godkendelsen. Ellers bliver
+  // det et andet sted, en anden dag — og indtil da tæller forælderens tjanser
+  // for forælderen selv, hvilket er præcis det, ingen ville have.
+  const [medlemmer, setMedlemmer] = useState([]);
+  const [valgte, setValgte]       = useState({});
 
   const load = async () => {
     // Kontaktoplysninger hentes gennem admin_list_members(), fordi selve
@@ -292,7 +315,22 @@ const AdminApprovals = ({ onChanged }) => {
       id: m.id, name: m.name, initials: m.initials || "?",
       email: m.email || "–", phone: m.phone || "–", team: m.team || "–",
       appliedOn: new Date(m.created_at).toLocaleDateString("da-DK"), motivation: "", referredBy: null,
+      helperRequest: m.helper_request || "",
     })));
+    // Man kan kun hjælpe et godkendt medlem, der ikke selv er hjælper —
+    // samme regel som databasen håndhæver. Listen viser kun det mulige.
+    setMedlemmer((data || [])
+      .filter((m) => m.approved && !m.er_hjaelper)
+      .map((m) => ({ id: m.id, name: m.name, team: m.team || "" })));
+  };
+
+  const vaelg = (ansoegerId, medlemId) => {
+    setValgte((v) => {
+      const nu = v[ansoegerId] || [];
+      return { ...v, [ansoegerId]: nu.includes(medlemId)
+        ? nu.filter((x) => x !== medlemId)
+        : [...nu, medlemId] };
+    });
   };
 
   // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
@@ -304,10 +342,24 @@ const AdminApprovals = ({ onChanged }) => {
   const approve = async (a) => {
     const { error } = await supabase.rpc("admin_set_approval", { p_user: a.id, p_approved: true });
     if (error) { setApprovalError(`Kunne ikke godkende: ${error.message}`); return; }
+
+    // Godkendelsen er i hus. Koblingerne kommer bagefter — går én af dem galt,
+    // skal det siges tydeligt, men medlemmet bliver ikke sat tilbage: det er
+    // lettere at koble om end at godkende forfra.
+    const kobl = valgte[a.id] || [];
+    const fejl = [];
+    for (const medlemId of kobl) {
+      const { error: e } = await supabase.rpc("admin_set_helper", {
+        p_helper: a.id, p_member: medlemId, p_on: true,
+      });
+      if (e) fejl.push(`${medlemmer.find((m) => m.id === medlemId)?.name || "medlem"}: ${e.message}`);
+    }
+
     setPending((p) => p.filter((x) => x.id !== a.id));
-    setDone((d) => [{ ...a, action: "approved" }, ...d]);
+    setDone((d) => [{ ...a, action: "approved", koblet: kobl.length - fejl.length }, ...d]);
     setExpanded(null);
-    setApprovalError(null);
+    setValgte((v) => { const n = { ...v }; delete n[a.id]; return n; });
+    setApprovalError(fejl.length ? `Godkendt, men koblingen fejlede — ${fejl.join(" · ")}` : null);
     onChanged?.();
   };
 
@@ -369,6 +421,48 @@ const AdminApprovals = ({ onChanged }) => {
                 <div className="bg-white border border-stone-200 rounded-xl p-2.5 text-[12px] text-stone-700">"{a.motivation}"</div>
                 {a.referredBy && <div className="flex items-center gap-2 text-[12px] text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2"><ThumbsUp className="w-3.5 h-3.5 shrink-0" />Anbefalet af <strong>{a.referredBy}</strong></div>}
 
+                {/* ----------------------------------------------------------
+                    HJÆLPER? Står FØR godkend-knappen, fordi det er en del af
+                    den beslutning — ikke noget, man kan huske at gøre senere.
+                    ---------------------------------------------------------- */}
+                <div className={`rounded-xl p-3 border ${a.helperRequest ? "bg-amber-50 border-amber-200" : "bg-white border-stone-200"}`}>
+                  {a.helperRequest ? (
+                    <div className="text-[12px] text-amber-900 leading-relaxed mb-2">
+                      <strong>Har selv skrevet, at det er en hjælper.</strong><br />
+                      Hjælper for: <span className="font-semibold">«{a.helperRequest}»</span>
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-stone-600 leading-relaxed mb-2">
+                      <strong className="text-stone-800">Er det en hjælper?</strong> Vælg medlemmet, hvis
+                      personen tager tjanser for et medlem og ikke spiller selv.
+                    </div>
+                  )}
+
+                  {medlemmer.length === 0 ? (
+                    <p className="text-[11px] text-stone-500">Der er endnu ingen godkendte medlemmer at koble til.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {medlemmer.map((m) => {
+                        const valgt = (valgte[a.id] || []).includes(m.id);
+                        return (
+                          <button key={m.id} type="button" onClick={() => vaelg(a.id, m.id)}
+                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${valgt ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-stone-600 border-stone-200"}`}>
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {(valgte[a.id] || []).length > 0 && (
+                    <p className="text-[11px] text-emerald-800 mt-2 leading-relaxed">
+                      Bliver hjælper for {(valgte[a.id] || []).length} medlem
+                      {(valgte[a.id] || []).length > 1 ? "mer" : ""}. Personen kommer med på ranglisten
+                      med sine egne point — men pointene tæller mod frivilligbidraget hos medlemmet.
+                    </p>
+                  )}
+                </div>
+
                 {rejecting === a.id ? (
                   <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 space-y-2">
                     <label className="text-[11px] font-bold text-pink-900 uppercase tracking-wider block">Begrundelse</label>
@@ -397,7 +491,7 @@ const AdminApprovals = ({ onChanged }) => {
               <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${p.action === "approved" ? "bg-emerald-100 text-emerald-700" : "bg-pink-100 text-pink-700"}`}>
                 {p.action === "approved" ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
               </div>
-              <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-stone-900">{p.name}</div><div className="text-[11px] text-stone-500">{p.action === "approved" ? "Godkendt" : "Afvist"} · Lige nu</div></div>
+              <div className="flex-1 min-w-0"><div className="text-[13px] font-semibold text-stone-900">{p.name}</div><div className="text-[11px] text-stone-500">{p.action === "approved" ? "Godkendt" : "Afvist"}{p.koblet > 0 ? ` · koblet som hjælper` : ""} · Lige nu</div></div>
             </div>
           ))}
         </div>
@@ -1738,12 +1832,128 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
 };
 
 // ---- MEDLEMMER ----
+// ---- HJÆLPER-KOBLING ----
+//
+// En hjælper er en forælder, en kæreste, en nabo: nogen der tager tjanser for
+// et medlem. Pointene flytter IKKE. De bliver liggende hos hjælperen på
+// ranglisten — men tæller mod frivilligbidraget hos medlemmet.
+//
+// Databasen har reglerne, og de er hårde: kun admins kobler, en konto med
+// point kan ikke gøres til hjælper, og der er ingen kæder. Skærmen her siger
+// dem højt FØR man trykker, så man ikke render ind i en fejlbesked.
+const HjaelperModal = ({ target, alle, currentUser, onClose, onChanged }) => {
+  const [koblet, setKoblet]   = useState([]);
+  const [busy, setBusy]       = useState(null);
+  const [error, setError]     = useState(null);
+  const [indlaest, setIndlaest] = useState(false);
+
+  useEffect(() => {
+    supabase.from("helper_links").select("member_id").eq("helper_id", target.id).then(({ data, error: e }) => {
+      if (e) setError(`Kunne ikke hente koblinger: ${e.message}`);
+      setKoblet((data || []).map((r) => r.member_id));
+      setIndlaest(true);
+    });
+  }, [target.id]);
+
+  // Spærren, der lukker døren mellem to medlemmer: har man selv tjent point,
+  // kan man ikke blive hjælper — og så kan man heller ikke begynde at sende
+  // point videre til en anden.
+  const harPoint = !target.erHjaelper && (target.points || 0) > 0;
+
+  const muligeMedlemmer = alle.filter((m) =>
+    m.id !== target.id && m.approved && !m.erHjaelper);
+
+  const slaaTil = async (medlem, til) => {
+    setBusy(medlem.id); setError(null);
+    const { error: e } = await supabase.rpc("admin_set_helper", {
+      p_helper: target.id, p_member: medlem.id, p_on: til,
+    });
+    setBusy(null);
+    if (e) { setError(e.message); return; }
+    setKoblet((k) => til ? [...k, medlem.id] : k.filter((x) => x !== medlem.id));
+    logAction("member",
+      til ? `Koblede ${target.name} som hjælper for ${medlem.name}`
+          : `Fjernede ${target.name} som hjælper for ${medlem.name}`, currentUser);
+    onChanged?.();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm px-4 pb-8" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 pt-5 pb-4">
+          <div className="text-[15px] font-bold text-stone-900">Hjælper-kobling</div>
+          <p className="text-[13px] text-stone-500 mt-0.5 mb-3">
+            <span className="font-semibold text-stone-800">{target.name}</span> tager tjanser for …
+          </p>
+
+          {target.helperRequest && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3">
+              <div className="text-[12px] text-amber-900 leading-relaxed">
+                Har selv skrevet ved oprettelsen: <strong>«{target.helperRequest}»</strong>
+              </div>
+            </div>
+          )}
+
+          {harPoint ? (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-[12px] text-red-900 leading-relaxed">
+                <strong>{target.name} har allerede optjent {target.points} point som medlem</strong> og kan
+                derfor ikke gøres til hjælper. Reglen er der for at point ikke kan deles mellem to
+                medlemmer. Er det en fejl, skal pointene fratrækkes først.
+              </p>
+            </div>
+          ) : !indlaest ? (
+            <p className="text-[12px] text-stone-400">Henter…</p>
+          ) : muligeMedlemmer.length === 0 ? (
+            <p className="text-[12px] text-stone-500">Der er ingen godkendte medlemmer at koble til.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {muligeMedlemmer.map((m) => {
+                const til = koblet.includes(m.id);
+                return (
+                  <button key={m.id} onClick={() => slaaTil(m, !til)} disabled={busy === m.id}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all disabled:opacity-50 ${til ? "bg-emerald-50 border-emerald-300" : "bg-white border-stone-200"}`}>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-stone-900 truncate">{m.name}</div>
+                      <div className="text-[11px] text-stone-500 truncate">{m.team || "uden hold"} · {m.bidrag} bidragspoint</div>
+                    </div>
+                    <span className={`shrink-0 text-[11px] font-bold ${til ? "text-emerald-700" : "text-stone-400"}`}>
+                      {busy === m.id ? "…" : til ? "Koblet ✓" : "Kobl"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mt-3">
+              <p className="text-[12px] text-red-800">{error}</p>
+            </div>
+          )}
+
+          <p className="text-[11px] text-stone-400 mt-3 leading-relaxed">
+            Hjælperen beholder sine egne point på ranglisten. Tjanserne tæller mod
+            frivilligbidraget hos det medlem, hjælperen vælger ved hver tjans.
+            Fjernes koblingen, bliver de point, der allerede er givet, hvor de er.
+          </p>
+
+          <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold">
+            Luk
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AdminMembers = ({ currentUserRole, currentUser }) => {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(null);
   const [allMembers, setAllMembers] = useState([]);
   const [memberTasksTarget, setMemberTasksTarget] = useState(null);
+  const [hjaelperTarget, setHjaelperTarget] = useState(null);
   const isSuperAdmin = currentUserRole === "super_admin";
 
   // Delete flow
@@ -1830,22 +2040,43 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
     setBonusTarget(null);
   };
 
-  useEffect(() => {
+  // Målet stod hårdkodet til 100 her, mens klubben kører 200. Nu læses det,
+  // og det er bidragstallet, der måles — ikke ranglistens point.
+  const [goal, setGoal] = useState(200);
+
+  const hentMedlemmer = () => {
     supabase.rpc("admin_list_members").then(({ data }) => {
       if (data && data.length > 0) {
         setAllMembers(data.map((p) => ({
           id: p.id, name: p.name, email: p.email || "",
           initials: p.initials || p.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase(),
           team: p.team || "", points: p.points || 0, tasksDone: p.tasks_done || 0, role: p.role,
+          bidrag: p.bidrag ?? p.points ?? 0,
+          fraHjaelpere: p.fra_hjaelpere ?? 0,
+          erHjaelper: p.er_hjaelper === true,
+          hjaelperFor: p.hjaelper_for || "",
+          helperRequest: p.helper_request || "",
+          approved: p.approved,
         })));
       }
     });
+  };
+
+  useEffect(() => {
+    hentMedlemmer();
+    supabase.from("settings").select("key,value").then(({ data }) => {
+      const g = parseInt((data || []).find((r) => r.key === "point_goal")?.value, 10);
+      if (Number.isFinite(g) && g > 0) setGoal(g);
+    });
+     
   }, []);
 
   const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
-    if (filter === "behind"  && m.points >= 50)  return false;
-    if (filter === "reached" && m.points < 100)  return false;
+    // Hjælpere har ikke noget mål og hører hverken under "bagud" eller "nået".
+    if (filter === "helpers" && !m.erHjaelper) return false;
+    if (filter === "behind"  && (m.erHjaelper || m.bidrag >= goal / 2)) return false;
+    if (filter === "reached" && (m.erHjaelper || m.bidrag < goal))      return false;
     return true;
   });
 
@@ -1856,22 +2087,39 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
         <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Søg medlem..." className="flex-1 bg-transparent outline-none text-sm" />
       </div>
       <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
-        {[["all","Alle"],["reached","Nået mål"],["behind","Bagud"]].map(([id,label]) => (
+        {[["all","Alle"],["reached","Nået mål"],["behind","Bagud"],["helpers","Hjælpere"]].map(([id,label]) => (
           <button key={id} onClick={() => setFilter(id)} className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all ${filter === id ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`} style={filter === id ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>{label}</button>
         ))}
       </ScrollRow>
       <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm">
         {filtered.map((m) => {
-          const reached = m.points >= 100;
-          const behind  = m.points < 50;
+          const reached = !m.erHjaelper && m.bidrag >= goal;
+          const behind  = !m.erHjaelper && m.bidrag < goal / 2;
           return (
             <div key={m.id} className="flex items-center gap-3 px-4 py-3 relative">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5"><div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div><RoleBadge role={m.role} /></div>
-                <div className="text-[11px] text-stone-500 truncate">{m.team} · {m.tasksDone} opgaver</div>
+                <div className="flex items-center gap-1.5">
+                  <div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div>
+                  <RoleBadge role={m.role} />
+                  {m.erHjaelper && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Hjælper</span>
+                  )}
+                  {!m.erHjaelper && m.helperRequest && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">Ønsker kobling</span>
+                  )}
+                </div>
+                <div className="text-[11px] text-stone-500 truncate">
+                  {m.erHjaelper
+                    ? `Hjælper for ${m.hjaelperFor} · ${m.tasksDone} opgaver`
+                    : `${m.team ? `${m.team} · ` : ""}${m.tasksDone} opgaver${m.fraHjaelpere > 0 ? ` · +${m.fraHjaelpere} pt fra hjælper` : ""}`}
+                </div>
               </div>
-              <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">/ 100</div></div>
+              {m.erHjaelper ? (
+                <div className="text-[14px] font-black mr-1 text-stone-500 text-right">{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">egne pt</div></div>
+              ) : (
+                <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.bidrag}<div className="text-[9px] text-stone-400 uppercase font-bold">/ {goal}</div></div>
+              )}
               <div className="relative">
                 <button onClick={() => setMenuOpen(menuOpen === m.id ? null : m.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                 {menuOpen === m.id && (
@@ -1880,6 +2128,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                     <MenuButton icon={<Mail className="w-3.5 h-3.5" />} label="Send besked" onClick={() => { setMenuOpen(null); if (m.email) window.location.href = `mailto:${m.email}?subject=RVK Frivillig`; }} />
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m, "add")} />
                     <MenuButton icon={<X className="w-3.5 h-3.5" />} label="Fratræk point" onClick={() => openBonus(m, "deduct")} />
+                    <div className="h-px bg-stone-100 my-1" />
+                    <MenuButton icon={<Users className="w-3.5 h-3.5" />} label={m.erHjaelper ? "Ret hjælper-kobling" : "Gør til hjælper"} onClick={() => { setHjaelperTarget(m); setMenuOpen(null); }} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => openPromote(m)} /></>}
                     {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
@@ -1946,6 +2196,16 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
       )}
 
       {memberTasksTarget && <MemberTasksModal member={memberTasksTarget} onClose={() => setMemberTasksTarget(null)} />}
+
+      {hjaelperTarget && (
+        <HjaelperModal
+          target={hjaelperTarget}
+          alle={allMembers}
+          currentUser={currentUser}
+          onClose={() => setHjaelperTarget(null)}
+          onChanged={hentMedlemmer}
+        />
+      )}
 
       {/* Promote to admin modal */}
       {promoteTarget && (
@@ -2391,9 +2651,12 @@ const ExportModal = ({ currentUser, onClose }) => {
     if (e) throw e;
     return {
       filename: `rvk-medlemmer-${today()}.csv`,
-      headers: ["Navn", "Hold", "Rolle", "Point", "Tjanser", "Godkendt", "E-mail", "Telefon", "Oprettet"],
+      headers: ["Navn", "Hold", "Rolle", "Egne point", "Bidragspoint", "Heraf fra hjaelpere",
+                "Er hjaelper", "Hjaelper for", "Tjanser", "Godkendt", "E-mail", "Telefon", "Oprettet"],
       rows: (data || []).map((m) => [
-        m.name, m.team, m.role, m.points, m.tasks_done, m.approved,
+        m.name, m.team, m.role, m.points, m.bidrag ?? m.points, m.fra_hjaelpere ?? 0,
+        m.er_hjaelper ? "ja" : "", m.hjaelper_for || "",
+        m.tasks_done, m.approved,
         m.email, m.phone, (m.created_at || "").slice(0, 10),
       ]),
     };
@@ -2416,16 +2679,24 @@ const ExportModal = ({ currentUser, onClose }) => {
   });
 
   const exportClaims = () => run("claims", "Tilmeldinger", async () => {
-    const { data, error: e } = await supabase
-      .from("task_claims")
-      .select("status,points_awarded,claimed_at,confirmed_at,admin_note,tasks(title,date,date_full,points),profiles(name,team)")
-      .order("claimed_at", { ascending: false });
+    // Navnene på modtagerne hentes ved siden af og slås op. Det er billigere
+    // end at gætte på, hvad fremmednøglen hedder i PostgREST — og listen skal
+    // vi alligevel have, når en tjans kan tælle for en anden end den tilmeldte.
+    const [{ data, error: e }, { data: folk }] = await Promise.all([
+      supabase
+        .from("task_claims")
+        .select("status,points_awarded,claimed_at,confirmed_at,admin_note,credited_to,tasks(title,date,date_full,points),profiles(name,team)")
+        .order("claimed_at", { ascending: false }),
+      supabase.rpc("admin_list_members"),
+    ]);
     if (e) throw e;
+    const navn = new Map((folk || []).map((m) => [m.id, m.name]));
     return {
       filename: `rvk-tilmeldinger-${today()}.csv`,
-      headers: ["Opgave", "Dato", "Navn", "Hold", "Tilstand", "Point", "Tilmeldt", "Bekræftet", "Bemærkning"],
+      headers: ["Opgave", "Dato", "Navn", "Hold", "Taeller for", "Tilstand", "Point", "Tilmeldt", "Bekræftet", "Bemærkning"],
       rows: (data || []).map((c) => [
         c.tasks?.title, c.tasks?.date, c.profiles?.name, c.profiles?.team,
+        c.credited_to ? (navn.get(c.credited_to) || "ukendt") : (c.profiles?.name || ""),
         CLAIM_STATE[c.status]?.label || c.status,
         c.status === "completed" ? c.points_awarded : 0,
         (c.claimed_at || "").slice(0, 10),

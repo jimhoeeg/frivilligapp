@@ -645,6 +645,11 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [team, setTeam] = useState("");
+  // Hjælper: en forælder eller en kæreste, der tager tjanser for et medlem.
+  // Hun kan ikke se medlemslisten endnu — og skal ikke kunne det — så hun
+  // skriver bare navnet. Admin vælger det rigtige medlem ved godkendelsen.
+  const [erHjaelper, setErHjaelper]   = useState(false);
+  const [hjaelperFor, setHjaelperFor] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [errors, setErrors] = useState({});
@@ -676,7 +681,12 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
     }
     if (mode === "signup") {
       if (!name) e.name = "Navn er påkrævet";
-      if (!team) e.team = "Vælg dit hold";
+      // En hjælper spiller ikke selv og har derfor ikke noget hold. Til
+      // gengæld skal vi vide, hvem hun hjælper — ellers har koblingen
+      // ingenting at bygge på.
+      if (erHjaelper) {
+        if (!hjaelperFor.trim()) e.hjaelperFor = "Skriv navnet på den, du hjælper";
+      } else if (!team) e.team = "Vælg dit hold";
       if (!acceptTerms) e.terms = "Du skal acceptere vilkårene";
     }
     setErrors(e);
@@ -709,7 +719,12 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
       } else {
         const { data, error } = await supabase.auth.signUp({
           email, password,
-          options: { data: { name, team, phone: phone.trim() } },
+          options: { data: {
+            name,
+            team: erHjaelper ? "" : team,
+            phone: phone.trim(),
+            helper_for: erHjaelper ? hjaelperFor.trim() : "",
+          } },
         });
         if (error) { setErrors({ email: error.message }); setLoading(false); return; }
 
@@ -806,6 +821,26 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
 
             {mode === "signup" && <>
               <AuthField icon={<Phone className="w-4 h-4" />} label="Telefon (valgfri)" type="tel" name="tel" autoComplete="tel" value={phone} onChange={setPhone} placeholder="+45 ..." />
+
+              {/* Hjælperen. Står før holdvalget, fordi svaret afgør, om der
+                  overhovedet skal vælges et hold. */}
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-stone-50 border border-stone-200 cursor-pointer">
+                <input type="checkbox" checked={erHjaelper} onChange={(e) => { setErHjaelper(e.target.checked); setErrors({}); }} className="mt-0.5 w-4 h-4 accent-emerald-600" />
+                <span className="text-[12px] text-stone-700 leading-relaxed">
+                  <strong className="text-stone-900">Jeg spiller ikke selv — jeg hjælper et medlem</strong><br />
+                  <span className="text-stone-500">For forældre, kærester og andre, der tager tjanser, så pointene tæller for et medlem.</span>
+                </span>
+              </label>
+
+              {erHjaelper ? (
+                <div>
+                  <AuthField icon={<Users className="w-4 h-4" />} label="Jeg hjælper" name="helperFor" value={hjaelperFor} onChange={setHjaelperFor} placeholder="Navn på medlemmet, f.eks. Anna Berg" error={errors.hjaelperFor} />
+                  <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
+                    Hjælper du flere — f.eks. to børn — så skriv begge navne. En administrator laver koblingen,
+                    når din profil godkendes, og så vælger du selv ved hver tjans, hvem den skal tælle for.
+                  </p>
+                </div>
+              ) : (
               <div>
                 <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Hold</label>
                 <div className="relative">
@@ -825,6 +860,7 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
                 )}
                 {errors.team && <p className="text-[11px] text-pink-600 mt-1">{errors.team}</p>}
               </div>
+              )}
               <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
                 <input type="checkbox" checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="mt-0.5 w-4 h-4 accent-pink-500" />
                 <span className="text-[12px] text-stone-600 leading-relaxed">Jeg accepterer klubbens{" "}
@@ -862,6 +898,35 @@ const AuthScreen = ({ onAuthenticated, onShowLegal }) => {
     </div>
   );
 };
+
+// ---- HVEM SKAL TJANSEN TÆLLE FOR? ----
+//
+// Vises kun for hjælpere, og kun hvis de er koblet til mindst ét medlem.
+// "Mig selv" står med, fordi en hjælper godt kan tage en tjans, hun gerne vil
+// have pointene for — og fordi et valg uden en udvej er ikke et valg.
+const ModtagerValg = ({ medlemmer, vaerdi, onVaelg, busy = false, hjaelpetekst = "" }) => (
+  <div className="mb-3">
+    <div className="text-[10px] uppercase tracking-wider font-bold text-stone-500 mb-1.5">
+      Tjansen skal tælle for
+    </div>
+    <div className="flex flex-wrap gap-1.5">
+      {medlemmer.map((m) => {
+        const valgt = vaerdi === m.member_id;
+        return (
+          <button key={m.member_id} type="button" disabled={busy} onClick={() => onVaelg(m.member_id)}
+            className={`px-3 py-2 rounded-xl text-[12px] font-bold border transition-all disabled:opacity-50 ${valgt ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" : "bg-white text-stone-700 border-stone-200"}`}>
+            {m.name}
+          </button>
+        );
+      })}
+      <button type="button" disabled={busy} onClick={() => onVaelg("mig")}
+        className={`px-3 py-2 rounded-xl text-[12px] font-bold border transition-all disabled:opacity-50 ${vaerdi === "mig" ? "bg-stone-800 text-white border-stone-800 shadow-sm" : "bg-white text-stone-700 border-stone-200"}`}>
+        Mig selv
+      </button>
+    </div>
+    {hjaelpetekst && <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">{hjaelpetekst}</p>}
+  </div>
+);
 
 const DA_MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni","Juli","August","September","Oktober","November","December"];
 
@@ -1246,11 +1311,24 @@ const badgeDefs = (maal) => [
   { id: "fullgoal", emoji: "🏆", label: "Over målet",    desc: `${Math.round(maal * 1.5)} point`,           req: (e) => e >= maal * 1.5 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "" }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "", bidrag = null, mineMedlemmer = [], mineHjaelpere = [] }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
-  const earned    = currentUser?.pointsEarned || 0;
+  //
+  // To tal, og de må ikke forveksles:
+  //
+  //   egnePoint  det jeg selv har lavet        → ranglisten, mærkerne
+  //   earned     egne + hjælpernes + bonus     → målet, bidragsordningen
+  //
+  // Bjælken herunder handler om penge, ikke om anerkendelse. Derfor er det
+  // bidragstallet, den måler — ellers ville en far, der tager alle tjanserne
+  // for sin datter, se hende stå på nul, dagen før regningen skal betales.
+  const egnePoint = currentUser?.pointsEarned || 0;
+  const earned    = bidrag ? (bidrag.bidrag ?? 0) : egnePoint;
+  const fraAndre  = bidrag?.fra_hjaelpere ?? 0;
+  const erHjaelper = bidrag?.er_hjaelper === true;
+  const givet      = bidrag?.givet ?? 0;
   const tasks     = currentUser?.tasksCompleted || 0;
   // Ét mål: det antal point, der skal til for at slippe for frivilligbidraget
   // ved næste opgørelse. Klubben sætter det i admin-panelet.
@@ -1263,13 +1341,18 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
   const [rank, setRank] = useState(null);
   useEffect(() => {
     if (!currentUser?.id) return;
+    // Ranglisten er egne point. Bidragstallet har ingenting at gøre her.
     supabase.from("profiles").select("id", { count: "exact", head: true })
       .gt("points", currentUser.pointsEarned || 0)
       .then(({ count }) => setRank((count ?? 0) + 1));
   }, [currentUser?.id, currentUser?.pointsEarned]);
 
   const badges       = useMemo(() => badgeDefs(maal), [maal]);
-  const earnedBadges = badges.filter((b) => b.req(earned, tasks));
+  // Mærkerne måles på hjælperens EGNE point. Hun giver alt videre, så hendes
+  // bidragstal er nul — og at lade det slukke mærkerne for den, der har taget
+  // flest tjanser i klubben, er der ingen mening i.
+  const maerkePoint  = erHjaelper ? egnePoint : earned;
+  const earnedBadges = badges.filter((b) => b.req(maerkePoint, tasks));
 
   const statusOf  = (t) => claimStatus?.get(t.id) || "signed_up";
   const openTasks = claimedTasks.filter((t) => statusOf(t) === "signed_up");
@@ -1281,6 +1364,46 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
           <div className="text-[11px] uppercase tracking-widest font-bold text-emerald-200 mb-1">Mit Dashboard</div>
           <h1 className="text-2xl font-bold mb-5">Hej, {currentUser?.name?.split(" ")[0] || "frivillig"} 👋</h1>
 
+          {/* ---------------------------------------------------------------
+              HJÆLPEREN har ikke noget mål. Hun skal ikke betale frivillig-
+              bidrag, og en bjælke, der aldrig kan blive fuld, er en dårlig
+              besked at møde hver dag. I stedet står der, hvad hun har givet
+              videre — for det er det, hun kommer for.
+              --------------------------------------------------------------- */}
+          {erHjaelper ? (
+          <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
+            <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-200">Du er hjælper</div>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-4xl font-black">{givet}</span>
+              <span className="text-lg text-white/70">point givet videre</span>
+            </div>
+            {mineMedlemmer.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                {mineMedlemmer.map((m) => (
+                  <div key={m.member_id} className="flex items-center justify-between bg-white/10 rounded-lg px-3 py-2 border border-white/10">
+                    <span className="text-[13px] font-semibold">{m.name}</span>
+                    <span className="text-[12px] font-bold text-emerald-100">{m.givet} pt</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {pendingPoints > 0 && (
+              <div className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
+                <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
+              </div>
+            )}
+            <div className="text-[11px] text-white/80 mt-3 leading-relaxed">
+              Dine {egnePoint} point står på ranglisten under dit eget navn — det var dig, der mødte op.
+              Men de tæller mod frivilligbidraget hos den, du tog tjansen for.
+            </div>
+            {mineMedlemmer.length === 0 && (
+              <div className="text-[11px] text-amber-100 mt-2 leading-relaxed bg-amber-500/20 rounded-lg px-2.5 py-2 border border-amber-300/30">
+                Du er endnu ikke koblet til et medlem. Skriv til {LEGAL_CONTACT}, så sætter vi det op —
+                indtil da tæller dine tjanser for dig selv.
+              </div>
+            )}
+          </div>
+          ) : (
           <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 border border-white/20">
             <div className="flex items-baseline justify-between mb-2">
               <div>
@@ -1290,6 +1413,11 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
                   <span className="text-lg text-white/70">/ {maal}</span>
                 </div>
                 <div className="text-[10px] text-white/60 mt-0.5">{maal} point fritager for frivilligbidraget</div>
+                {fraAndre > 0 && (
+                  <div className="text-[10px] text-emerald-100 mt-0.5 font-semibold">
+                    heraf {fraAndre} pt fra {mineHjaelpere.length === 1 ? mineHjaelpere[0].name.split(" ")[0] : "dine hjælpere"}
+                  </div>
+                )}
                 {pendingPoints > 0 && (
                   <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
                     <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
@@ -1320,10 +1448,24 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
                 {bidragNote}
               </div>
             )}
+            {mineHjaelpere.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-white/15">
+                <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-200 mb-1.5">Dine hjælpere</div>
+                <div className="space-y-1.5">
+                  {mineHjaelpere.map((h) => (
+                    <div key={h.helper_id} className="flex items-center justify-between bg-white/10 rounded-lg px-3 py-2 border border-white/10">
+                      <span className="text-[13px] font-semibold">{h.name}</span>
+                      <span className="text-[12px] font-bold text-emerald-100">+{h.point} pt</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="text-[10px] text-white/50 mt-2 leading-relaxed">
               Point tæller med, når en administrator har bekræftet, at tjansen er gennemført.
             </div>
           </div>
+          )}
         </div>
       </div>
 
@@ -1345,7 +1487,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
           <h2 className="text-sm font-bold text-stone-900 mb-2">Mine mål</h2>
           <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
             {badges.map((b) => {
-              const unlocked = b.req(earned, tasks);
+              const unlocked = b.req(maerkePoint, tasks);
               return (
                 <div key={b.id} className={`shrink-0 flex flex-col items-center gap-1 px-3 py-2.5 rounded-xl border text-center min-w-[72px] transition-all ${unlocked ? "bg-white border-stone-200 shadow-sm" : "bg-stone-100 border-stone-100 opacity-40"}`}>
                   <span className="text-2xl">{b.emoji}</span>
@@ -1432,6 +1574,17 @@ const ScoreboardScreen = ({ currentUserId }) => {
   const [members, setMembers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
 
+  // Hjælperne står PÅ ranglisten med deres eget navn og deres egne point —
+  // det var dem, der mødte op, og det skal kunne ses. Koblingerne hentes med,
+  // så der kan stå, hvem de hjælper; der er kun to id'er i tabellen.
+  const [koblinger, setKoblinger] = useState([]);
+
+  useEffect(() => {
+    supabase.from("helper_links").select("helper_id, member_id").then(({ data }) => {
+      if (data) setKoblinger(data);
+    });
+  }, []);
+
   useEffect(() => {
     supabase.from("profiles").select("id,name,initials,team,points,tasks_done,role").order("points", { ascending: false }).then(({ data }) => {
       if (data && data.length > 0) {
@@ -1450,6 +1603,19 @@ const ScoreboardScreen = ({ currentUserId }) => {
       }
     });
   }, [currentUserId]);
+
+  // Navnene på dem, hver hjælper hjælper. Regnes ud af de to lister, appen
+  // alligevel har — ingen ekstra kald for at kunne skrive "hjælper for Anna".
+  const hjaelperFor = useMemo(() => {
+    const navne = new Map(members.map((m) => [m.id, m.name]));
+    const ud = new Map();
+    for (const k of koblinger) {
+      const navn = navne.get(k.member_id);
+      if (!navn) continue;
+      ud.set(k.helper_id, [...(ud.get(k.helper_id) || []), navn]);
+    }
+    return ud;
+  }, [members, koblinger]);
 
   const teams = ["Alle hold", ...Array.from(new Set(members.map((m) => m.team).filter(Boolean))).sort()];
   const filteredMembers = filter === "Alle hold" ? [...members] : members.filter((m) => m.team === filter);
@@ -1502,8 +1668,19 @@ const ScoreboardScreen = ({ currentUserId }) => {
               <div className="text-sm font-black text-stone-400 w-5 shrink-0">{i + 1}</div>
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-[14px] text-stone-900">{m.name}</div>
-                <div className="text-[11px] text-stone-500">{m.team} · {m.tasksDone} opgaver</div>
+                <div className="font-semibold text-[14px] text-stone-900 flex items-center gap-1.5">
+                  <span className="truncate">{m.name}</span>
+                  {hjaelperFor.has(m.id) && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Hjælper
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-stone-500 truncate">
+                  {hjaelperFor.has(m.id)
+                    ? `Hjælper ${hjaelperFor.get(m.id).map((n) => n.split(" ")[0]).join(" og ")} · ${m.tasksDone} opgaver`
+                    : `${m.team ? `${m.team} · ` : ""}${m.tasksDone} opgaver`}
+                </div>
               </div>
               <div className="text-right shrink-0"><div className="font-black text-base text-stone-900">{m.points}</div><div className="text-[9px] text-stone-400 uppercase">point</div></div>
               <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
@@ -2229,6 +2406,19 @@ export default function App() {
   // Tilmeldingerne gemmes nu med deres tilstand, fordi point først tæller
   // når en admin har bekræftet, at tjansen er gennemført.
   const [myClaims, setMyClaims] = useState([]);
+  // Bidragsregnskabet. Det er IKKE det samme tal som ranglistens: ranglisten
+  // er, hvad man selv har lavet, bidraget er hvad husstanden har leveret.
+  // Derfor kommer det fra sit eget kald og ligger i sin egen tilstand.
+  const [bidrag, setBidrag] = useState(null);
+  // Hvem jeg hjælper (er jeg hjælper), og hvem der hjælper mig (er jeg medlem).
+  const [mineMedlemmer, setMineMedlemmer] = useState([]);
+  const [mineHjaelpere, setMineHjaelpere] = useState([]);
+  // Hvem den tjans, man kigger på lige nu, skal tælle for: { taskId, valg },
+  // hvor valg er "mig" eller et medlems id. Opgavens id ligger MED i
+  // tilstanden, så et valg fra den forrige opgave ikke kan hænge ved — det
+  // hører til den tjans, det blev truffet på, og ingen andre.
+  const [modtagerValg, setModtagerValg] = useState(null);
+  const [skifterModtager, setSkifterModtager] = useState(false);
   // Mærkerne kommer fra databasen: hvad man har fundet, og om noget er nyt.
   const [maerker, setMaerker] = useState([]);
   const [nyeMaerker, setNyeMaerker] = useState([]);
@@ -2576,7 +2766,7 @@ export default function App() {
   useEffect(() => {
     const uid = currentUser?.id;
     if (!uid) return;
-    supabase.from("task_claims").select("task_id, status, points_awarded").eq("user_id", uid).then(({ data }) => {
+    supabase.from("task_claims").select("id, task_id, status, points_awarded, credited_to").eq("user_id", uid).then(({ data }) => {
       if (data) setMyClaims(data);
     });
     // Dataindlæsning ved visning. Reglen advarer mod setState i en effect,
@@ -2610,7 +2800,7 @@ export default function App() {
     if (!currentUser?.id) return;
     const [{ data: me }, { data: claims }, { data: taskRows }] = await Promise.all([
       supabase.rpc("my_profile").single(),
-      supabase.from("task_claims").select("task_id, status, points_awarded").eq("user_id", currentUser.id),
+      supabase.from("task_claims").select("id, task_id, status, points_awarded, credited_to").eq("user_id", currentUser.id),
       supabase.from("tasks").select("id, spots_left"),
     ]);
     if (me) setCurrentUser((prev) => prev && ({ ...prev, pointsEarned: me.points ?? 0, tasksCompleted: me.tasks_done ?? 0 }));
@@ -2644,6 +2834,25 @@ export default function App() {
       if (nye.length) setNyeMaerker(nye);
     });
      
+  }, [currentUser?.id, currentUser?.pointsEarned, currentUser?.tasksCompleted]);
+
+  // Bidragstallet og koblingerne. Samme afhængigheder som mærkerne: en
+  // bekræftet tjans er præcis det, der flytter tallet — også når det var en
+  // hjælpers tjans, og det derfor ikke er ens egne point, der ændrer sig.
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    let levende = true;
+    Promise.all([
+      supabase.rpc("my_bidrag").single(),
+      supabase.rpc("my_helper_members"),
+      supabase.rpc("my_helpers"),
+    ]).then(([b, m, h]) => {
+      if (!levende) return;
+      if (b.error) { console.warn("my_bidrag:", b.error.message); } else { setBidrag(b.data); }
+      if (!m.error) setMineMedlemmer(m.data || []);
+      if (!h.error) setMineHjaelpere(h.data || []);
+    });
+    return () => { levende = false; };
   }, [currentUser?.id, currentUser?.pointsEarned, currentUser?.tasksCompleted]);
 
   useEffect(() => {
@@ -2721,7 +2930,22 @@ export default function App() {
       return;
     }
 
-    const { error } = await supabase.from("task_claims").insert({ task_id: taskId, user_id: currentUser.id });
+    // En hjælper melder sig til PÅ et medlems vegne. Valget skrives ned i
+    // samme sætning som tilmeldingen: sker det i to trin, kan det andet trin
+    // fejle, og så står tjansen som hjælperens egen uden at nogen ved det.
+    const valgtHer = modtagerValg?.taskId === taskId ? modtagerValg.valg : null;
+    const valgt = mineMedlemmer.length
+      ? (valgtHer ?? (mineMedlemmer.length === 1 ? mineMedlemmer[0].member_id : "mig"))
+      : "mig";
+
+    const { data: nyRaekke, error } = await supabase.from("task_claims")
+      .insert({
+        task_id: taskId,
+        user_id: currentUser.id,
+        credited_to: valgt === "mig" ? null : valgt,
+      })
+      .select("id, task_id, status, points_awarded, credited_to")
+      .single();
 
     if (error) {
       // Databasen afviser blandt andet, hvis nogen nåede den sidste plads først.
@@ -2731,10 +2955,28 @@ export default function App() {
       return;
     }
 
-    setMyClaims((prev) => [...prev, { task_id: taskId, status: "signed_up", points_awarded: task?.points ?? 0 }]);
-    showToast(`🎉 Tjansen er din! ${task?.points ?? 0} point når den er gennemført`, 3200);
+    setMyClaims((prev) => [...prev, nyRaekke || { task_id: taskId, status: "signed_up", points_awarded: task?.points ?? 0, credited_to: valgt === "mig" ? null : valgt }]);
+    const forNavn = valgt === "mig" ? null : mineMedlemmer.find((m) => m.member_id === valgt)?.name;
+    showToast(forNavn
+      ? `🎉 Tjansen er din! ${task?.points ?? 0} point til ${forNavn.split(" ")[0]}, når den er gennemført`
+      : `🎉 Tjansen er din! ${task?.points ?? 0} point når den er gennemført`, 3200);
     setTimeout(() => setTab("dashboard"), 900);
     await refreshAfterClaimChange(taskId);
+  };
+
+  // Rammer hjælperen det forkerte barn, skal hun ikke framelde og til igen —
+  // så mister hun pladsen, hvis en anden har taget den i mellemtiden.
+  const skiftModtager = async (claimId, valg) => {
+    if (!claimId || !currentUser?.id) return;
+    setSkifterModtager(true);
+    const medlem = valg === "mig" ? currentUser.id : valg;
+    const { error } = await supabase.rpc("set_claim_credit", { p_claim: claimId, p_member: medlem });
+    setSkifterModtager(false);
+    if (error) { showToast(`Kunne ikke skifte modtager: ${error.message}`, 3500); return; }
+    setMyClaims((prev) => prev.map((c) => c.id === claimId
+      ? { ...c, credited_to: valg === "mig" ? null : valg } : c));
+    const navn = valg === "mig" ? "dig selv" : mineMedlemmer.find((m) => m.member_id === valg)?.name || "medlemmet";
+    showToast(`Tjansen tæller nu for ${navn}`);
   };
 
   const handleUnclaim = async (taskId) => {
@@ -2970,6 +3212,20 @@ export default function App() {
                 <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-600 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4 text-stone-500" />Registreret som ikke gennemført</div>
               ) : claimedIds.has(selectedTask.id) ? (
                 <div className="space-y-2">
+                  {mineMedlemmer.length > 0 && (() => {
+                    const min = myClaims.find((c) => c.task_id === selectedTask.id);
+                    return (
+                      <ModtagerValg
+                        medlemmer={mineMedlemmer}
+                        vaerdi={min?.credited_to || "mig"}
+                        busy={skifterModtager || min?.status === "completed"}
+                        onVaelg={(v) => skiftModtager(min?.id, v)}
+                        hjaelpetekst={min?.status === "completed"
+                          ? "Tjansen er gjort op, og modtageren kan ikke længere ændres."
+                          : "Tryk på et navn for at flytte pointene."}
+                      />
+                    );
+                  })()}
                   <div className="text-[11px] text-stone-500 text-center">Pointene tilføjes, når en administrator har bekræftet tjansen.</div>
                   <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
                 </div>
@@ -2978,14 +3234,36 @@ export default function App() {
               ) : (selectedTask.spotsLeft ?? 0) <= 0 ? (
                 <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-500 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><Users className="w-4 h-4" />Opgaven er fuldt besat</div>
               ) : (
-                <button onClick={() => handleClaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}><Zap className="w-5 h-5" fill="white" />Tag tjansen ( {selectedTask.points} point )</button>
+                <>
+                  {mineMedlemmer.length > 0 && (
+                    <ModtagerValg
+                      medlemmer={mineMedlemmer}
+                      vaerdi={(modtagerValg?.taskId === selectedTask.id ? modtagerValg.valg : null)
+                        ?? (mineMedlemmer.length === 1 ? mineMedlemmer[0].member_id : null)}
+                      onVaelg={(v) => setModtagerValg({ taskId: selectedTask.id, valg: v })}
+                      hjaelpetekst={mineMedlemmer.length > 1
+                        ? "Vælg hvem pointene skal tælle for. Du kan skifte bagefter."
+                        : ""}
+                    />
+                  )}
+                  <button
+                    onClick={() => handleClaim(selectedTask.id)}
+                    disabled={mineMedlemmer.length > 1 && modtagerValg?.taskId !== selectedTask.id}
+                    className="w-full py-3.5 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                    style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
+                    <Zap className="w-5 h-5" fill="white" />
+                    {mineMedlemmer.length > 1 && modtagerValg?.taskId !== selectedTask.id
+                      ? "Vælg først hvem tjansen tæller for"
+                      : `Tag tjansen ( ${selectedTask.points} point )`}
+                  </button>
+                </>
               )}
             </div>
           </div>
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} bidrag={bidrag} mineMedlemmer={mineMedlemmer} mineHjaelpere={mineHjaelpere} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
@@ -2998,6 +3276,59 @@ export default function App() {
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.tasksCompleted ?? 0}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Opgaver</div></div>
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.team || "–"}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Hold</div></div>
                 </div>
+
+                {/* Hjælpere. Kortet vises kun, når der ER en kobling — for de
+                    fleste medlemmer findes hjælpere slet ikke, og så skal der
+                    ikke stå noget om dem. */}
+                {(mineMedlemmer.length > 0 || mineHjaelpere.length > 0) && (
+                  <div className="px-5 mt-4">
+                    <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
+                      {mineMedlemmer.length > 0 ? (
+                        <>
+                          <div className="text-[13px] font-bold text-stone-900 mb-1">Du er hjælper</div>
+                          <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
+                            Dine point står på ranglisten under dit eget navn, men tæller mod
+                            frivilligbidraget hos den, du tager tjansen for.
+                          </p>
+                          <div className="space-y-1.5">
+                            {mineMedlemmer.map((m) => (
+                              <div key={m.member_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
+                                <span className="text-[13px] font-semibold text-stone-800">{m.name}</span>
+                                <span className="text-[12px] font-bold text-emerald-700">{m.givet} pt givet</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-[13px] font-bold text-stone-900 mb-1">Dine hjælpere</div>
+                          <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
+                            Deres tjanser tæller med i dit frivilligbidrag — men pointene står på
+                            ranglisten under deres eget navn.
+                          </p>
+                          <div className="space-y-1.5">
+                            {mineHjaelpere.map((h) => (
+                              <div key={h.helper_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
+                                <span className="text-[13px] font-semibold text-stone-800">{h.name}</span>
+                                <span className="text-[12px] font-bold text-emerald-700">+{h.point} pt til dig</span>
+                              </div>
+                            ))}
+                          </div>
+                          {bidrag && (
+                            <div className="text-[12px] text-stone-600 mt-2.5 pt-2.5 border-t border-stone-100">
+                              I alt mod frivilligbidraget: <strong className="text-stone-900">{bidrag.bidrag} point</strong>
+                              {bidrag.fra_hjaelpere > 0 && <> — heraf {bidrag.fra_hjaelpere} fra dine hjælpere</>}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <p className="text-[11px] text-stone-400 mt-2.5 leading-relaxed">
+                        Skal koblingen ændres, så skriv til {LEGAL_CONTACT}. Det er kun
+                        administratorer, der kan rette den.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Rediger profil */}
                 <ProfileEditSection currentUser={currentUser} setCurrentUser={setCurrentUser} setToast={setToast} />

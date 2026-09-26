@@ -723,8 +723,12 @@ skal et menneske trykke på.
 **Admin → Oversigt → Eksportér bidragsliste** giver én linje pr. medlem:
 
 ```
-Navn · Hold · Point · Mål · Status · Bidrag (kr)
+Navn · Hold · Bidragspoint · Heraf fra hjælpere · Hjælpere · Mål · Status · Bidrag (kr)
 ```
+
+Hjælpere står **ikke** på listen. De er ikke medlemmer, de betaler ikke
+bidrag, og deres point er allerede lagt til hos den, de hjalp. Se
+[Hjælpere](#hjælpere).
 
 | Status | Point | Bidrag |
 |---|---|---|
@@ -736,6 +740,88 @@ Det er alt eller intet ved målet. 199 point koster det samme som 0 — der er
 ikke noget forholdsmæssigt bidrag.
 
 Prøv efter: `node maal-check.js` (12 checks).
+
+## Hjælpere
+
+En forælder, en kæreste, en nabo — nogen, der ikke er medlem, men gerne tager
+en tjans for et medlem. Klubben vil have dem ind i appen, og deres arbejde
+skal tælle for medlemmet.
+
+**Det er ikke pointoverførsel, og det er hele pointen.** I samme øjeblik appen
+kan flytte point fra én konto til en anden, findes maskineriet — og så bliver
+det brugt mellem to medlemmer, "bare lige denne ene gang", af en admin der
+vil nogen det godt. Derfor flytter ingenting. Point bliver liggende, hvor de
+blev tjent. I stedet skrives det på selve tilmeldingen, **hvem tjansen tæller
+for** (`task_claims.credited_to`). Det står der for altid, også hvis
+koblingen senere fjernes, og det kan læses i en opgørelse et år efter.
+
+### To tal, der betyder hver sin ting
+
+| Tal | Hvad det er | Hvor det bruges |
+|---|---|---|
+| `profiles.points` | hvad man **selv** har lavet | ranglisten, mærkerne |
+| `bidrag_point(id)` | egne + hjælpernes + bonus | frivilligbidraget |
+
+Ranglisten er anerkendelse: hjælperen står der med sit eget navn og sine egne
+point, for det var hende, der mødte op — og med et lille **Hjælper**-mærke, så
+det kan ses hvorfor hun ikke har noget hold. Bidragsordningen er penge: dér
+tæller det, husstanden har leveret.
+
+Derfor rører hjælperne **ikke** de triggere, der lægger point til og trækker
+fra. Det er appens mest ømtålelige kode, og den behøver ikke at vide, at
+hjælpere findes.
+
+### Fire spærrer
+
+Koblingen laves kun af `admin_set_helper()`, og fire ting skal passe:
+
+1. **Kun admins.** En kobling flytter, hvem der slipper for at betale.
+2. **En konto med point kan ikke gøres til hjælper.** Det er reglen, der
+   lukker døren mellem to medlemmer: kan man ikke blive hjælper efter at have
+   tjent point, kan man heller ikke begynde at sende dem videre.
+3. **Ingen kæder.** Den, man hjælper, må ikke selv være hjælper.
+4. **Alt havner i audit-loggen.**
+
+Dertil en femte i databasen selv: en trigger på `task_claims` afviser en
+`credited_to`, som den tilmeldte ikke er koblet til. Selv et kald direkte mod
+API'et uden om appen kan altså ikke pege point på et fremmed medlem.
+
+### Vejen igennem appen
+
+1. **Oprettelsen.** Hjælperen sætter kryds i *"Jeg spiller ikke selv — jeg
+   hjælper et medlem"* og skriver navnet i fri tekst. Hun kan ikke se
+   medlemslisten, før hun er lukket ind, og skal heller ikke kunne det.
+   Teksten lander i `profiles.helper_request`.
+2. **Godkendelsen.** Admin ser ønsket på godkendelseskortet og vælger det
+   rigtige medlem — eller flere, hvis det er to børn — og godkender.
+   Godkendelse og kobling er **én handling**, for ellers bliver det et andet
+   sted, en anden dag. `helper_request` ryddes, når koblingen er lavet.
+3. **Tjansen.** Hjælperen vælger ved hver tilmelding, hvem den skal tælle for.
+   Hjælper hun kun ét medlem, er det valgt på forhånd; hjælper hun flere, er
+   knappen låst, indtil hun har valgt. Valget skrives i **samme** sætning som
+   tilmeldingen, så en tjans aldrig kan stå som hjælperens egen, fordi et
+   andet trin fejlede. Rammer hun forkert, kan hun flytte den bagefter
+   (`set_claim_credit()`) uden at miste pladsen.
+4. **Opgørelsen.** Medlemmets bjælke måler bidragstallet og skriver *"heraf
+   20 pt fra Finn"*. Hjælperens dashboard har ingen bjælke — hun skal ikke
+   betale — men står med *"50 point givet videre"* fordelt på dem, hun hjælper.
+
+Admin kan også koble til og fra bagefter: **Medlemmer → ⋮ → Gør til
+hjælper**. Fjernes koblingen, bliver de point, der allerede er givet, hvor de
+er: tjansen husker selv, hvem den talte for.
+
+### Det admin skal vide
+
+- En admin, der **tildeler** en hjælper en tjans fra admin-panelet, sætter
+  ikke modtageren. Tjansen tæller for hjælperen selv, indtil hun åbner den og
+  vælger. Skal det tælle for medlemmet fra starten, er det hjælperen, der
+  melder sig til.
+- Mærkerne måles på hjælperens **egne** point. Ellers ville den, der har taget
+  flest tjanser i klubben, stå uden et eneste mærke.
+
+Prøv efter: `node hjaelper-check.js` (17 checks) og
+`node hjaelper-admin-check.js` (22 checks), samt
+`psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit).
 
 ## Pointmodel
 
