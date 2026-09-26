@@ -374,6 +374,40 @@ af et menneske vises anderledes end en stakspor, med hvem der skrev og hvornår.
 Databasens grænse på 20 pr. bruger i timen gælder også her, og alt ældre end
 90 dage slettes.
 
+### Nulstilling af adgangskode
+
+Linket i mailen går til Supabase, som tjekker det og sender medlemmet videre
+til appen med svaret i adressens **hash**. To ting gik galt der, og begge er
+rettet:
+
+**Kapløbet om hash'en.** `supabase-js` rydder adressen, i samme sekund
+biblioteket starter — og det sker, før React renderer. Appen læste hash'en
+fra `window.location.hash` og tabte kapløbet, hver gang appen var hurtig.
+Resultatet var, at man landede på login-skærmen i stedet for på "vælg ny
+adgangskode". Nu gemmer et lille script i `index.html` adressen i
+`window.__rvkStartHash`, før noget andet bliver hentet, og appen læser dér.
+
+**Et link, der ikke virker, sagde ingenting.** Et nulstillingslink holder én
+time og kan bruges én gang. Klikker man i en gammel mail — hvilket folk gør —
+sender Supabase en fejl tilbage i hash'en, og appen viste bare login-skærmen.
+Nu står der, hvad der skete, og hvad man gør: *"Linket er allerede brugt.
+Tryk Glemt adgangskode, så sender vi et nyt."*
+
+To ting i Supabase skal passe, ellers rammer linket ved siden af:
+
+| Indstilling | Værdi |
+|---|---|
+| Site URL | `https://frivilligapp.vercel.app` |
+| Redirect URLs | `https://frivilligapp.vercel.app/**` |
+
+Står de forkert, bytter Supabase **selv** adressen ud med Site URL'en — uden
+at fejle. Det var sådan, den første prøve endte på et domæne, der ikke fandtes
+længere: appen bad om den rigtige adresse, og Supabase svarede med en anden.
+Det kan kun ses ved at læse linket i den mail, der faktisk blev sendt.
+
+Prøv efter: `node nulstil-check.js` (11 checks — gyldigt link, udløbet link,
+brugt link, og et almindeligt besøg uden advarsler).
+
 ### Udløbet session
 
 En telefon, der har ligget i lommen, vågner med et forældet token og sender

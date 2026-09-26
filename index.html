@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
+    <!-- Supabase-biblioteket rydder adressen, i samme sekund det starter —
+         også når den indeholder et nulstillingslink. Kører appen hurtigt (og
+         det gør den nu), når React ikke at se den først. Derfor gemmes den
+         her, før noget som helst andet bliver hentet. -->
+    <script>
+      window.__rvkStartHash = window.location.hash || "";
+    </script>
+
     <title>RVK Frivillig – Randers Volleyballklub</title>
 
     <!-- Databasen ligger paa et andet domaene, og foerste kald dertil skal
