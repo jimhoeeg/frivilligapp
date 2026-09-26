@@ -1175,7 +1175,7 @@ const MAERKER = {
   // Fællesskab og sæson
   byttecentralen:    { emoji: "🔄", navn: "Byttecentralen",      tekst: "Tre gennemførte bytter" },
   nye_ansigter:      { emoji: "👥", navn: "Nye ansigter",        tekst: "Stået på opgave med ti forskellige medlemmer" },
-  tidligt_i_maal:    { emoji: "🚀", navn: "Tidligt i mål",       tekst: "Halvsmålet nået inden 1. december" },
+  tidligt_i_maal:    { emoji: "🚀", navn: "Tidligt i mål",       tekst: "Halvvejs mod målet inden 1. december" },
   saeson_to:         { emoji: "🎖️", navn: "Sæson to",            tekst: "Tjanser i to forskellige sæsoner" },
 };
 
@@ -1210,28 +1210,32 @@ const NyeMaerkerModal = ({ maerker, onClose }) => (
 );
 
 // Mærkerne følger klubbens pointmål, som sættes i admin-panelet.
-const badgeDefs = (halfGoal) => [
-  { id: "signup",   emoji: "🌱", label: "Frivillig",     desc: "Tilmeldt som frivillig",                      req: () => true },
-  { id: "first",    emoji: "⭐", label: "Første tjans",  desc: "Taget sin første opgave",                     req: (e, t) => t >= 1 },
-  { id: "halfway",  emoji: "🔥", label: "Halvvejs",      desc: `${Math.round(halfGoal / 2)} point optjent`,   req: (e) => e >= halfGoal / 2 },
-  { id: "halfgoal", emoji: "🏅", label: "Halvsmål nået", desc: `${halfGoal} point – bidragsfri`,              req: (e) => e >= halfGoal },
-  { id: "veteran",  emoji: "🎯", label: "Veteran",       desc: "5 tjanser taget",                             req: (e, t) => t >= 5 },
-  { id: "fullgoal", emoji: "🏆", label: "Sæsonmål",      desc: `${halfGoal * 2} point – hele sæsonen`,        req: (e) => e >= halfGoal * 2 },
+//
+// ÉT mål, ikke to. Før regnede appen et "sæsonmål" ud som det dobbelte af
+// målet og viste DET som det store tal — så medlemmet så 200, mens regningen
+// faldt ved 100. Nu er målet det tal, der afgør bidraget, og intet andet.
+const badgeDefs = (maal) => [
+  { id: "signup",   emoji: "🌱", label: "Frivillig",     desc: "Tilmeldt som frivillig",                    req: () => true },
+  { id: "first",    emoji: "⭐", label: "Første tjans",  desc: "Taget sin første opgave",                   req: (e, t) => t >= 1 },
+  { id: "halfway",  emoji: "🔥", label: "Halvvejs",      desc: `${Math.round(maal / 2)} point optjent`,     req: (e) => e >= maal / 2 },
+  { id: "veteran",  emoji: "🎯", label: "Veteran",       desc: "5 tjanser taget",                           req: (e, t) => t >= 5 },
+  { id: "halfgoal", emoji: "🏅", label: "I mål",         desc: `${maal} point – fritaget bidrag`,           req: (e) => e >= maal },
+  { id: "fullgoal", emoji: "🏆", label: "Over målet",    desc: `${Math.round(maal * 1.5)} point`,           req: (e) => e >= maal * 1.5 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [] }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "" }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
   const earned    = currentUser?.pointsEarned || 0;
   const tasks     = currentUser?.tasksCompleted || 0;
-  const halfGoal  = pointGoal || 100;
-  const fullGoal  = halfGoal * 2;
-  const pct       = Math.min(100, Math.round((earned / fullGoal) * 100));
-  const halfPct   = Math.min(50, Math.round((Math.min(earned, halfGoal) / fullGoal) * 100));
-  const restPct   = Math.max(0, Math.min(50, Math.round(((earned - halfGoal) / fullGoal) * 100)));
-  const halfDone  = earned >= halfGoal;
-  const fullDone  = earned >= fullGoal;
+  // Ét mål: det antal point, der skal til for at slippe for frivilligbidraget
+  // ved næste opgørelse. Klubben sætter det i admin-panelet.
+  const maal      = pointGoal || 200;
+  const pct       = Math.min(100, Math.round((earned / maal) * 100));
+  const barPct    = Math.min(100, Math.round((earned / maal) * 100));
+  const halvvejs  = earned >= maal / 2;
+  const iMaal     = earned >= maal;
 
   const [rank, setRank] = useState(null);
   useEffect(() => {
@@ -1241,7 +1245,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
       .then(({ count }) => setRank((count ?? 0) + 1));
   }, [currentUser?.id, currentUser?.pointsEarned]);
 
-  const badges       = useMemo(() => badgeDefs(halfGoal), [halfGoal]);
+  const badges       = useMemo(() => badgeDefs(maal), [maal]);
   const earnedBadges = badges.filter((b) => b.req(earned, tasks));
 
   const statusOf  = (t) => claimStatus?.get(t.id) || "signed_up";
@@ -1260,34 +1264,39 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
                 <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-200">Sæsonens point</div>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className="text-4xl font-black">{earned}</span>
-                  <span className="text-lg text-white/70">/ {fullGoal}</span>
+                  <span className="text-lg text-white/70">/ {maal}</span>
                 </div>
-                <div className="text-[10px] text-white/60 mt-0.5">Halvt sæsonmål: {halfGoal} pt</div>
+                <div className="text-[10px] text-white/60 mt-0.5">{maal} point fritager for frivilligbidraget</div>
                 {pendingPoints > 0 && (
                   <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
                     <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
                   </div>
                 )}
               </div>
-              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${fullDone ? "bg-emerald-400/80" : ""}`} style={!fullDone ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{pct}%</div>
+              <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${iMaal ? "bg-emerald-400/80" : ""}`} style={!iMaal ? { background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` } : {}}>{pct}%</div>
             </div>
 
-            {/* Two-segment progress bar: first half (0-100) + second half (100-200) */}
-            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-1 relative flex">
-              <div className="h-full rounded-l-full transition-all duration-700 relative overflow-hidden" style={{ width: `${halfPct}%`, background: `linear-gradient(90deg, ${theme.pinkLight}, ${theme.pink})`, boxShadow: `0 0 8px ${theme.pink}80` }} />
-              {restPct > 0 && <div className="h-full transition-all duration-700" style={{ width: `${restPct}%`, background: `linear-gradient(90deg, ${theme.purple}, #7c3aed)` }} />}
+            {/* Én bjælke til ét mål. Stregen på midten er halvvejs — den er
+                der for at gøre vejen kortere at se på, ikke fordi der sker
+                noget ved den. */}
+            <div className="h-3 bg-white/15 rounded-full overflow-hidden mb-1 relative">
+              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${barPct}%`, background: `linear-gradient(90deg, ${theme.pinkLight}, ${theme.pink} 55%, ${theme.purple})`, boxShadow: `0 0 8px ${theme.pink}80` }} />
+              <div className="absolute inset-y-0 left-1/2 w-px bg-white/30" />
             </div>
             <div className="flex justify-between text-[9px] text-white/50 mb-2">
-              <span>0</span><span>{halfGoal}</span><span>{fullGoal}</span>
+              <span>0</span><span>{Math.round(maal / 2)}</span><span>{maal}</span>
             </div>
 
             <div className="text-xs text-white/80">
-              {fullDone
-                ? <span className="text-emerald-100 font-semibold">🎉 Hele sæsonens mål nået!</span>
-                : halfDone
-                  ? <span>✓ 1. halvsmål nået · <strong className="text-white">{fullGoal - earned} pt</strong> til hele sæsonen</span>
-                  : <span><strong className="text-white">{halfGoal - earned} pt</strong> til 1. halvsmål – fritaget bidrag</span>}
+              {iMaal
+                ? <span className="text-emerald-100 font-semibold">🎉 Målet er nået — du er fritaget for frivilligbidraget</span>
+                : <span><strong className="text-white">{maal - earned} pt</strong> til målet{halvvejs ? " — mere end halvvejs" : ""}</span>}
             </div>
+            {bidragNote && (
+              <div className="text-[10px] text-white/70 mt-2 leading-relaxed bg-white/10 rounded-lg px-2.5 py-2 border border-white/10">
+                {bidragNote}
+              </div>
+            )}
             <div className="text-[10px] text-white/50 mt-2 leading-relaxed">
               Point tæller med, når en administrator har bekræftet, at tjansen er gennemført.
             </div>
@@ -2211,7 +2220,10 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [legalDoc, setLegalDoc] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [pointGoal, setPointGoal] = useState(100);
+  const [pointGoal, setPointGoal] = useState(200);
+  // En linje fra klubben om, hvornår der gøres op. Sættes i admin-panelet og
+  // står under bjælken på dashboardet. Den er tom, indtil nogen skriver noget.
+  const [bidragNote, setBidragNote] = useState("");
 
   const claimedIds = useMemo(
     () => new Set(myClaims.map((c) => c.task_id)),
@@ -2554,6 +2566,7 @@ export default function App() {
       const goal = data?.find((r) => r.key === "point_goal")?.value;
       const n = parseInt(goal, 10);
       if (Number.isFinite(n) && n > 0) setPointGoal(n);
+      setBidragNote(data?.find((r) => r.key === "contribution_note")?.value || "");
     });
   }, []);
 
@@ -2918,7 +2931,7 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">

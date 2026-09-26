@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de femten migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de seksten migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -79,6 +79,7 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260925220000_badges.sql` | 30 skjulte mærker: `member_badges` og `my_badges()`. |
 | `20260926060000_email_outbox.sql` | Mail ud af appen: udbakke, påmindelser og cron. |
 | `20260926070000_slet_medlem_med_tjans.sql` | Et medlem med en åben tjans kunne ikke slettes. |
+| `20260926090000_tidligt_i_maal.sql` | Mærket "Tidligt i mål" følger nu halvdelen af målet. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -637,6 +638,68 @@ fra `returning`.
 
 Prøv efter: `node maerke-check.js` (13 checks) og
 `psql -f supabase/tests/60_badges.sql` (9 afsnit).
+
+## Frivilligbidraget
+
+Klubben opkræver et **frivilligbidrag på 400 kr.** af de medlemmer, der ikke
+når målet inden en opgørelse. Der er to tal i `settings`, og de betyder
+præcis det, de hedder:
+
+| Nøgle | Værdi | Betyder |
+|---|---|---|
+| `point_goal` | 200 | Point, der skal nås inden opgørelsen |
+| `contribution_kr` | 400 | Beløbet for dem under målet |
+
+**Ét mål, ikke to.** Før regnede appen et "sæsonmål" ud som det dobbelte af
+`point_goal` og viste *det* som det store tal på dashboardet — så medlemmet
+så 200, mens regningen faldt ved 100. Nu er målet det eneste tal: bjælken går
+til det, procenten regnes af det, og det er det, der afgør bidraget. Stregen
+midt på bjælken er halvvejs, og der sker ingenting ved den.
+
+### Sæsonen 2026/27
+
+Efteråret er **gratis** — det er klubbens prøveperiode. Der gøres op **én
+gang, til foråret**, og målet er 200 point *i alt* for hele sæsonen.
+Efterårets point tæller altså med.
+
+Det står i `settings.contribution_note`, som admins skriver i
+**Admin → Indstillinger**, og som vises under pointbjælken på medlemmets
+dashboard. Det er den eneste måde, et medlem kan vide, hvornår regningen
+falder.
+
+### Fra og med 2027/28
+
+Bidraget gøres op **pr. halvsæson**: to opgørelser om året, hvert med sit mål
+og sit bidrag. Det kræver ikke ny kode — det kræver, at klubben
+
+1. sætter `point_goal` til halvsæsonens mål (fx 100),
+2. eksporterer bidragslisten og kører **sæsonnulstillingen** to gange om året
+   i stedet for én, og
+3. retter `contribution_note`, så medlemmerne kan se, hvornår næste opgørelse
+   falder.
+
+Pointene nulstilles kun af nulstillingen. Der er ingen automatik på
+kalenderen, og det er med vilje: en opgørelse, der koster medlemmerne penge,
+skal et menneske trykke på.
+
+### Sådan gøres der op
+
+**Admin → Oversigt → Eksportér bidragsliste** giver én linje pr. medlem:
+
+```
+Navn · Hold · Point · Mål · Status · Bidrag (kr)
+```
+
+| Status | Point | Bidrag |
+|---|---|---|
+| 🎉 Nået målet | ≥ `point_goal` | 0 kr. |
+| 🟣 På vej | halvdelen til målet | 400 kr. |
+| ⚠️ Bagud | under halvdelen | 400 kr. |
+
+Det er alt eller intet ved målet. 199 point koster det samme som 0 — der er
+ikke noget forholdsmæssigt bidrag.
+
+Prøv efter: `node maal-check.js` (12 checks).
 
 ## Pointmodel
 
