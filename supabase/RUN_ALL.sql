@@ -29,7 +29,7 @@
 
 
 -- ############################################################################
--- ## AFSNIT 1 af 15: 20260101000000_baseline.sql
+-- ## AFSNIT 1 af 16: 20260101000000_baseline.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -229,7 +229,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 2 af 15: 20260910120000_launch_hardening.sql
+-- ## AFSNIT 2 af 16: 20260910120000_launch_hardening.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1139,7 +1139,7 @@ create index if not exists swap_offers_status_idx      on public.swap_offers (st
 
 
 -- ############################################################################
--- ## AFSNIT 3 af 15: 20260918100000_task_completion.sql
+-- ## AFSNIT 3 af 16: 20260918100000_task_completion.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1640,7 +1640,7 @@ update public.profiles p
 
 
 -- ############################################################################
--- ## AFSNIT 4 af 15: 20260918140000_auto_confirm.sql
+-- ## AFSNIT 4 af 16: 20260918140000_auto_confirm.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1934,7 +1934,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 5 af 15: 20260918160000_cleanup_orphans.sql
+-- ## AFSNIT 5 af 16: 20260918160000_cleanup_orphans.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2024,7 +2024,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 6 af 15: 20260919080000_policies_from_legacy.sql
+-- ## AFSNIT 6 af 16: 20260919080000_policies_from_legacy.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2201,7 +2201,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 7 af 15: 20260919090000_points_follow_task.sql
+-- ## AFSNIT 7 af 16: 20260919090000_points_follow_task.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2340,7 +2340,7 @@ update public.profiles p
 
 
 -- ############################################################################
--- ## AFSNIT 8 af 15: 20260919110000_client_errors.sql
+-- ## AFSNIT 8 af 16: 20260919110000_client_errors.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2475,7 +2475,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 9 af 15: 20260919140000_lock_function_execute.sql
+-- ## AFSNIT 9 af 16: 20260919140000_lock_function_execute.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2685,7 +2685,7 @@ $$;
 
 
 -- ############################################################################
--- ## AFSNIT 10 af 15: 20260919160000_season_reset.sql
+-- ## AFSNIT 10 af 16: 20260919160000_season_reset.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3082,7 +3082,7 @@ grant execute on function public.admin_season_rows(text)           to authentica
 
 
 -- ############################################################################
--- ## AFSNIT 11 af 15: 20260922180000_teams_readable_at_signup.sql
+-- ## AFSNIT 11 af 16: 20260922180000_teams_readable_at_signup.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3133,7 +3133,7 @@ create policy "teams_select" on public.teams for select
 
 
 -- ############################################################################
--- ## AFSNIT 12 af 15: 20260925140000_task_templates.sql
+-- ## AFSNIT 12 af 16: 20260925140000_task_templates.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3248,7 +3248,7 @@ grant  execute on function public.task_signups(uuid) to authenticated;
 
 
 -- ############################################################################
--- ## AFSNIT 13 af 15: 20260925220000_badges.sql
+-- ## AFSNIT 13 af 16: 20260925220000_badges.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3477,7 +3477,7 @@ grant execute on function public.my_badges() to authenticated;
 
 
 -- ############################################################################
--- ## AFSNIT 14 af 15: 20260926060000_email_outbox.sql
+-- ## AFSNIT 14 af 16: 20260926060000_email_outbox.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3776,7 +3776,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 15 af 15: 20260926070000_slet_medlem_med_tjans.sql
+-- ## AFSNIT 15 af 16: 20260926070000_slet_medlem_med_tjans.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3839,3 +3839,201 @@ begin
   return old;
 end;
 $$;
+
+
+
+-- ############################################################################
+-- ## AFSNIT 16 af 16: 20260926090000_tidligt_i_maal.sql
+-- ############################################################################
+
+-- ============================================================================
+-- "TIDLIGT I MÅL" SKAL FØLGE MED, NÅR MÅLET ÆNDRER SIG
+--
+-- Klubben har besluttet, at frivilligbidraget gøres op mod ét mål pr.
+-- opgørelse — 200 point i denne sæson. Mærket "Tidligt i mål" krævede hele
+-- målet nået inden 1. december. Med 200 point på hele sæsonen er det ikke et
+-- mærke længere, det er en umulighed.
+--
+-- Nu er reglen HALVDELEN af målet inden 1. december. Det er stadig noget,
+-- man skal gøre sig umage for, og det er stadig sandt, når klubben skifter
+-- målet igen.
+--
+-- Resten af funktionen er uændret; den skrives om i sin helhed, fordi det er
+-- sådan, en funktion rettes i Postgres.
+-- ============================================================================
+
+create or replace function public.my_badges()
+returns table (badge_id text, earned_at timestamptz, er_ny boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+-- Funktionen giver en kolonne, der hedder badge_id, tilbage — og tabellen har
+-- en kolonne af samme navn. Uden den her linje ved Postgres ikke, hvad
+-- "on conflict (user_id, badge_id)" peger på, og nægter at oprette funktionen.
+#variable_conflict use_column
+declare
+  v_uid  uuid := auth.uid();
+  v_goal int;
+begin
+  if v_uid is null then
+    raise exception 'my_badges(): ingen session';
+  end if;
+
+  select coalesce(nullif(value, '')::int, 100) into v_goal
+  from public.settings where key = 'point_goal';
+  v_goal := coalesce(v_goal, 100);
+
+  return query
+  with mine as (
+    -- Kun bekræftede tjanser. Datoen læses kun, når den er en rigtig ISO-dato;
+    -- ældre opgaver med dansk datotekst tæller ikke med i de datobaserede.
+    select tc.claimed_at,
+           tc.confirmed_at,
+           tc.points_awarded,
+           tc.task_id,
+           t.category,
+           t.difficulty,
+           t.urgent,
+           t.duration_type,
+           t.created_at as opgave_oprettet,
+           case when t.date_full ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                then t.date_full::date end as dag
+    from public.task_claims tc
+    join public.tasks t on t.id = tc.task_id
+    where tc.user_id = v_uid and tc.status = 'completed'
+  ),
+  uger as (
+    select distinct date_trunc('week', dag)::date as u from mine where dag is not null
+  ),
+  stimer as (
+    select u, (u - (row_number() over (order by u) * interval '7 day'))::date as g from uger
+  ),
+  stime as (
+    select coalesce(max(antal), 0) as uger_i_traek
+    from (select count(*) as antal from stimer group by g) s
+  ),
+  raekker as (
+    -- Pladsens nummer på opgaven, og om det var den første, der meldte sig.
+    select tc.user_id, tc.task_id, tc.claimed_at, t.spots_total, t.created_at as opgave_oprettet,
+           row_number() over (partition by tc.task_id order by tc.claimed_at) as nr
+    from public.task_claims tc
+    join public.tasks t on t.id = tc.task_id
+  ),
+  saesoner as (
+    select count(distinct season_label) as tidligere
+    from public.season_results where user_id = v_uid
+  ),
+  tal as (
+    select
+      (select count(*) from mine)                                              as antal,
+      (select count(distinct category) from mine)                              as kategorier,
+      (select count(*) from mine where category ilike 'Kampafvikling%')        as kat_kamp,
+      (select count(*) from mine where category ilike 'Hygge%')                as kat_hygge,
+      (select count(*) from mine where category ilike 'Holdleder%')            as kat_transport,
+      (select count(*) from mine where category ilike 'Stævne%')               as kat_staevne,
+      (select count(*) from mine where category ilike 'Faciliteter%')          as kat_fac,
+      (select count(*) from mine where category ilike 'Kommunikation%')        as kat_komm,
+      (select count(distinct date_trunc('month', dag)) from mine
+        where dag is not null)                                                 as maaneder,
+      (select uger_i_traek from stime)                                         as uger_i_traek,
+      (select count(*) from mine where dag is not null
+        and extract(isodow from dag) in (6, 7))                                as weekend,
+      (select exists (select 1 from mine where dag is not null
+        group by dag having count(*) > 1))                                     as dobbeltdag,
+      (select count(*) from mine where difficulty = 'Hård')                    as haarde,
+      (select exists (select 1 from mine
+        where duration_type in ('year', 'half_season')))                       as saesonrolle,
+      (select exists (select 1 from mine where duration_type = 'month'))       as maanedsopgave,
+      (select count(*) from mine where urgent)                                 as hastende,
+      (select exists (select 1 from mine
+        where claimed_at - opgave_oprettet <= interval '1 hour'))              as foerst_paa_pletten,
+      (select exists (select 1 from mine where dag is not null
+        and claimed_at >= (dag - 1)::timestamptz
+        and claimed_at::date <= dag))                                          as sidste_udkald,
+      (select exists (select 1 from raekker r join mine m on m.task_id = r.task_id
+        where r.user_id = v_uid and r.spots_total > 0 and r.nr = r.spots_total)) as redningsmand,
+      (select exists (select 1 from raekker r join mine m on m.task_id = r.task_id
+        where r.user_id = v_uid and r.nr = 1
+          and r.claimed_at - r.opgave_oprettet >= interval '14 days'))         as overset,
+      (select count(*) from public.swap_offers
+        where status = 'accepted'
+          and (from_user_id = v_uid or accepted_by = v_uid))                   as bytter,
+      (select count(distinct o.user_id) from public.task_claims o
+        join mine m on m.task_id = o.task_id where o.user_id <> v_uid)         as nye_ansigter,
+      -- Halvvejs inden 1. december. Foer stod der hele maalet, men maalet
+      -- er nu det, der skal naas paa HELE opgoerelsen — og at have hele
+      -- sæsonens point hjemme til december er ikke et maerke, det er en
+      -- umulighed.
+      (select coalesce(max(sum_pt), 0) >= v_goal / 2 from (
+         select sum(points_awarded) as sum_pt from mine
+         where confirmed_at is not null
+           and extract(month from confirmed_at) between 8 and 11
+         group by extract(year from confirmed_at)) s)                          as tidligt_i_maal,
+      ((select tidligere from saesoner)
+        + (select case when count(*) > 0 then 1 else 0 end from mine))         as saesoner,
+      (select coalesce(points, 0) from public.profiles where id = v_uid)       as point
+  ),
+  regler as (
+    select v.id, v.opnaaet from tal, lateral (values
+      -- Vedholdenhed
+      ('kom_godt_igang',  tal.antal >= 3),
+      ('arbejdshesten',   tal.antal >= 10),
+      ('rygraden',        tal.antal >= 20),
+      ('uundvaerlig',     tal.antal >= 35),
+      ('stimen',          tal.uger_i_traek >= 4),
+      ('trofast',         tal.maaneder >= 3),
+      -- Bredde
+      ('alsidig',         tal.kategorier >= 3),
+      ('altmuligmand',    tal.kategorier >= 5),
+      ('hele_klubben',    tal.kategorier >= 7),
+      ('dommerbordet',    tal.kat_kamp >= 3),
+      ('kiosken',         tal.kat_hygge >= 3),
+      ('chaufføren',      tal.kat_transport >= 3),
+      ('staevneholdet',   tal.kat_staevne >= 3),
+      ('pedellen',        tal.kat_fac >= 3),
+      ('klubbens_stemme', tal.kat_komm >= 3),
+      -- Timing
+      ('foerst_paa_pletten', tal.foerst_paa_pletten),
+      ('sidste_udkald',   tal.sidste_udkald),
+      ('redningsmanden',  tal.redningsmand),
+      ('den_oversete',    tal.overset),
+      ('dobbeltdag',      tal.dobbeltdag),
+      ('weekendkrigeren', tal.weekend >= 5),
+      -- Omfang og sværhed
+      ('modig',           tal.haarde >= 1),
+      ('jernvilje',       tal.haarde >= 3),
+      ('den_lange_bane',  tal.saesonrolle),
+      ('maaneden_ud',     tal.maanedsopgave),
+      ('brandslukkeren',  tal.hastende >= 3),
+      -- Fællesskab og sæson
+      ('byttecentralen',  tal.bytter >= 3),
+      ('nye_ansigter',    tal.nye_ansigter >= 10),
+      ('tidligt_i_maal',  tal.tidligt_i_maal),
+      ('saeson_to',       tal.saesoner >= 2)
+    ) as v(id, opnaaet)
+  ),
+  gamle as (
+    -- Læses FØR indsættelsen nedenfor. En sætning ser tabellen, som den så ud,
+    -- da sætningen begyndte, så de nye rækker er ikke med her — og det er
+    -- netop dét, der gør forskellen på "fundet nu" og "fundet før".
+    select mb.badge_id, mb.earned_at from public.member_badges mb where mb.user_id = v_uid
+  ),
+  nye as (
+    insert into public.member_badges (user_id, badge_id)
+    select v_uid, r.id from regler r where r.opnaaet
+    on conflict (user_id, badge_id) do nothing
+    returning member_badges.badge_id, member_badges.earned_at
+  )
+  select g.badge_id, g.earned_at, false from gamle g
+  union all
+  select n.badge_id, n.earned_at, true  from nye n
+  order by 2, 1;
+end;
+$$;
+
+comment on function public.my_badges() is
+  'Regner medlemmets mærker ud, gemmer de nye, og giver dem alle tilbage. er_ny er sand netop den gang, mærket blev fundet.';
+
+revoke all on function public.my_badges() from public, anon;
+grant execute on function public.my_badges() to authenticated;

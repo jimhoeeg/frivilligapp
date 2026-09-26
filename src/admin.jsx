@@ -2714,10 +2714,11 @@ const SeasonArchiveModal = ({ label, onClose }) => {
 
 // ---- INDSTILLINGER (kun Super Admin) ----
 const AdminSettings = ({ currentUser }) => {
-  const [pointGoal, setPointGoal]     = useState("100");
-  const [contribution, setContrib]    = useState("1500");
-  const [seasonStart, setStart]       = useState("2025-08-01");
-  const [seasonEnd, setEnd]           = useState("2026-06-30");
+  const [pointGoal, setPointGoal]     = useState("200");
+  const [contribution, setContrib]    = useState("400");
+  const [seasonStart, setStart]       = useState("2026-08-01");
+  const [seasonEnd, setEnd]           = useState("2027-06-30");
+  const [note, setNote]               = useState("");
   const [autoDays, setAutoDays]       = useState("7");
   const [saved, setSaved]             = useState(false);
   const [saving, setSaving]           = useState(false);
@@ -2749,6 +2750,7 @@ const AdminSettings = ({ currentUser }) => {
       if (map.season_start)   setStart(map.season_start);
       if (map.season_end)     setEnd(map.season_end);
       if (map.auto_confirm_days != null) setAutoDays(map.auto_confirm_days);
+      if (map.contribution_note != null) setNote(map.contribution_note);
     });
   }, []);
 
@@ -2760,11 +2762,12 @@ const AdminSettings = ({ currentUser }) => {
       { key: "season_start",    value: seasonStart },
       { key: "season_end",      value: seasonEnd },
       { key: "auto_confirm_days", value: String(parseInt(autoDays) || 0) },
+      { key: "contribution_note", value: note },
     ], { onConflict: "key" });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-    logAction("settings", `Opdaterede indstillinger: halvsmål=${pointGoal} pt, bidrag=${contribution} kr, automatisk bekræftelse=${parseInt(autoDays) || 0} dage`, currentUser);
+    logAction("settings", `Opdaterede indstillinger: mål=${pointGoal} pt, bidrag=${contribution} kr, automatisk bekræftelse=${parseInt(autoDays) || 0} dage`, currentUser);
   };
 
   return (
@@ -2773,9 +2776,19 @@ const AdminSettings = ({ currentUser }) => {
 
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm space-y-4">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Pointsystem</div>
-        <AdminInput label="Halvt sæsonmål (pr. halvsæson)" type="number" placeholder="100" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
-        <p className="text-[11px] text-stone-400 -mt-2">Dobbelt giver fuldt sæsonmål ({pointGoal ? parseInt(pointGoal) * 2 : 200} pt). Point nulstilles kun af admin efter begge halvsæsoner.</p>
-        <AdminInput label="Frivillighedsbidrag (kr)" type="number" placeholder="1500" icon={<DollarSign className="w-4 h-4" />} value={contribution} onChange={(e) => setContrib(e.target.value)} />
+        <AdminInput label="Point for at slippe for bidraget" type="number" placeholder="200" icon={<Zap className="w-4 h-4" />} value={pointGoal} onChange={(e) => setPointGoal(e.target.value)} />
+        <p className="text-[11px] text-stone-400 -mt-2 leading-relaxed">
+          Dét, medlemmet skal nå inden næste opgørelse. Tallet er også målet på
+          dashboardet — der er ikke længere to forskellige tal. Point nulstilles
+          kun, når en super admin kører en sæsonnulstilling.
+        </p>
+        <AdminInput label="Frivillighedsbidrag (kr)" type="number" placeholder="400" icon={<DollarSign className="w-4 h-4" />} value={contribution} onChange={(e) => setContrib(e.target.value)} />
+        <p className="text-[11px] text-stone-400 -mt-2">Betales af alle under {pointGoal || 200} point ved opgørelsen.</p>
+        <AdminInput label="Besked til medlemmerne om opgørelsen" textarea placeholder="Fx: Efteråret er gratis i år. Der gøres op til foråret — 200 point i alt." value={note} onChange={(e) => setNote(e.target.value)} />
+        <p className="text-[11px] text-stone-400 -mt-2 leading-relaxed">
+          Står under pointbjælken på medlemmets dashboard. Lad feltet stå tomt,
+          hvis der ikke er noget at sige.
+        </p>
         <div>
           <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sæsonperiode</label>
           <div className="grid grid-cols-2 gap-2">
