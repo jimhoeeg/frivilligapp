@@ -454,6 +454,16 @@ og nederst på profilsiden.
 
 Prøv efter: `node jura-check.js` (8 checks).
 
+### Mails til medlemmerne
+
+Skabelonerne til Supabases mails ligger i `supabase/email/` — nulstilling af
+adgangskode, bekræftelse af e-mail og skift af adresse, alle på dansk og i
+klubbens farver. `supabase/email/README.md` siger, hvor de skal sættes ind,
+og hvilken af dem der faktisk sendes i dag.
+
+Afsenderen bliver `frivillig@randersvk.dk` gennem Resend. Alle tre mails
+siger, at man ikke kan svare, og henviser til `randersvolleyball@gmail.com`.
+
 ### Backup
 
 **Tjek hvilken Supabase-plan I er på.** På gratisplanen er der ingen
