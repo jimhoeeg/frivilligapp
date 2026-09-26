@@ -1915,6 +1915,29 @@ const ProfileEditSection = ({ currentUser, setCurrentUser, setToast }) => {
   const [teams, setTeams] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved]   = useState(false);
+  const [paamindelser, setPaamindelser] = useState(currentUser?.emailReminders !== false);
+  const [gemmerMail, setGemmerMail]     = useState(false);
+
+  const skiftPaamindelser = async () => {
+    if (gemmerMail) return;
+    const nyVaerdi = !paamindelser;
+    setGemmerMail(true);
+    // Vises med det samme. Går det galt, ruller vi tilbage — en kontakt, der
+    // bliver stående på det forkerte, er værre end ingen kontakt.
+    setPaamindelser(nyVaerdi);
+    const { error } = await supabase.from("profiles")
+      .update({ email_reminders: nyVaerdi }).eq("id", currentUser.id);
+    setGemmerMail(false);
+    if (error) {
+      setPaamindelser(!nyVaerdi);
+      setToast("Kunne ikke gemme: " + error.message);
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    setCurrentUser((u) => ({ ...u, emailReminders: nyVaerdi }));
+    setToast(nyVaerdi ? "Påmindelser slået til" : "Påmindelser slået fra");
+    setTimeout(() => setToast(null), 2500);
+  };
 
   useEffect(() => {
     supabase.from("teams").select("name").order("name").then(({ data }) => {
@@ -1973,6 +1996,31 @@ const ProfileEditSection = ({ currentUser, setCurrentUser, setToast }) => {
             <input value={currentUser?.email || ""} disabled className="w-full pl-9 pr-3 py-2.5 text-sm bg-stone-100 rounded-xl border border-stone-200 outline-none text-stone-500 cursor-not-allowed" />
           </div>
           <p className="text-[10px] text-stone-400 mt-1">E-mail kan ikke ændres her</p>
+        </div>
+
+        {/* Påmindelser er en venlighed, ikke en besked man SKAL have. Derfor
+            kan de slås fra — og kontakten gemmer med det samme, så man ikke
+            skal huske at trykke "Gem" for at blive fri for mails. */}
+        <div className="pt-1">
+          <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Mail</label>
+          <button
+            type="button"
+            onClick={skiftPaamindelser}
+            disabled={gemmerMail}
+            className="w-full flex items-center gap-3 px-3 py-2.5 bg-stone-50 rounded-xl border border-stone-200 text-left disabled:opacity-60"
+          >
+            <BellRing className="w-4 h-4 text-stone-400 shrink-0" />
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13px] font-semibold text-stone-800 leading-tight">Påmindelser på mail</span>
+              <span className="block text-[10px] text-stone-400 leading-tight mt-0.5">To dage før en tjans, du står på</span>
+            </span>
+            <span className={`shrink-0 w-10 h-6 rounded-full transition-colors relative ${paamindelser ? "bg-emerald-500" : "bg-stone-300"}`}>
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${paamindelser ? "left-[18px]" : "left-0.5"}`} />
+            </span>
+          </button>
+          <p className="text-[10px] text-stone-400 mt-1">
+            Besked om godkendelse, tildelte tjanser og ændringer sender vi altid.
+          </p>
         </div>
 
         <button onClick={save} disabled={!dirty || saving} className="w-full py-3 rounded-xl font-bold text-white text-[13px] flex items-center justify-center gap-2 disabled:opacity-40 transition-opacity" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
@@ -2285,6 +2333,7 @@ export default function App() {
           avatarUrl: data.avatar_url || null,
           approved: data.approved === true,
           adminRequested: data.admin_requested === true,
+          emailReminders: data.email_reminders !== false,
         };
         setCurrentUser(profil);
         gemProfilCache(profil);

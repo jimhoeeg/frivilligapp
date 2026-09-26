@@ -11,17 +11,18 @@
 select * from (
 
 -- ---------------------------------------------------------------- SKEMA ----
-select 1::numeric as nr, 'Alle 13 tabeller findes' as tjek,
+select 1::numeric as nr, 'Alle 14 tabeller findes' as tjek,
   case when (select count(*) from pg_tables
               where schemaname='public'
                 and tablename in ('profiles','teams','tasks','task_steps','task_claims',
                                   'swap_offers','notifications','audit_log','settings',
-                                  'client_errors','season_results','task_templates','member_badges')) = 13
+                                  'client_errors','season_results','task_templates','member_badges',
+                                  'email_outbox')) = 14
        then 'OK' else 'FEJL' end as resultat,
   (select string_agg(tablename, ', ' order by tablename) from pg_tables
     where schemaname='public'
       and tablename in ('profiles','teams','tasks','task_steps','task_claims',
-                        'swap_offers','notifications','audit_log','settings','client_errors','season_results','task_templates','member_badges')
+                        'swap_offers','notifications','audit_log','settings','client_errors','season_results','task_templates','member_badges','email_outbox')
   ) as detalje
 
 union all

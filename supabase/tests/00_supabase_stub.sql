@@ -27,3 +27,32 @@ $$;
 
 grant usage on schema auth to anon, authenticated, service_role;
 grant select on auth.users to authenticated, service_role;
+
+
+-- ---------------------------------------------------------------------------
+-- Vault og pg_net findes kun hos Supabase. Her er en attrap, så udbakken og
+-- dens job kan afprøves lokalt: kaldene skrives ned i stedet for at gå ud.
+-- ---------------------------------------------------------------------------
+
+create schema if not exists vault;
+
+create table if not exists vault.decrypted_secrets (
+  name             text primary key,
+  decrypted_secret text
+);
+
+create schema if not exists net;
+
+create table if not exists net.kald (
+  id      bigserial primary key,
+  url     text,
+  headers jsonb,
+  body    jsonb,
+  tid     timestamptz default now()
+);
+
+create or replace function net.http_post(url text, headers jsonb default '{}'::jsonb, body jsonb default '{}'::jsonb)
+returns bigint
+language sql as $$
+  insert into net.kald (url, headers, body) values (url, headers, body) returning id;
+$$;
