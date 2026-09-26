@@ -181,7 +181,9 @@ i bunden af den fil viser, om der er flere rester.
 Kører på **Vercel** i projektet **`frivilligappen`**, som auto-deployer ved
 push til `main`.
 
-Live: `https://frivilligappen-jimhoeeg-5138s-projects.vercel.app`
+Live: `https://frivilligapp.vercel.app` (samme adresse skal stå som Site URL i
+Supabase → Authentication → URL Configuration, ellers virker nulstilling af
+adgangskode ikke)
 
 > **Kun ét Vercel-projekt må være koblet til dette repo.** Der lå tidligere to
 > (`frivilligapp` og `frivilligappen`), og de udløste hver deres build ved
