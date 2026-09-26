@@ -1214,6 +1214,29 @@ const NyeMaerkerModal = ({ maerker, onClose }) => (
 // ÉT mål, ikke to. Før regnede appen et "sæsonmål" ud som det dobbelte af
 // målet og viste DET som det store tal — så medlemmet så 200, mens regningen
 // faldt ved 100. Nu er målet det tal, der afgør bidraget, og intet andet.
+// ============ SVARET FRA NULSTILLINGSLINKET ============
+//
+// index.html gemmer adressens hash, før supabase-js får ryddet den.
+const startHash = () => {
+  if (typeof window === "undefined") return "";
+  return window.__rvkStartHash || window.location.hash || "";
+};
+
+const erNulstillingsLink = () => startHash().includes("type=recovery");
+
+// Supabase sender fejlen tilbage i hash'en: #error=access_denied&
+// error_code=otp_expired&error_description=... Vi oversætter de to, der
+// faktisk sker, og lader resten være en fælles besked.
+const nulstillingsFejl = () => {
+  const h = startHash();
+  if (!h.includes("error")) return null;
+  const p = new URLSearchParams(h.replace(/^#/, ""));
+  const kode = (p.get("error_code") || p.get("error") || "").toLowerCase();
+  if (kode.includes("expired")) return "udloebet";
+  if (kode.includes("access_denied")) return "brugt";
+  return "ugyldig";
+};
+
 const badgeDefs = (maal) => [
   { id: "signup",   emoji: "🌱", label: "Frivillig",     desc: "Tilmeldt som frivillig",                    req: () => true },
   { id: "first",    emoji: "⭐", label: "Første tjans",  desc: "Taget sin første opgave",                   req: (e, t) => t >= 1 },
@@ -2250,13 +2273,18 @@ export default function App() {
     [myClaims]
   );
 
-  // Detect password recovery flow (when user clicks email link)
-  // Klikker man linket i nulstillings-mailen, står det i URL'ens hash allerede
-  // inden React renderer første gang. Læs det der, i stedet for at rette state
-  // bagefter i en effect — så slipper vi for et glimt af login-skærmen.
-  const isRecoveryUrl = () =>
-    typeof window !== "undefined" && window.location.hash.includes("type=recovery");
-  const [recoveryMode, setRecoveryMode] = useState(isRecoveryUrl);
+  // Klikker man linket i nulstillings-mailen, står svaret i adressens hash.
+  //
+  // Men supabase-js rydder adressen, i samme sekund biblioteket starter — og
+  // det sker, FØR React renderer. Derfor læses hash'en af et lille script i
+  // index.html, som kører først af alt, og gemmes i window.__rvkStartHash.
+  // Appen kigger dér. Det er ikke pynt: uden det afhænger nulstillingen af,
+  // hvem der er hurtigst, og den tabte kapløbet, hver gang appen var hurtig.
+  const [recoveryMode, setRecoveryMode] = useState(erNulstillingsLink);
+
+  // Et link, der er brugt eller udløbet, sender også noget med tilbage. Uden
+  // det her landede man bare på login-skærmen uden at vide hvorfor.
+  const [linkProblem, setLinkProblem] = useState(nulstillingsFejl);
 
   // Load profile from Supabase and update currentUser
   const hentOgSaetProfil = async (userId) => {
@@ -2794,6 +2822,32 @@ export default function App() {
     return (
       <div className="min-h-screen bg-stone-50 font-sans antialiased">
         <style>{`@keyframes slideup { from { transform: translateY(100%); } to { transform: translateY(0); } } .animate-slideup { animation: slideup 0.3s cubic-bezier(0.16, 1, 0.3, 1); } .scrollbar-hide::-webkit-scrollbar { display: none; } .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
+        {/* Kom man hertil fra et link, der ikke virkede, skal man kunne se
+            hvorfor. Før landede man bare på login-skærmen og kunne kun gætte. */}
+        {linkProblem && (
+          <div className="fixed top-0 left-0 right-0 z-[60] px-4 pt-4">
+            <div className="max-w-md mx-auto bg-white rounded-2xl border border-amber-200 shadow-lg p-4 flex gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-bold text-stone-900 mb-0.5">
+                  {linkProblem === "udloebet" ? "Linket er udløbet"
+                    : linkProblem === "brugt" ? "Linket er allerede brugt"
+                    : "Linket virkede ikke"}
+                </div>
+                <p className="text-[12px] text-stone-600 leading-snug">
+                  {linkProblem === "udloebet"
+                    ? "Et nulstillingslink holder én time. Tryk \u201eGlemt adgangskode?\u201c herunder, så sender vi et nyt."
+                    : linkProblem === "brugt"
+                      ? "Et nulstillingslink kan kun bruges én gang. Tryk \u201eGlemt adgangskode?\u201c herunder, så sender vi et nyt."
+                      : "Prøv at bede om et nyt link med \u201eGlemt adgangskode?\u201c herunder."}
+                </p>
+              </div>
+              <button onClick={() => setLinkProblem(null)} className="p-1 -m-1 text-stone-400 hover:text-stone-700 shrink-0" aria-label="Luk">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
         <AuthScreen onAuthenticated={handleAuth} onShowLegal={setLegalDoc} />
         {legalOverlay}
         {feedbackOverlay}
