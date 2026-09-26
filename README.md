@@ -49,7 +49,7 @@ npm run preview
 **1. Kør migrationerne**
 
 Nemmest: Supabase Dashboard → SQL Editor → New query → indsæt hele
-**`supabase/RUN_ALL.sql`** → Run. Det er de tretten migrationer sat efter
+**`supabase/RUN_ALL.sql`** → Run. Det er de femten migrationer sat efter
 hinanden i rigtig rækkefølge, og Supabase kører hele bufferen i én
 transaktion — enten lykkes det hele, eller også ruller det hele tilbage.
 
@@ -77,6 +77,8 @@ uden at gøre skade, og de er tilsammen nok — rør ikke noget i
 | `20260922180000_teams_readable_at_signup.sql` | Holdlisten skal kunne læses uden login — oprettelsesskærmen henter den, før der findes en session. |
 | `20260925140000_task_templates.sql` | Klubbens egne skabeloner, og hvem der står på en opgave. |
 | `20260925220000_badges.sql` | 30 skjulte mærker: `member_badges` og `my_badges()`. |
+| `20260926060000_email_outbox.sql` | Mail ud af appen: udbakke, påmindelser og cron. |
+| `20260926070000_slet_medlem_med_tjans.sql` | Et medlem med en åben tjans kunne ikke slettes. |
 
 **1b. Kontrollér bagefter med `supabase/VERIFY.sql`**
 
@@ -454,6 +456,16 @@ og nederst på profilsiden.
 
 Prøv efter: `node jura-check.js` (8 checks).
 
+### Mails til medlemmerne
+
+Skabelonerne til Supabases mails ligger i `supabase/email/` — nulstilling af
+adgangskode, bekræftelse af e-mail og skift af adresse, alle på dansk og i
+klubbens farver. `supabase/email/README.md` siger, hvor de skal sættes ind,
+og hvilken af dem der faktisk sendes i dag.
+
+Afsenderen bliver `frivillig@randersvk.dk` gennem Resend. Alle tre mails
+siger, at man ikke kan svare, og henviser til `randersvolleyball@gmail.com`.
+
 ### Backup
 
 **Tjek hvilken Supabase-plan I er på.** På gratisplanen er der ingen
@@ -506,6 +518,82 @@ Skabeloner husker ikonet. Klubbens egne skabeloner tager det med tilbage;
 appens indbyggede forslag har ikke noget eget ikon, for dér er titlen bedre.
 
 Prøv efter: `node ikon-check.js` (11 checks).
+
+## Mail ud af appen
+
+Appen har hele tiden kunnet skrive til medlemmerne — men kun **inde i**
+appen, hvor beskeden lå og ventede på, at nogen åbnede den. Over halvdelen
+af alle beskeder, der nogensinde er sendt, er "du er godkendt": netop den,
+et nyt medlem ikke kan se, før det logger ind.
+
+Fire slags mail sendes nu af sig selv:
+
+| Mail | Udløses af | Kan fravælges |
+|---|---|---|
+| Du er med | en admin godkender medlemmet | nej |
+| Du er sat på en tjans | en admin tildeler en opgave | nej |
+| En tjans er ændret / aflyst | opgaven rettes eller slettes | nej |
+| Husk din tjans | cron, to dage før | **ja** |
+
+De tre første er svar på noget, der lige er sket med ens egen profil eller
+ens egen tjans. Påmindelsen er en venlighed, og den kan slås fra under
+**Profil** i appen.
+
+### Hvorfor en udbakke, og ikke bare et kald
+
+Mail er noget, der kan gå galt halvvejs. Sender man direkte fra en trigger,
+sidder man med tre dårlige valg: at lade medlemmets handling fejle, fordi en
+mailserver er nede; at tabe beskeden; eller at prøve igen og sende den samme
+mail fire gange.
+
+Derfor skrives beskeden først ned i `email_outbox` med en **nøgle til
+hændelsen** — `reminder:<tilmeldings-id>`, `notif:<besked-id>` — og nøglen er
+unik. Kører påmindelsesjobbet to gange, sker der ingenting anden gang. Et
+job tømmer udbakken bagefter, og en række, der fejler, bliver liggende og
+kan prøves igen. Efter tre forsøg lader vi den ligge med fejlteksten i
+`last_error`, så den kan ses i stedet for at køre i ring.
+
+```
+notifications ──trigger──► email_outbox ◄──cron (2 dage før)── task_claims
+                                │
+                        cron hvert 5. min
+                                ▼
+                     drain_email_outbox()  ──pg_net──►  send-mail  ──►  Resend
+```
+
+Databasen sender ikke selv mail. Nøglen til Resend ligger ét sted: i
+`send-mail`-funktionens miljøvariabler. Nøglen til at kalde funktionen
+ligger i Supabases **Vault**, så den hverken står i en fil eller i et
+cron-job, nogen kan læse.
+
+### Det, der skal sættes op én gang
+
+1. **Edge Functions → Secrets** på `send-mail`:
+   `RESEND_API_KEY`, `OUTBOX_KEY` (en tilfældig streng, du selv vælger),
+   `MAIL_FRA` = `RVK Frivillig <frivillig@randersvk.dk>`, `APP_URL`.
+2. **Vault** (Project Settings → Vault), to hemmeligheder:
+   `outbox_key` = samme streng som `OUTBOX_KEY`, og
+   `outbox_url` = `https://<projekt>.supabase.co/functions/v1/send-mail`.
+
+Mangler de, sker der ikke noget slemt: udbakken fyldes, jobbet svarer
+"outbox_key eller outbox_url mangler i Vault", og mailen sendes, så snart
+nøglerne er der.
+
+Skabelonerne står i `supabase/functions/send-mail/skabeloner.js` — almindelig
+JavaScript med vilje, så både Deno og en node-test kan læse den samme fil. En
+skabelon, der kun kan afprøves ved at sende en rigtig mail, bliver aldrig
+afprøvet.
+
+Prøv efter: `node mail2-check.js` (gengiver alle fem mails fra den rigtige
+kode) og `psql -f supabase/tests/70_email_outbox.sql` (14 afsnit).
+
+### Kør i hånden
+
+```sql
+select public.queue_task_reminders(2);   -- læg morgendagens påmindelser nu
+select public.drain_email_outbox();      -- bank på send-mail med det samme
+select * from public.email_outbox where sent_at is null;   -- hvad hænger?
+```
 
 ## Mærker
 
