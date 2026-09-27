@@ -158,8 +158,10 @@ const AdminOverview = ({ tasks, currentUser }) => {
       setGoal(g);
       setContribution(parseInt(map.contribution_kr) || 0);
       if (data && data.length > 0) {
-        const hjaelpere = data.filter((m) => m.er_hjaelper).length;
-        const rows  = data.filter((m) => !m.er_hjaelper);
+        // Forælderen ER medlem og skal med i opgørelsen — med det, hun har
+        // tilbage, efter det hun har givet videre. Kun den rene hjælper er ude.
+        const hjaelpere = data.filter((m) => m.kun_hjaelper).length;
+        const rows  = data.filter((m) => !m.kun_hjaelper);
         const total = rows.length;
         if (total === 0) { setStats({ total: 0, goalReached: 0, behind: 0, avg: 0, hjaelpere }); return; }
         const pt = (m) => m.bidrag ?? m.points ?? 0;
@@ -179,20 +181,22 @@ const AdminOverview = ({ tasks, currentUser }) => {
       // Hjælpere står ikke på listen. De er ikke medlemmer, de skal ikke
       // betale — og deres point er allerede talt med hos den, de hjalp.
       const rows = (data || [])
-        .filter((m) => !m.er_hjaelper)
+        .filter((m) => !m.kun_hjaelper)
         .map((m) => ({ ...m, pt: m.bidrag ?? m.points ?? 0 }))
         .sort((a, b) => b.pt - a.pt || a.name.localeCompare(b.name, "da"))
         .map((m) => [
-          m.name, m.team, m.pt, m.fra_hjaelpere ?? 0, m.hjaelper_for || "", goal,
+          m.name, m.team, m.pt, m.fra_hjaelpere ?? 0, m.givet_videre ?? 0,
+          m.hjaelper_for || "", goal,
           m.pt >= goal ? "Nået målet" : m.pt >= goal / 2 ? "På vej" : "Bagud",
           m.pt >= goal ? 0 : contribution,
         ]);
       if (!rows.length) { setExporting(false); return; }
       downloadCSV(
         `rvk-bidragsliste-${today()}.csv`,
-        toCSV(["Navn", "Hold", "Bidragspoint", "Heraf fra hjaelpere", "Hjaelpere", "Maal", "Status", "Bidrag (kr)"], rows)
+        toCSV(["Navn", "Hold", "Bidragspoint", "Heraf fra hjaelpere", "Givet videre",
+               "Kobling til", "Maal", "Status", "Bidrag (kr)"], rows)
       );
-      const skyldige = rows.filter((r) => r[7] > 0).length;
+      const skyldige = rows.filter((r) => r[8] > 0).length;
       await logAction("settings",
         `Eksporterede bidragsliste (${rows.length} medlemmer, ${skyldige} under målet)`, currentUser);
     } finally {
@@ -257,8 +261,9 @@ const AdminOverview = ({ tasks, currentUser }) => {
         )}
         {stats.hjaelpere > 0 && (
           <p className="text-[11px] text-stone-400 mt-1.5 leading-snug">
-            {stats.hjaelpere} hjælper{stats.hjaelpere > 1 ? "e" : ""} er ikke med i opgørelsen —
-            de er ikke medlemmer og betaler ikke bidrag. Deres point er talt med hos dem, de hjælper.
+            {stats.hjaelpere} ren{stats.hjaelpere > 1 ? "e" : ""} hjælper{stats.hjaelpere > 1 ? "e" : ""} er
+            ikke med i opgørelsen — de spiller ikke selv og betaler ikke bidrag. Deres point er talt
+            med hos dem, de hjælper. Forældre, der selv spiller, står på listen med det, de har tilbage.
           </p>
         )}
       </div>
@@ -305,6 +310,9 @@ const AdminApprovals = ({ onChanged }) => {
   // for forælderen selv, hvilket er præcis det, ingen ville have.
   const [medlemmer, setMedlemmer] = useState([]);
   const [valgte, setValgte]       = useState({});
+  // Slags pr. ansøger. En helt ny konto har ingen point, så begge er mulige —
+  // og forskellen afgør, om personen selv kommer på bidragslisten.
+  const [slags, setSlags]         = useState({});
 
   const load = async () => {
     // Kontaktoplysninger hentes gennem admin_list_members(), fordi selve
@@ -320,7 +328,7 @@ const AdminApprovals = ({ onChanged }) => {
     // Man kan kun hjælpe et godkendt medlem, der ikke selv er hjælper —
     // samme regel som databasen håndhæver. Listen viser kun det mulige.
     setMedlemmer((data || [])
-      .filter((m) => m.approved && !m.er_hjaelper)
+      .filter((m) => m.approved && !m.kun_hjaelper)
       .map((m) => ({ id: m.id, name: m.name, team: m.team || "" })));
   };
 
@@ -350,7 +358,7 @@ const AdminApprovals = ({ onChanged }) => {
     const fejl = [];
     for (const medlemId of kobl) {
       const { error: e } = await supabase.rpc("admin_set_helper", {
-        p_helper: a.id, p_member: medlemId, p_on: true,
+        p_helper: a.id, p_member: medlemId, p_on: true, p_kind: slags[a.id] || "helper",
       });
       if (e) fejl.push(`${medlemmer.find((m) => m.id === medlemId)?.name || "medlem"}: ${e.message}`);
     }
@@ -359,6 +367,7 @@ const AdminApprovals = ({ onChanged }) => {
     setDone((d) => [{ ...a, action: "approved", koblet: kobl.length - fejl.length }, ...d]);
     setExpanded(null);
     setValgte((v) => { const n = { ...v }; delete n[a.id]; return n; });
+    setSlags((v) => { const n = { ...v }; delete n[a.id]; return n; });
     setApprovalError(fejl.length ? `Godkendt, men koblingen fejlede — ${fejl.join(" · ")}` : null);
     onChanged?.();
   };
@@ -438,6 +447,9 @@ const AdminApprovals = ({ onChanged }) => {
                     </div>
                   )}
 
+                  <SlagsValg vaerdi={slags[a.id] || "helper"}
+                             onVaelg={(v) => setSlags((s2) => ({ ...s2, [a.id]: v }))} />
+
                   {medlemmer.length === 0 ? (
                     <p className="text-[11px] text-stone-500">Der er endnu ingen godkendte medlemmer at koble til.</p>
                   ) : (
@@ -456,9 +468,11 @@ const AdminApprovals = ({ onChanged }) => {
 
                   {(valgte[a.id] || []).length > 0 && (
                     <p className="text-[11px] text-emerald-800 mt-2 leading-relaxed">
-                      Bliver hjælper for {(valgte[a.id] || []).length} medlem
+                      Bliver {(slags[a.id] || "helper") === "parent" ? "forælder" : "hjælper"} for{" "}
+                      {(valgte[a.id] || []).length} medlem
                       {(valgte[a.id] || []).length > 1 ? "mer" : ""}. Personen kommer med på ranglisten
-                      med sine egne point — men pointene tæller mod frivilligbidraget hos medlemmet.
+                      med sine egne point — men de point, der gives videre, tæller mod
+                      frivilligbidraget hos medlemmet i stedet.
                     </p>
                   )}
                 </div>
@@ -566,16 +580,31 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser, onConfirmed })
     }
   };
 
-  const removeSignup = async (profile) => {
+  // Raekken kommer fra admin_task_signups(), og dér heder medlemmets id
+  // user_id — ikke id. Stod der profile.id, blev der sendt
+  // "user_id=eq.undefined" til databasen, som svarede 400, og tilmeldingen
+  // blev aldrig fjernet. Begge navne tages nu, saa det ogsaa virker for en
+  // raekke, der kommer et andet sted fra.
+  const removeSignup = async (rad) => {
+    const medlemId = rad?.user_id ?? rad?.id;
+    if (!medlemId) {
+      // Et id, der ikke findes, maa sige det HER. Sendes det videre, bliver
+      // det til en 400 fra databasen, og fejlteksten fortaeller ingenting om,
+      // hvad der egentlig manglede.
+      setError("Kunne ikke fjerne tilmelding: medlemmet mangler et id. Luk og aabn opgaven igen.");
+      return;
+    }
+
     setSaving(true); setError(null);
-    const { error: e1 } = await supabase.from("task_claims").delete().eq("task_id", task.id).eq("user_id", profile.id);
+    const { error: e1 } = await supabase.from("task_claims")
+      .delete().eq("task_id", task.id).eq("user_id", medlemId);
     if (e1) { setError("Kunne ikke fjerne tilmelding: " + e1.message); setSaving(false); return; }
 
     await syncSpots();
-    setSignups((prev) => prev.filter((s) => s.user_id !== profile.id));
+    setSignups((prev) => prev.filter((s) => s.user_id !== medlemId));
     setConfirmRemove(null); setSaving(false);
     onConfirmed?.();
-    logAction("task", `Fjernede ${profile.name} fra "${task.title}"`, currentUser);
+    logAction("task", `Fjernede ${rad.name} fra "${task.title}"`, currentUser);
   };
 
   const assignMember = async (member) => {
@@ -591,7 +620,9 @@ const AdminTaskSignups = ({ task, onClose, setTasks, currentUser, onConfirmed })
     }
 
     await syncSpots();
-    setSignups((prev) => [...prev, { user_id: member.id, name: member.name, role: member.role, status: "signed_up" }]);
+    setSignups((prev) => [...prev, { user_id: member.id, name: member.name, role: member.role,
+                                     team: member.team || "", status: "signed_up",
+                                     admin_note: null, confirmed_at: null }]);
     setAssignSearch(""); setSaving(false);
     logAction("task", `Tildelte "${task.title}" til ${member.name}`, currentUser);
   };
@@ -1841,39 +1872,80 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
 // Databasen har reglerne, og de er hårde: kun admins kobler, en konto med
 // point kan ikke gøres til hjælper, og der er ingen kæder. Skærmen her siger
 // dem højt FØR man trykker, så man ikke render ind i en fejlbesked.
+// ---- HJÆLPER ELLER FORÆLDER? ----
+//
+// To slags kobling, fordi de betyder to forskellige ting for regningen:
+//
+//   Hjælper   spiller ikke selv. Har intet mål. Står IKKE på bidragslisten.
+//   Forælder  er medlem med sit eget mål, og giver noget af det videre.
+//
+// Databasen kan ikke se forskel — et barn er blot et andet medlem — så det
+// er et menneske, der siger det. Valget står FØR medlemsknapperne, fordi det
+// afgør, hvad koblingen betyder.
+const SlagsValg = ({ vaerdi, onVaelg, point = 0 }) => (
+  <div className="mb-3">
+    <div className="flex gap-1.5">
+      {[["helper", "Hjælper", "spiller ikke selv"],
+        ["parent", "Forælder", "spiller også selv"]].map(([id, navn, under]) => (
+        <button key={id} type="button" onClick={() => onVaelg(id)}
+          className={`flex-1 px-2.5 py-2 rounded-xl border text-left transition-all ${vaerdi === id ? "bg-emerald-50 border-emerald-400" : "bg-white border-stone-200"}`}>
+          <div className={`text-[12px] font-bold ${vaerdi === id ? "text-emerald-800" : "text-stone-700"}`}>{navn}</div>
+          <div className="text-[10px] text-stone-500 leading-tight">{under}</div>
+        </button>
+      ))}
+    </div>
+    <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
+      {vaerdi === "parent"
+        ? "Beholder sit eget mål og står på bidragslisten. Det, der gives videre, tæller ikke længere hos hende selv."
+        : point > 0
+          ? "En ren hjælper må ikke have egne point — og denne konto har nogle."
+          : "Har intet mål og står ikke på bidragslisten. Alle point tæller hos den, hun hjælper."}
+    </p>
+  </div>
+);
+
 const HjaelperModal = ({ target, alle, currentUser, onClose, onChanged }) => {
   const [koblet, setKoblet]   = useState([]);
   const [busy, setBusy]       = useState(null);
   const [error, setError]     = useState(null);
   const [indlaest, setIndlaest] = useState(false);
+  // Hvilken slags kobling? Forskellen kan ikke regnes ud — et barn er blot et
+  // andet medlem — så det er admin, der ved, om kontoen også spiller selv.
+  // Har personen point, er svaret allerede givet: så ER hun medlem.
+  const [slags, setSlags] = useState(
+    target.erForaelder || (!target.erHjaelper && (target.points || 0) > 0) ? "parent" : "helper");
 
   useEffect(() => {
-    supabase.from("helper_links").select("member_id").eq("helper_id", target.id).then(({ data, error: e }) => {
+    supabase.from("helper_links").select("member_id, kind").eq("helper_id", target.id).then(({ data, error: e }) => {
       if (e) setError(`Kunne ikke hente koblinger: ${e.message}`);
       setKoblet((data || []).map((r) => r.member_id));
       setIndlaest(true);
     });
   }, [target.id]);
 
-  // Spærren, der lukker døren mellem to medlemmer: har man selv tjent point,
-  // kan man ikke blive hjælper — og så kan man heller ikke begynde at sende
-  // point videre til en anden.
-  const harPoint = !target.erHjaelper && (target.points || 0) > 0;
+  // En REN hjælper skal være uden point: kan man ikke blive hjælper efter at
+  // have tjent point, kan man heller ikke begynde at sende dem videre som
+  // hjælper. En forælder ER medlem og har naturligvis point — det er hele
+  // grunden til, at hun har noget at give videre.
+  const harPoint = slags === "helper" && !target.erHjaelper && (target.points || 0) > 0;
 
+  // Man kan godt give videre til et medlem, der SELV er forælder — mormor til
+  // mor til barn. Kun den rene hjælper kan ikke modtage: hun har intet mål.
   const muligeMedlemmer = alle.filter((m) =>
-    m.id !== target.id && m.approved && !m.erHjaelper);
+    m.id !== target.id && m.approved && !m.kunHjaelper);
 
   const slaaTil = async (medlem, til) => {
     setBusy(medlem.id); setError(null);
     const { error: e } = await supabase.rpc("admin_set_helper", {
-      p_helper: target.id, p_member: medlem.id, p_on: til,
+      p_helper: target.id, p_member: medlem.id, p_on: til, p_kind: slags,
     });
     setBusy(null);
     if (e) { setError(e.message); return; }
     setKoblet((k) => til ? [...k, medlem.id] : k.filter((x) => x !== medlem.id));
+    const ord = slags === "parent" ? "forælder" : "hjælper";
     logAction("member",
-      til ? `Koblede ${target.name} som hjælper for ${medlem.name}`
-          : `Fjernede ${target.name} som hjælper for ${medlem.name}`, currentUser);
+      til ? `Koblede ${target.name} som ${ord} for ${medlem.name}`
+          : `Fjernede ${target.name} som ${ord} for ${medlem.name}`, currentUser);
     onChanged?.();
   };
 
@@ -1894,12 +1966,15 @@ const HjaelperModal = ({ target, alle, currentUser, onClose, onChanged }) => {
             </div>
           )}
 
+          <SlagsValg vaerdi={slags} onVaelg={setSlags} point={target.points || 0} />
+
           {harPoint ? (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3">
               <p className="text-[12px] text-red-900 leading-relaxed">
                 <strong>{target.name} har allerede optjent {target.points} point som medlem</strong> og kan
-                derfor ikke gøres til hjælper. Reglen er der for at point ikke kan deles mellem to
-                medlemmer. Er det en fejl, skal pointene fratrækkes først.
+                derfor ikke kobles som <em>ren hjælper</em>. Spiller personen selv, så vælg
+                <strong> Forælder</strong> ovenfor — så beholder hun sit eget mål og giver kun noget
+                af sine point videre.
               </p>
             </div>
           ) : !indlaest ? (
@@ -1933,9 +2008,10 @@ const HjaelperModal = ({ target, alle, currentUser, onClose, onChanged }) => {
           )}
 
           <p className="text-[11px] text-stone-400 mt-3 leading-relaxed">
-            Hjælperen beholder sine egne point på ranglisten. Tjanserne tæller mod
-            frivilligbidraget hos det medlem, hjælperen vælger ved hver tjans.
-            Fjernes koblingen, bliver de point, der allerede er givet, hvor de er.
+            Begge slags beholder deres egne point på ranglisten. Tjanserne tæller mod
+            frivilligbidraget hos det medlem, der vælges ved hver tjans — og kun dér, så
+            de samme point kan ikke dække to mål. Fjernes koblingen, bliver de point, der
+            allerede er givet, hvor de er.
           </p>
 
           <button onClick={onClose} className="w-full mt-4 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold">
@@ -2054,6 +2130,10 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
           bidrag: p.bidrag ?? p.points ?? 0,
           fraHjaelpere: p.fra_hjaelpere ?? 0,
           erHjaelper: p.er_hjaelper === true,
+          // Den rene hjælper har intet mål. Forælderen har — og giver videre.
+          kunHjaelper: p.kun_hjaelper === true,
+          erForaelder: p.er_hjaelper === true && p.kun_hjaelper !== true,
+          givetVidere: p.givet_videre ?? 0,
           hjaelperFor: p.hjaelper_for || "",
           helperRequest: p.helper_request || "",
           approved: p.approved,
@@ -2074,9 +2154,11 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
   const filtered = allMembers.filter((m) => {
     if (query && !m.name.toLowerCase().includes(query.toLowerCase())) return false;
     // Hjælpere har ikke noget mål og hører hverken under "bagud" eller "nået".
+    // Kun den RENE hjælper er uden mål. En forælder er et medlem som alle
+    // andre og skal med, når man leder efter dem, der er bagud.
     if (filter === "helpers" && !m.erHjaelper) return false;
-    if (filter === "behind"  && (m.erHjaelper || m.bidrag >= goal / 2)) return false;
-    if (filter === "reached" && (m.erHjaelper || m.bidrag < goal))      return false;
+    if (filter === "behind"  && (m.kunHjaelper || m.bidrag >= goal / 2)) return false;
+    if (filter === "reached" && (m.kunHjaelper || m.bidrag < goal))      return false;
     return true;
   });
 
@@ -2093,8 +2175,8 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
       </ScrollRow>
       <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm">
         {filtered.map((m) => {
-          const reached = !m.erHjaelper && m.bidrag >= goal;
-          const behind  = !m.erHjaelper && m.bidrag < goal / 2;
+          const reached = !m.kunHjaelper && m.bidrag >= goal;
+          const behind  = !m.kunHjaelper && m.bidrag < goal / 2;
           return (
             <div key={m.id} className="flex items-center gap-3 px-4 py-3 relative">
               <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-xs shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>{m.initials}</div>
@@ -2102,20 +2184,25 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                 <div className="flex items-center gap-1.5">
                   <div className="font-semibold text-[14px] text-stone-900 truncate">{m.name}</div>
                   <RoleBadge role={m.role} />
-                  {m.erHjaelper && (
+                  {m.kunHjaelper && (
                     <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Hjælper</span>
+                  )}
+                  {m.erForaelder && (
+                    <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">Forælder</span>
                   )}
                   {!m.erHjaelper && m.helperRequest && (
                     <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">Ønsker kobling</span>
                   )}
                 </div>
                 <div className="text-[11px] text-stone-500 truncate">
-                  {m.erHjaelper
+                  {m.kunHjaelper
                     ? `Hjælper for ${m.hjaelperFor} · ${m.tasksDone} opgaver`
-                    : `${m.team ? `${m.team} · ` : ""}${m.tasksDone} opgaver${m.fraHjaelpere > 0 ? ` · +${m.fraHjaelpere} pt fra hjælper` : ""}`}
+                    : m.erForaelder
+                      ? `${m.team ? `${m.team} · ` : ""}giver ${m.givetVidere} pt videre til ${m.hjaelperFor}`
+                      : `${m.team ? `${m.team} · ` : ""}${m.tasksDone} opgaver${m.fraHjaelpere > 0 ? ` · +${m.fraHjaelpere} pt fra hjælper` : ""}`}
                 </div>
               </div>
-              {m.erHjaelper ? (
+              {m.kunHjaelper ? (
                 <div className="text-[14px] font-black mr-1 text-stone-500 text-right">{m.points}<div className="text-[9px] text-stone-400 uppercase font-bold">egne pt</div></div>
               ) : (
                 <div className={`text-[14px] font-black mr-1 ${reached ? "text-emerald-600" : behind ? "text-pink-600" : "text-stone-900"}`}>{m.bidrag}<div className="text-[9px] text-stone-400 uppercase font-bold">/ {goal}</div></div>
@@ -2129,7 +2216,7 @@ const AdminMembers = ({ currentUserRole, currentUser }) => {
                     <MenuButton icon={<Plus className="w-3.5 h-3.5" />} label="Tildel ekstra point" onClick={() => openBonus(m, "add")} />
                     <MenuButton icon={<X className="w-3.5 h-3.5" />} label="Fratræk point" onClick={() => openBonus(m, "deduct")} />
                     <div className="h-px bg-stone-100 my-1" />
-                    <MenuButton icon={<Users className="w-3.5 h-3.5" />} label={m.erHjaelper ? "Ret hjælper-kobling" : "Gør til hjælper"} onClick={() => { setHjaelperTarget(m); setMenuOpen(null); }} />
+                    <MenuButton icon={<Users className="w-3.5 h-3.5" />} label={m.erHjaelper ? "Ret kobling" : "Hjælper eller forælder"} onClick={() => { setHjaelperTarget(m); setMenuOpen(null); }} />
                     {isSuperAdmin && m.role === "user" && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<ShieldCheck className="w-3.5 h-3.5" />} label="Gør til Admin" onClick={() => openPromote(m)} /></>}
                     {isSuperAdmin && <><div className="h-px bg-stone-100 my-1" /><MenuButton icon={<Trash2 className="w-3.5 h-3.5" />} label="Slet (GDPR)" danger onClick={() => openDelete(m)} /></>}
                   </div>
@@ -2652,10 +2739,12 @@ const ExportModal = ({ currentUser, onClose }) => {
     return {
       filename: `rvk-medlemmer-${today()}.csv`,
       headers: ["Navn", "Hold", "Rolle", "Egne point", "Bidragspoint", "Heraf fra hjaelpere",
-                "Er hjaelper", "Hjaelper for", "Tjanser", "Godkendt", "E-mail", "Telefon", "Oprettet"],
+                "Givet videre", "Kobling", "Kobling til", "Tjanser", "Godkendt", "E-mail", "Telefon", "Oprettet"],
       rows: (data || []).map((m) => [
         m.name, m.team, m.role, m.points, m.bidrag ?? m.points, m.fra_hjaelpere ?? 0,
-        m.er_hjaelper ? "ja" : "", m.hjaelper_for || "",
+        m.givet_videre ?? 0,
+        m.kun_hjaelper ? "hjaelper" : m.er_hjaelper ? "foraelder" : "",
+        m.hjaelper_for || "",
         m.tasks_done, m.approved,
         m.email, m.phone, (m.created_at || "").slice(0, 10),
       ]),
