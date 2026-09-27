@@ -1,0 +1,143 @@
+Emne: Kom godt i gang med RVK Frivillig
+
+(Ren tekst-udgave. Tallene [01] … [11] viser, hvor billederne skal sættes
+ind, hvis du skriver mailen selv i stedet for at kopiere HTML-udgaven.)
+
+---
+
+Kære alle,
+
+En volleyballklub kører på frivillige hænder. Indtil nu har det været opslag
+på Facebook, beskeder i en gruppe og en hel del "kan nogen lige …". Det
+virker, lige indtil det ikke gør — og så står vi med en kiosk, ingen har
+åbnet.
+
+Derfor har vi fået RVK Frivillig: ét sted, hvor alle klubbens tjanser står,
+hvor du selv vælger dem, der passer i din kalender, og hvor du kan se, hvad
+du har lavet. Det tager under et minut at komme i gang.
+
+Appen ligger på frivilligapp.vercel.app — der er ingenting at installere.
+
+
+HELE IDÉEN PÅ ET HALVT MINUT
+
+Du tager en tjans. Du møder op. En fra bestyrelsen bekræfter den bagefter,
+og så lægges pointene til dig. Point er altså kvittering for noget, du HAR
+gjort — ikke for noget, du har skrevet dig på.
+
+  1. Du melder dig til — pladsen er din, og de andre kan se, at den er taget.
+  2. Du møder op og laver tjansen.
+  3. Vi bekræfter den, og pointene tæller. Glemmer vi det, godkendes tjansen
+     af sig selv efter en uge — du skal ikke rykke nogen.
+
+Og hvad skal der så til?
+200 point på en sæson fritager dig for frivilligbidraget på 400 kr.
+Efteråret er gratis i år — det er vores prøveperiode. Der gøres op til
+foråret, og efterårets point tæller med. Så alt, du laver fra nu af, tæller
+allerede.
+
+
+TRIN 1 · OPRET DIG                                            [01]
+
+Gå ind på frivilligapp.vercel.app, tryk "Opret bruger" og udfyld navn,
+e-mail, adgangskode og dit hold. Telefonnummer er frivilligt, men rart at
+have, hvis noget rykker sig i sidste øjeblik.
+
+Bagefter skal en af os godkende dig — det plejer at gå hurtigt, og du får en
+mail, når du er inde. Indtil da kan du godt logge ind og kigge, men ikke
+tage tjanser endnu.
+
+ER DU FORÆLDER OG SPILLER IKKE SELV?
+Sæt kryds i "Jeg spiller ikke selv — jeg hjælper et medlem" og skriv navnet
+på dit barn. Så kan du tage tjanser, og pointene tæller for barnet. Har du to
+børn i klubben, skriver du begge navne — så vælger du selv ved hver tjans,
+hvem den skal tælle for.
+
+
+TRIN 2 · FIND EN TJANS                                        [02]
+
+Forsiden er "Opgaver". Her står alt, der mangler hænder, sorteret efter
+dato. Hver linje viser hvornår, hvor, hvor mange point den giver — og hvor
+mange pladser der er tilbage. Et rødt HASTER sætter vi på de tjanser, vi
+mangler nogen til i særlig grad.
+
+Er listen lang, så tryk på tragten ved siden af søgefeltet.        [03]
+Så kan du nøjes med det, der passer: en bestemt slags opgave, en bestemt
+periode, eller dem med flest point først. Sæsonopgaver — holdleder,
+materialeansvarlig og den slags — ligger for sig selv nederst, fordi de
+løber over flere måneder og giver tilsvarende flere point.
+
+Tryk på en opgave for at se det hele.                             [04]
+Hvornår, hvor, hvor mange point — og en trin-for-trin-beskrivelse af, hvad
+du skal gøre. Du behøver ikke have prøvet det før. Nederst står, hvem der
+allerede har taget den; det er tit dét, der afgør, om man siger ja.
+
+Tryk "Tag tjansen", og den er din. Fortryder du, kan du melde fra samme
+sted — bare gør det i god tid, så en anden kan nå at tage den.
+
+
+TRIN 3 · HOLD ØJE MED DINE POINT                              [05]
+
+"Dashboard" er din egen side. Bjælken viser, hvor langt du er mod de 200
+point. Står der "15 pt afventer bekræftelse", har du lavet tjansen, og vi
+mangler bare at trykke på knappen — de point er på vej til dig.
+
+Længere nede står dine mærker.                                    [06]
+Nogle kan du se på forhånd, men der ligger 30 skjulte, som først dukker op,
+når du har fortjent dem. Vi røber dem ikke — men der er ét til dig, der
+altid tager weekendvagterne, og ét til dig, der tager den tjans, ingen
+andre gad. Nederst finder du alle dine egne tjanser og deres status.
+
+
+DET ØVRIGE, KORT FORTALT
+
+Kalenderen — de tre runde knapper øverst på Opgaver.              [07]
+En prik under en dato betyder, at der sker noget; grøn prik er en tjans, du
+selv står på. Sæsonopgaver står nedenunder som "løber hele måneden".
+
+Ranglisten — hvem der har lavet hvad i denne sæson.               [08]
+Den er ment som et skulderklap, ikke en konkurrence: alt arbejde tæller lige
+meget, uanset hvor på listen du står.
+
+Byt en tjans — kan du alligevel ikke den dag.                     [09]
+Meld ikke bare fra. Tilbyd tjansen her, og lad en anden overtage den.
+Tilmelding og point følger med over, og du står ikke og mangler en afløser
+dagen før.
+
+Beskeder — klokken øverst til højre.                              [10]
+Her lander det, der vedrører dig: at din profil er godkendt, at en tjans er
+ændret eller aflyst, og at point er lagt til. Det vigtigste får du også på
+mail.
+
+Din profil — ret navn, telefon og hold, og sæt et billede på.     [11]
+Her slår du også påmindelser på mail til og fra; de kommer to dage før en
+tjans, du står på. Beskeder om godkendelse, tildelte tjanser og ændringer
+sender vi altid.
+
+
+TRE TING, DER GØR DET LETTERE
+
+Læg den på hjemmeskærmen. Åbn siden i din telefon, tryk på del-knappen og
+vælg "Føj til hjemmeskærm". Så ligger den som en app — uden at du har
+installeret noget.
+
+Tag de lange opgaver, hvis du kan. Én sæsonrolle kan give det halve af
+målet, og så er resten af året fri for at skulle huske det.
+
+Glemt adgangskode? Tryk på linket på login-siden. Du får en mail med det
+samme — tjek spam, hvis den ikke dukker op.
+
+
+Vi er lige begyndt, og der er helt sikkert noget, vi ikke har tænkt på.
+Finder du en fejl eller noget, der er svært at forstå, så brug "Noget der
+driller?" nederst på din profil — den skriver direkte til os.
+
+Tak fordi I giver en hånd. Det er jer, der får klubben til at køre.
+
+Mange hilsner
+Bestyrelsen · Randers Volleyballklub
+
+---
+Appen: frivilligapp.vercel.app
+Spørgsmål? Skriv til randersvolleyball@gmail.com — mails fra selve appen kan
+man ikke svare på.
