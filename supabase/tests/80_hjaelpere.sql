@@ -120,7 +120,7 @@ select action from public.audit_log where action ilike '%hjælper%' order by cre
 
 \echo ''
 \echo '=== 12. Anon må ingenting ==='
-select has_function_privilege('anon','public.admin_set_helper(uuid,uuid,boolean)','execute') as anon_koble,
+select has_function_privilege('anon','public.admin_set_helper(uuid,uuid,boolean,text)','execute') as anon_koble,
        has_table_privilege('anon','public.helper_links','select')                            as anon_laese,
        has_function_privilege('authenticated','public.bidrag_point(uuid)','execute')         as medlem_bidrag;
 \echo '    forventet: f | f | t'

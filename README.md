@@ -723,12 +723,13 @@ skal et menneske trykke på.
 **Admin → Oversigt → Eksportér bidragsliste** giver én linje pr. medlem:
 
 ```
-Navn · Hold · Bidragspoint · Heraf fra hjælpere · Hjælpere · Mål · Status · Bidrag (kr)
+Navn · Hold · Bidragspoint · Heraf fra hjælpere · Givet videre · Kobling til · Mål · Status · Bidrag (kr)
 ```
 
-Hjælpere står **ikke** på listen. De er ikke medlemmer, de betaler ikke
-bidrag, og deres point er allerede lagt til hos den, de hjalp. Se
-[Hjælpere](#hjælpere).
+**Rene hjælpere** står ikke på listen: de spiller ikke selv, betaler ikke
+bidrag, og deres point er allerede lagt til hos den, de hjalp. **Forældre,
+der selv spiller,** står på listen med det, de har tilbage efter det, de har
+givet videre. Se [Hjælpere og forældre](#hjælpere-og-forældre).
 
 | Status | Point | Bidrag |
 |---|---|---|
@@ -741,7 +742,7 @@ ikke noget forholdsmæssigt bidrag.
 
 Prøv efter: `node maal-check.js` (12 checks).
 
-## Hjælpere
+## Hjælpere og forældre
 
 En forælder, en kæreste, en nabo — nogen, der ikke er medlem, men gerne tager
 en tjans for et medlem. Klubben vil have dem ind i appen, og deres arbejde
@@ -754,6 +755,20 @@ vil nogen det godt. Derfor flytter ingenting. Point bliver liggende, hvor de
 blev tjent. I stedet skrives det på selve tilmeldingen, **hvem tjansen tæller
 for** (`task_claims.credited_to`). Det står der for altid, også hvis
 koblingen senere fjernes, og det kan læses i en opgørelse et år efter.
+
+### To slags kobling
+
+Der er to måder at tage en tjans for en anden, og de betyder hver sin ting
+for regningen:
+
+| `helper_links.kind` | Hvem | Eget mål? | På bidragslisten? |
+|---|---|---|---|
+| `helper` | spiller ikke selv (en far, en kæreste, en nabo) | nej | nej |
+| `parent` | **er medlem** og giver noget af sine point videre | ja | ja, med det der er tilbage |
+
+Forskellen kan ikke regnes ud af databasen — et barn er blot et andet medlem
+— så det er admin, der siger det, når koblingen laves. Vælg **Forælder**, når
+personen selv spiller.
 
 ### To tal, der betyder hver sin ting
 
@@ -771,20 +786,48 @@ Derfor rører hjælperne **ikke** de triggere, der lægger point til og trækker
 fra. Det er appens mest ømtålelige kode, og den behøver ikke at vide, at
 hjælpere findes.
 
-### Fire spærrer
+### Hvorfor en forælder ikke er et hul i ordningen
 
-Koblingen laves kun af `admin_set_helper()`, og fire ting skal passe:
+Den første udgave nægtede at gøre en konto med point til hjælper. Det lukkede
+døren mellem to medlemmer, men det var et groft værktøj — og det spærrede
+også for det, klubben faktisk ville: en mor, der selv spiller, og som gerne
+tager tjanserne for sine børn.
+
+Det, der i virkeligheden beskytter ordningen, er regnestykket:
+
+> **En tjans tæller for én person. Aldrig to.**
+
+Giver en forælder en tjans på 100 point videre, falder hendes eget
+bidragstal med præcis 100. Intet bliver kopieret. Derfor kan deling aldrig
+dække flere opgørelser, end der er lavet arbejde til: 400 point dækker to mål
+på 200, fordi det **er** 400 points arbejde. Det, der ville være snyd — at
+beholde sine 400 *og* give barnet 200 — er umuligt, ikke forbudt:
+`coalesce(credited_to, user_id)` kan kun pege på én person ad gangen.
+
+Testen `85_foraeldre.sql` afsnit 5 måler netop det: summen af alle
+bidragstal er altid lig summen af alt bekræftet arbejde, uanset hvordan der
+flyttes.
+
+### Spærrerne
+
+Koblingen laves kun af `admin_set_helper()`:
 
 1. **Kun admins.** En kobling flytter, hvem der slipper for at betale.
-2. **En konto med point kan ikke gøres til hjælper.** Det er reglen, der
-   lukker døren mellem to medlemmer: kan man ikke blive hjælper efter at have
-   tjent point, kan man heller ikke begynde at sende dem videre.
-3. **Ingen kæder.** Den, man hjælper, må ikke selv være hjælper.
-4. **Alt havner i audit-loggen.**
+2. **En *ren* hjælper må ikke have egne point.** Har kontoen point, spiller
+   den selv, og så skal koblingen være `parent` — så beholder personen sit
+   eget mål.
+3. **Ingen ringe.** Giver A videre til B, kan B ikke give videre til A —
+   heller ikke gennem en kæde. Kæder er til gengæld i orden: mormor → mor →
+   barn er en familie, og en tjans peger altid på én person, så point hopper
+   ikke videre af sig selv. En rundkreds er ikke en familie, og selv om
+   regnestykket ville holde, skal ordningen kunne forklares på et
+   bestyrelsesmøde.
+4. **Alt havner i audit-loggen** — også hver enkelt flytning af en tjans, der
+   allerede var gjort op.
 
-Dertil en femte i databasen selv: en trigger på `task_claims` afviser en
+Dertil en spærre i databasen selv: en trigger på `task_claims` afviser en
 `credited_to`, som den tilmeldte ikke er koblet til. Selv et kald direkte mod
-API'et uden om appen kan altså ikke pege point på et fremmed medlem.
+API'et uden om appen kan ikke pege point på et fremmed medlem.
 
 ### Vejen igennem appen
 
@@ -806,9 +849,24 @@ API'et uden om appen kan altså ikke pege point på et fremmed medlem.
    20 pt fra Finn"*. Hjælperens dashboard har ingen bjælke — hun skal ikke
    betale — men står med *"50 point givet videre"* fordelt på dem, hun hjælper.
 
-Admin kan også koble til og fra bagefter: **Medlemmer → ⋮ → Gør til
-hjælper**. Fjernes koblingen, bliver de point, der allerede er givet, hvor de
+Admin kan også koble til og fra bagefter: **Medlemmer → ⋮ → Hjælper eller
+forælder**. Fjernes koblingen, bliver de point, der allerede er givet, hvor de
 er: tjansen husker selv, hvem den talte for.
+
+### Forælderen: "Giv point videre"
+
+En forælder har som regel allerede taget tjanserne, når hun opdager, at
+barnet mangler point. Derfor kan hun også flytte **bekræftede** tjanser:
+**Dashboard → Giv point videre**.
+
+Hun giver *tjanser* videre, ikke tal. Det er ikke pedanteri — et felt, hvor
+man skriver "100", ser ud som en pengeoverførsel og bliver brugt som en. En
+liste over de tjanser, hun har lavet, kan kun give det væk, der faktisk er
+lavet, og hun kan se præcis hvad.
+
+Øverst i listen står regnskabet hele tiden: hvad der er tilbage til hende
+selv, hvad hvert barn har fået, og om hun stadig selv er i mål. Hendes egne
+point på ranglisten rører sig ikke — det var hende, der mødte op.
 
 ### Det admin skal vide
 
@@ -818,10 +876,13 @@ er: tjansen husker selv, hvem den talte for.
   melder sig til.
 - Mærkerne måles på hjælperens **egne** point. Ellers ville den, der har taget
   flest tjanser i klubben, stå uden et eneste mærke.
+- En forælder får **ikke** hjælper-mærke på ranglisten. Hun er et medlem som
+  alle andre; mærket er til den, der ikke spiller selv.
 
-Prøv efter: `node hjaelper-check.js` (17 checks) og
-`node hjaelper-admin-check.js` (22 checks), samt
-`psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit).
+Prøv efter: `node hjaelper-check.js` (17), `node hjaelper-admin-check.js` (22)
+og `node foraeldre-check.js` (17), samt
+`psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit) og
+`psql -f supabase/tests/85_foraeldre.sql` (15 afsnit).
 
 ## Pointmodel
 
@@ -912,6 +973,27 @@ Navnene hentes med `task_signups()`. Den giver **ikke** e-mail eller telefon —
 at vide hvem man står på vagt med er ikke det samme som at få deres
 kontaktoplysninger. Antal tagne pladser regnes ud fra listen, ikke fra
 opgavens `spots_left`, som kan være forældet på en åben detaljeside.
+
+## Fjern en tilmeldt fra en opgave
+
+**Admin → Opgaver → antalsknappen → skraldespanden.** Pladsen bliver fri
+igen, og var tjansen bekræftet, ruller pointene tilbage af sig selv
+(`tc_after_delete`).
+
+Der lå en fejl her fra juni til 27. september 2026: rækken kommer fra
+`admin_task_signups()`, hvor medlemmets id heder **`user_id`** — ikke `id`.
+Koden læste `profile.id`, så appen sendte `user_id=eq.undefined` til
+databasen, som svarede 400, og ingenting blev fjernet. Admin så
+*"Kunne ikke fjerne tilmelding: invalid input syntax for type uuid"* og havde
+ingen måde at komme videre.
+
+To ting blev rettet: begge navne læses nu, og et manglende id stoppes **før**
+kaldet med en besked, der siger hvad der mangler. En 400 fra databasen
+fortæller ingenting om, hvad appen glemte at sende.
+
+Prøv efter: `node fjern-tilmeldt-check.js` (11 checks). Testen stubber
+PostgREST'ens rigtige svar på et ugyldigt uuid, så den fanger fejlen igen, hvis
+feltnavnet skifter.
 
 ## Opgavelisten i admin
 

@@ -928,6 +928,165 @@ const ModtagerValg = ({ medlemmer, vaerdi, onVaelg, busy = false, hjaelpetekst =
   </div>
 );
 
+// ---- GIV POINT VIDERE ----
+//
+// For forælderen, der SELV er medlem. Hun har typisk allerede taget
+// tjanserne, når hun opdager, at barnet mangler point — så det er de
+// gennemførte tjanser, der skal kunne flyttes, ikke kun de kommende.
+//
+// Man giver TJANSER videre, ikke tal. Det er ikke pedanteri: et felt, hvor
+// man skriver "100", ser ud som en pengeoverførsel og indbyder til at blive
+// brugt som en. En liste over tjanser, man har lavet, kan kun give det væk,
+// der faktisk er lavet — og man kan se præcis hvad.
+const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret }) => {
+  const [raekker, setRaekker] = useState(null);
+  const [gemmer, setGemmer]   = useState(null);
+  const [fejl, setFejl]       = useState(null);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    supabase.from("task_claims")
+      .select("id, credited_to, points_awarded, tasks(title, date, date_full)")
+      .eq("user_id", currentUser.id)
+      .eq("status", "completed")
+      .then(({ data, error }) => {
+        if (error) { setFejl(`Kunne ikke hente dine tjanser: ${error.message}`); setRaekker([]); return; }
+        const sorteret = (data || []).slice().sort((a, b) =>
+          (b.tasks?.date_full || "").localeCompare(a.tasks?.date_full || ""));
+        setRaekker(sorteret);
+      });
+  }, [currentUser?.id]);
+
+  const vaelg = async (raekke, valg) => {
+    const foer = raekke.credited_to;
+    const nyVaerdi = valg === "mig" ? null : valg;
+    if (foer === nyVaerdi) return;
+
+    setGemmer(raekke.id); setFejl(null);
+    // Vises med det samme, og rulles tilbage hvis databasen siger nej. Ellers
+    // står man og trykker igen, fordi der ikke skete noget.
+    setRaekker((r) => r.map((x) => x.id === raekke.id ? { ...x, credited_to: nyVaerdi } : x));
+
+    const { error } = await supabase.rpc("set_claim_credit", {
+      p_claim: raekke.id,
+      p_member: valg === "mig" ? currentUser.id : valg,
+    });
+    setGemmer(null);
+
+    if (error) {
+      setRaekker((r) => r.map((x) => x.id === raekke.id ? { ...x, credited_to: foer } : x));
+      setFejl(error.message);
+      return;
+    }
+    onAendret?.();
+  };
+
+  const navnPaa = (id) => medlemmer.find((m) => m.member_id === id)?.name || "";
+
+  const iAlt = (raekker || []).reduce((s, r) => s + (r.points_awarded || 0), 0);
+  const mit   = (raekker || []).filter((r) => !r.credited_to)
+                               .reduce((s, r) => s + (r.points_awarded || 0), 0);
+  const perBarn = medlemmer.map((m) => ({
+    ...m,
+    nu: (raekker || []).filter((r) => r.credited_to === m.member_id)
+                       .reduce((s, r) => s + (r.points_awarded || 0), 0),
+  }));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[88vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5">
+          <div className="text-[15px] font-bold text-stone-900 mb-0.5">Giv point videre</div>
+          <p className="text-[12px] text-stone-500 leading-relaxed mb-3">
+            Du giver <strong className="text-stone-700">tjanser</strong> videre, ikke tal. Det, du giver
+            væk, tæller ikke længere hos dig selv — så {iAlt || "dine"} point kan dække flere mål,
+            men aldrig mere arbejde, end du har lavet.
+          </p>
+
+          {/* Regnskabet, hele tiden synligt. Det er det, der gør ordningen
+              til at forstå: der er ikke flere point, end der er. */}
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 mb-3">
+            <div className="flex items-center justify-between text-[12px] mb-1.5">
+              <span className="font-bold text-stone-800">Dig selv</span>
+              <span className={`font-black ${mit >= maal ? "text-emerald-600" : "text-stone-900"}`}>{mit} pt</span>
+            </div>
+            {perBarn.map((m) => (
+              <div key={m.member_id} className="flex items-center justify-between text-[12px] mb-1.5">
+                <span className="text-stone-600">{m.name}</span>
+                <span className="font-bold text-stone-700">{m.nu} pt</span>
+              </div>
+            ))}
+            <div className="border-t border-stone-200 pt-1.5 mt-1.5 text-[11px] leading-relaxed">
+              {mit >= maal
+                ? <span className="text-emerald-700 font-semibold">Du er selv i mål med {mit} af {maal} point.</span>
+                : <span className="text-amber-700">Du har {mit} af {maal} point tilbage til dig selv — du mangler {maal - mit}.</span>}
+            </div>
+          </div>
+
+          {fejl && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
+              <p className="text-[12px] text-red-800">{fejl}</p>
+            </div>
+          )}
+
+          {raekker === null ? (
+            <p className="text-[12px] text-stone-400">Henter dine tjanser…</p>
+          ) : raekker.length === 0 ? (
+            <div className="bg-white border border-dashed border-stone-200 rounded-xl p-4 text-center">
+              <p className="text-[12px] text-stone-500 leading-snug">
+                Du har endnu ingen <strong className="text-stone-700">gennemførte</strong> tjanser.
+              </p>
+              <p className="text-[11px] text-stone-400 mt-0.5">
+                Point kan først gives videre, når en administrator har bekræftet tjansen.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {raekker.map((r) => (
+                <div key={r.id} className="border border-stone-200 rounded-xl p-2.5">
+                  <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-semibold text-stone-900 truncate">{r.tasks?.title || "Tjans"}</div>
+                      <div className="text-[11px] text-stone-400">{r.tasks?.date}</div>
+                    </div>
+                    <div className="shrink-0 text-[12px] font-black text-stone-700">{r.points_awarded} pt</div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" disabled={gemmer === r.id} onClick={() => vaelg(r, "mig")}
+                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all disabled:opacity-50 ${!r.credited_to ? "bg-stone-800 text-white border-stone-800" : "bg-white text-stone-600 border-stone-200"}`}>
+                      Mig selv
+                    </button>
+                    {medlemmer.map((m) => (
+                      <button key={m.member_id} type="button" disabled={gemmer === r.id} onClick={() => vaelg(r, m.member_id)}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all disabled:opacity-50 ${r.credited_to === m.member_id ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-stone-600 border-stone-200"}`}>
+                        {m.name.split(" ")[0]}
+                      </button>
+                    ))}
+                  </div>
+                  {r.credited_to && (
+                    <div className="text-[10px] text-emerald-700 font-semibold mt-1.5">
+                      Tæller for {navnPaa(r.credited_to)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[11px] text-stone-400 mt-3 leading-relaxed">
+            Dine point bliver ved dig på ranglisten — det var dig, der mødte op. Det er kun
+            frivilligbidraget, der flytter sig. Hver flytning skrives i klubbens log.
+          </p>
+
+          <button onClick={onClose} className="w-full mt-3 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold">
+            Luk
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const DA_MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni","Juli","August","September","Oktober","November","December"];
 
 const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOpenSwaps, onOpenCalendar, unreadCount }) => {
@@ -1311,7 +1470,7 @@ const badgeDefs = (maal) => [
   { id: "fullgoal", emoji: "🏆", label: "Over målet",    desc: `${Math.round(maal * 1.5)} point`,           req: (e) => e >= maal * 1.5 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "", bidrag = null, mineMedlemmer = [], mineHjaelpere = [] }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "", bidrag = null, mineMedlemmer = [], mineHjaelpere = [], onGivVidere }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
@@ -1327,8 +1486,13 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
   const egnePoint = currentUser?.pointsEarned || 0;
   const earned    = bidrag ? (bidrag.bidrag ?? 0) : egnePoint;
   const fraAndre  = bidrag?.fra_hjaelpere ?? 0;
-  const erHjaelper = bidrag?.er_hjaelper === true;
   const givet      = bidrag?.givet ?? 0;
+  // To slags. Den RENE hjælper spiller ikke selv og har intet mål — hun skal
+  // ikke møde en bjælke, der aldrig kan blive fuld. Forælderen ER medlem og
+  // har sit eget mål, OG giver noget videre; hun skal se begge ting.
+  const kunHjaelper = bidrag?.kun_hjaelper === true;
+  const erForaelder = bidrag?.er_hjaelper === true && !kunHjaelper;
+  const erHjaelper  = kunHjaelper;
   const tasks     = currentUser?.tasksCompleted || 0;
   // Ét mål: det antal point, der skal til for at slippe for frivilligbidraget
   // ved næste opgørelse. Klubben sætter det i admin-panelet.
@@ -1446,6 +1610,34 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
             {bidragNote && (
               <div className="text-[10px] text-white/70 mt-2 leading-relaxed bg-white/10 rounded-lg px-2.5 py-2 border border-white/10">
                 {bidragNote}
+              </div>
+            )}
+            {/* Forælderen: hvad der er givet videre, og vejen til at give mere.
+                Står HER, under hendes eget mål, fordi de to tal hænger
+                sammen — det hun giver væk, står ikke længere i bjælken. */}
+            {erForaelder && (
+              <div className="mt-3 pt-3 border-t border-white/15">
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <div className="text-[10px] uppercase tracking-wider font-bold text-emerald-200">Givet videre</div>
+                  <div className="text-[13px] font-black">{givet} pt</div>
+                </div>
+                {mineMedlemmer.length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {mineMedlemmer.map((m) => (
+                      <div key={m.member_id} className="flex items-center justify-between bg-white/10 rounded-lg px-3 py-2 border border-white/10">
+                        <span className="text-[13px] font-semibold">{m.name}</span>
+                        <span className="text-[12px] font-bold text-emerald-100">{m.givet} pt</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={() => onGivVidere?.()} className="w-full py-2 rounded-lg bg-white/15 border border-white/20 text-[12px] font-bold active:scale-[0.99] transition-transform">
+                  Giv point videre
+                </button>
+                <div className="text-[10px] text-white/60 mt-1.5 leading-relaxed">
+                  De {givet} point står stadig på ranglisten under dit navn. De tæller blot mod
+                  frivilligbidraget hos {mineMedlemmer.length === 1 ? mineMedlemmer[0].name.split(" ")[0] : "dine børn"}.
+                </div>
               </div>
             )}
             {mineHjaelpere.length > 0 && (
@@ -1580,7 +1772,9 @@ const ScoreboardScreen = ({ currentUserId }) => {
   const [koblinger, setKoblinger] = useState([]);
 
   useEffect(() => {
-    supabase.from("helper_links").select("helper_id, member_id").then(({ data }) => {
+    // kind skal med: en forælder er et medlem som alle andre og skal IKKE
+    // have et hjælper-mærke. Kun den, der ikke spiller selv, får det.
+    supabase.from("helper_links").select("helper_id, member_id, kind").then(({ data }) => {
       if (data) setKoblinger(data);
     });
   }, []);
@@ -1608,8 +1802,12 @@ const ScoreboardScreen = ({ currentUserId }) => {
   // alligevel har — ingen ekstra kald for at kunne skrive "hjælper for Anna".
   const hjaelperFor = useMemo(() => {
     const navne = new Map(members.map((m) => [m.id, m.name]));
+    // En konto med bare én forælder-kobling spiller selv og er et almindeligt
+    // medlem på ranglisten.
+    const spillerSelv = new Set(koblinger.filter((k) => k.kind === "parent").map((k) => k.helper_id));
     const ud = new Map();
     for (const k of koblinger) {
+      if (spillerSelv.has(k.helper_id)) continue;
       const navn = navne.get(k.member_id);
       if (!navn) continue;
       ud.set(k.helper_id, [...(ud.get(k.helper_id) || []), navn]);
@@ -2419,6 +2617,11 @@ export default function App() {
   // hører til den tjans, det blev truffet på, og ingen andre.
   const [modtagerValg, setModtagerValg] = useState(null);
   const [skifterModtager, setSkifterModtager] = useState(false);
+  const [giverVidere, setGiverVidere] = useState(false);
+  // Flytter man en tjans til sit barn, ændrer ens EGNE point sig ikke — de
+  // bliver hvor de er. Derfor kan bidragstallet ikke hentes igen på point
+  // alene; der skal et tik til, som siger "spørg serveren igen nu".
+  const [bidragTik, setBidragTik] = useState(0);
   // Mærkerne kommer fra databasen: hvad man har fundet, og om noget er nyt.
   const [maerker, setMaerker] = useState([]);
   const [nyeMaerker, setNyeMaerker] = useState([]);
@@ -2853,7 +3056,7 @@ export default function App() {
       if (!h.error) setMineHjaelpere(h.data || []);
     });
     return () => { levende = false; };
-  }, [currentUser?.id, currentUser?.pointsEarned, currentUser?.tasksCompleted]);
+  }, [currentUser?.id, currentUser?.pointsEarned, currentUser?.tasksCompleted, bidragTik]);
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -2976,6 +3179,7 @@ export default function App() {
     setMyClaims((prev) => prev.map((c) => c.id === claimId
       ? { ...c, credited_to: valg === "mig" ? null : valg } : c));
     const navn = valg === "mig" ? "dig selv" : mineMedlemmer.find((m) => m.member_id === valg)?.name || "medlemmet";
+    setBidragTik((n) => n + 1);
     showToast(`Tjansen tæller nu for ${navn}`);
   };
 
@@ -3263,7 +3467,7 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} bidrag={bidrag} mineMedlemmer={mineMedlemmer} mineHjaelpere={mineHjaelpere} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} bidrag={bidrag} mineMedlemmer={mineMedlemmer} mineHjaelpere={mineHjaelpere} onGivVidere={() => setGiverVidere(true)} />}
             {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
             {tab === "profile" && (
               <div className="pb-24">
@@ -3277,55 +3481,66 @@ export default function App() {
                   <div className="bg-white rounded-xl p-3 border border-stone-100 shadow-sm text-center"><div className="text-xl font-black text-stone-900">{currentUser?.team || "–"}</div><div className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Hold</div></div>
                 </div>
 
-                {/* Hjælpere. Kortet vises kun, når der ER en kobling — for de
-                    fleste medlemmer findes hjælpere slet ikke, og så skal der
-                    ikke stå noget om dem. */}
-                {(mineMedlemmer.length > 0 || mineHjaelpere.length > 0) && (
+                {/* Koblingerne. Vises kun, når der ER en — for de fleste medlemmer
+                    findes hjælpere slet ikke, og så skal der ikke stå noget om dem.
+                    De to blokke er uafhængige: en mor kan både have en hjælper og
+                    selv give point videre til sine børn. */}
+                {mineMedlemmer.length > 0 && (
                   <div className="px-5 mt-4">
                     <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
-                      {mineMedlemmer.length > 0 ? (
-                        <>
-                          <div className="text-[13px] font-bold text-stone-900 mb-1">Du er hjælper</div>
-                          <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
-                            Dine point står på ranglisten under dit eget navn, men tæller mod
-                            frivilligbidraget hos den, du tager tjansen for.
-                          </p>
-                          <div className="space-y-1.5">
-                            {mineMedlemmer.map((m) => (
-                              <div key={m.member_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
-                                <span className="text-[13px] font-semibold text-stone-800">{m.name}</span>
-                                <span className="text-[12px] font-bold text-emerald-700">{m.givet} pt givet</span>
-                              </div>
-                            ))}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-[13px] font-bold text-stone-900 mb-1">Dine hjælpere</div>
-                          <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
-                            Deres tjanser tæller med i dit frivilligbidrag — men pointene står på
-                            ranglisten under deres eget navn.
-                          </p>
-                          <div className="space-y-1.5">
-                            {mineHjaelpere.map((h) => (
-                              <div key={h.helper_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
-                                <span className="text-[13px] font-semibold text-stone-800">{h.name}</span>
-                                <span className="text-[12px] font-bold text-emerald-700">+{h.point} pt til dig</span>
-                              </div>
-                            ))}
-                          </div>
-                          {bidrag && (
-                            <div className="text-[12px] text-stone-600 mt-2.5 pt-2.5 border-t border-stone-100">
-                              I alt mod frivilligbidraget: <strong className="text-stone-900">{bidrag.bidrag} point</strong>
-                              {bidrag.fra_hjaelpere > 0 && <> — heraf {bidrag.fra_hjaelpere} fra dine hjælpere</>}
+                      {(() => {
+                        const erForaelder = mineMedlemmer.some((m) => m.kind === "parent");
+                        return (
+                          <>
+                            <div className="text-[13px] font-bold text-stone-900 mb-1">
+                              {erForaelder ? "Du giver point videre" : "Du er hjælper"}
                             </div>
-                          )}
-                        </>
-                      )}
+                            <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
+                              {erForaelder
+                                ? "Dine point står på ranglisten under dit eget navn. Det, du giver videre, tæller mod frivilligbidraget hos barnet i stedet for hos dig."
+                                : "Dine point står på ranglisten under dit eget navn, men tæller mod frivilligbidraget hos den, du tager tjansen for."}
+                            </p>
+                            <div className="space-y-1.5">
+                              {mineMedlemmer.map((m) => (
+                                <div key={m.member_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
+                                  <span className="text-[13px] font-semibold text-stone-800">{m.name}</span>
+                                  <span className="text-[12px] font-bold text-emerald-700">{m.givet} pt givet</span>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        );
+                      })()}
                       <p className="text-[11px] text-stone-400 mt-2.5 leading-relaxed">
                         Skal koblingen ændres, så skriv til {LEGAL_CONTACT}. Det er kun
                         administratorer, der kan rette den.
                       </p>
+                    </div>
+                  </div>
+                )}
+
+                {mineHjaelpere.length > 0 && (
+                  <div className="px-5 mt-4">
+                    <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
+                      <div className="text-[13px] font-bold text-stone-900 mb-1">Dine hjælpere</div>
+                      <p className="text-[12px] text-stone-500 leading-relaxed mb-2.5">
+                        Deres tjanser tæller med i dit frivilligbidrag — men pointene står på
+                        ranglisten under deres eget navn.
+                      </p>
+                      <div className="space-y-1.5">
+                        {mineHjaelpere.map((h) => (
+                          <div key={h.helper_id} className="flex items-center justify-between bg-stone-50 rounded-lg px-3 py-2 border border-stone-100">
+                            <span className="text-[13px] font-semibold text-stone-800">{h.name}</span>
+                            <span className="text-[12px] font-bold text-emerald-700">+{h.point} pt til dig</span>
+                          </div>
+                        ))}
+                      </div>
+                      {bidrag && (
+                        <div className="text-[12px] text-stone-600 mt-2.5 pt-2.5 border-t border-stone-100">
+                          I alt mod frivilligbidraget: <strong className="text-stone-900">{bidrag.bidrag} point</strong>
+                          {bidrag.fra_hjaelpere > 0 && <> — heraf {bidrag.fra_hjaelpere} fra dine hjælpere</>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3366,6 +3581,16 @@ export default function App() {
 
         {/* Kvitteringen for et nyfundet mærke. Den ligger yderst, saa den
             ogsaa kommer, hvis man staar paa en anden fane. */}
+        {giverVidere && (
+          <GivPointVidereModal
+            currentUser={currentUser}
+            medlemmer={mineMedlemmer}
+            maal={pointGoal || 200}
+            onClose={() => setGiverVidere(false)}
+            onAendret={() => { setBidragTik((n) => n + 1); reloadMine(); }}
+          />
+        )}
+
         {nyeMaerker.length > 0 && (
           <NyeMaerkerModal maerker={nyeMaerker} onClose={() => setNyeMaerker([])} />
         )}
