@@ -868,19 +868,37 @@ lavet, og hun kan se præcis hvad.
 selv, hvad hvert barn har fået, og om hun stadig selv er i mål. Hendes egne
 point på ranglisten rører sig ikke — det var hende, der mødte op.
 
+### Hjælperen, der ikke er medlem
+
+Hun har intet mål og står ikke på bidragslisten, så hendes egne point gør
+ingen forskel for nogen — de skal videre til et medlem for at betyde noget.
+Derfor er der tre steder, hvor appen siger, hvor de er havnet:
+
+- **Dashboardet** har ingen bjælke, men en knap: *"Fordel 30 point, der står
+  hos dig"*, når noget ikke er nået videre. Er alt givet videre, hedder den
+  *"Se og flyt dine tjanser"*.
+- **På en gennemført tjans** står der *"Tæller for Anna Berg"* — eller
+  *"Tæller for dig selv"* med en henvisning til, hvor den flyttes.
+- **"Giv point videre"** virker for hende som for en forælder, men uden et
+  ord om et mål, hun ikke har.
+
+Det lukker et hul: bliver hun **sat** på en tjans af en admin, er der ingen
+modtager på den, og bliver den bekræftet, stod pointene før fast hos hende for
+altid. Nu kan hun flytte dem bagefter — som forælderen kan.
+
 ### Det admin skal vide
 
 - En admin, der **tildeler** en hjælper en tjans fra admin-panelet, sætter
   ikke modtageren. Tjansen tæller for hjælperen selv, indtil hun åbner den og
   vælger. Skal det tælle for medlemmet fra starten, er det hjælperen, der
-  melder sig til.
+  melder sig til — men hun kan altid rette det bagefter.
 - Mærkerne måles på hjælperens **egne** point. Ellers ville den, der har taget
   flest tjanser i klubben, stå uden et eneste mærke.
 - En forælder får **ikke** hjælper-mærke på ranglisten. Hun er et medlem som
   alle andre; mærket er til den, der ikke spiller selv.
 
-Prøv efter: `node hjaelper-check.js` (17), `node hjaelper-admin-check.js` (22)
-og `node foraeldre-check.js` (17), samt
+Prøv efter: `node hjaelper-check.js` (17), `node hjaelper-admin-check.js` (22),
+`node foraeldre-check.js` (17) og `node hjaelper-fastlaast-check.js` (11), samt
 `psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit) og
 `psql -f supabase/tests/85_foraeldre.sql` (15 afsnit).
 

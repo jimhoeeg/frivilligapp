@@ -938,7 +938,7 @@ const ModtagerValg = ({ medlemmer, vaerdi, onVaelg, busy = false, hjaelpetekst =
 // man skriver "100", ser ud som en pengeoverførsel og indbyder til at blive
 // brugt som en. En liste over tjanser, man har lavet, kan kun give det væk,
 // der faktisk er lavet — og man kan se præcis hvad.
-const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret }) => {
+const GivPointVidereModal = ({ currentUser, medlemmer, maal, harEgetMaal = true, onClose, onAendret }) => {
   const [raekker, setRaekker] = useState(null);
   const [gemmer, setGemmer]   = useState(null);
   const [fejl, setFejl]       = useState(null);
@@ -998,9 +998,10 @@ const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret 
         <div className="p-5">
           <div className="text-[15px] font-bold text-stone-900 mb-0.5">Giv point videre</div>
           <p className="text-[12px] text-stone-500 leading-relaxed mb-3">
-            Du giver <strong className="text-stone-700">tjanser</strong> videre, ikke tal. Det, du giver
-            væk, tæller ikke længere hos dig selv — så {iAlt || "dine"} point kan dække flere mål,
-            men aldrig mere arbejde, end du har lavet.
+            Du giver <strong className="text-stone-700">tjanser</strong> videre, ikke tal.
+            {harEgetMaal
+              ? ` Det, du giver væk, tæller ikke længere hos dig selv — så dine ${iAlt} point kan dække flere mål, men aldrig mere arbejde, end du har lavet.`
+              : " En tjans tæller for én person, så vælg hvem hver enkelt skal tælle for."}
           </p>
 
           {/* Regnskabet, hele tiden synligt. Det er det, der gør ordningen
@@ -1008,7 +1009,7 @@ const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret 
           <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 mb-3">
             <div className="flex items-center justify-between text-[12px] mb-1.5">
               <span className="font-bold text-stone-800">Dig selv</span>
-              <span className={`font-black ${mit >= maal ? "text-emerald-600" : "text-stone-900"}`}>{mit} pt</span>
+              <span className={`font-black ${harEgetMaal && mit >= maal ? "text-emerald-600" : "text-stone-900"}`}>{mit} pt</span>
             </div>
             {perBarn.map((m) => (
               <div key={m.member_id} className="flex items-center justify-between text-[12px] mb-1.5">
@@ -1017,9 +1018,19 @@ const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret 
               </div>
             ))}
             <div className="border-t border-stone-200 pt-1.5 mt-1.5 text-[11px] leading-relaxed">
-              {mit >= maal
-                ? <span className="text-emerald-700 font-semibold">Du er selv i mål med {mit} af {maal} point.</span>
-                : <span className="text-amber-700">Du har {mit} af {maal} point tilbage til dig selv — du mangler {maal - mit}.</span>}
+              {/* Den rene hjælper har INTET mål. At skrive "du mangler 100"
+                  til nogen, der ikke skal betale frivilligbidrag, er en
+                  regning, klubben ikke har sendt. */}
+              {!harEgetMaal
+                ? mit > 0
+                  ? <span className="text-amber-700">
+                      {mit} point er ikke givet videre endnu og tæller for dig selv. Du spiller ikke
+                      selv, så de gør ingen forskel for nogen — vælg et medlem ved hver tjans.
+                    </span>
+                  : <span className="text-emerald-700 font-semibold">Alle dine point er givet videre.</span>
+                : mit >= maal
+                  ? <span className="text-emerald-700 font-semibold">Du er selv i mål med {mit} af {maal} point.</span>
+                  : <span className="text-amber-700">Du har {mit} af {maal} point tilbage til dig selv — du mangler {maal - mit}.</span>}
             </div>
           </div>
 
@@ -1076,6 +1087,7 @@ const GivPointVidereModal = ({ currentUser, medlemmer, maal, onClose, onAendret 
           <p className="text-[11px] text-stone-400 mt-3 leading-relaxed">
             Dine point bliver ved dig på ranglisten — det var dig, der mødte op. Det er kun
             frivilligbidraget, der flytter sig. Hver flytning skrives i klubbens log.
+            {!harEgetMaal && " Også bekræftede tjanser kan flyttes, så en tjans, du blev sat på, ikke bliver hængende hos dig."}
           </p>
 
           <button onClick={onClose} className="w-full mt-3 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-bold">
@@ -1493,6 +1505,10 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
   const kunHjaelper = bidrag?.kun_hjaelper === true;
   const erForaelder = bidrag?.er_hjaelper === true && !kunHjaelper;
   const erHjaelper  = kunHjaelper;
+  // Point, den rene hjælper har tjent, men som ingen har fået. De tæller for
+  // hende selv, og hun skal ikke betale bidrag — så de gør ingen forskel for
+  // nogen, før hun flytter dem. Derfor skal tallet stå på knappen.
+  const ikkeGivetVidere = kunHjaelper ? Math.max(0, egnePoint - givet) : 0;
   const tasks     = currentUser?.tasksCompleted || 0;
   // Ét mål: det antal point, der skal til for at slippe for frivilligbidraget
   // ved næste opgørelse. Klubben sætter det i admin-panelet.
@@ -1555,6 +1571,15 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
               <div className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
                 <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
               </div>
+            )}
+            {/* Også hjælperen skal kunne flytte en tjans bagefter. Bliver hun
+                SAT på en tjans af en admin, står den som hendes egen — og hun
+                spiller ikke selv, så de point gør ingen forskel for nogen,
+                før de kommer hen til barnet. */}
+            {mineMedlemmer.length > 0 && (
+              <button onClick={() => onGivVidere?.()} className="w-full mt-3 py-2 rounded-lg bg-white/15 border border-white/20 text-[12px] font-bold active:scale-[0.99] transition-transform">
+                {ikkeGivetVidere > 0 ? `Fordel ${ikkeGivetVidere} point, der står hos dig` : "Se og flyt dine tjanser"}
+              </button>
             )}
             <div className="text-[11px] text-white/80 mt-3 leading-relaxed">
               Dine {egnePoint} point står på ranglisten under dit eget navn — det var dig, der mødte op.
@@ -3411,7 +3436,26 @@ export default function App() {
             {/* Sticky button — never overlaps content */}
             <div className="shrink-0 p-4 bg-white border-t border-stone-100 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
               {claimStatus.get(selectedTask.id) === "completed" ? (
-                <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" />Gennemført og godkendt · +{selectedTask.points} point</div>
+                (() => {
+                // Hvem tjansen endte med at tælle for. Står der ingenting,
+                // tror hjælperen at barnet har fået pointene.
+                const min = myClaims.find((c) => c.task_id === selectedTask.id);
+                const forNavn = min?.credited_to
+                  ? mineMedlemmer.find((m) => m.member_id === min.credited_to)?.name
+                  : null;
+                return (
+                  <div className="space-y-1.5">
+                    <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-600" />Gennemført og godkendt · +{selectedTask.points} point</div>
+                    {mineMedlemmer.length > 0 && (
+                      <div className="text-[11px] text-center leading-relaxed">
+                        {forNavn
+                          ? <span className="text-emerald-700 font-semibold">Tæller for {forNavn}</span>
+                          : <span className="text-amber-700">Tæller for dig selv — flyt den under <strong>Dashboard</strong>, hvis den skulle tælle for et medlem.</span>}
+                      </div>
+                    )}
+                  </div>
+                  );
+                })()
               ) : claimStatus.get(selectedTask.id) === "no_show" ? (
                 <div className="w-full py-3.5 rounded-xl font-semibold text-[13px] text-stone-600 bg-stone-100 border border-stone-200 flex items-center justify-center gap-2"><AlertTriangle className="w-4 h-4 text-stone-500" />Registreret som ikke gennemført</div>
               ) : claimedIds.has(selectedTask.id) ? (
@@ -3422,11 +3466,9 @@ export default function App() {
                       <ModtagerValg
                         medlemmer={mineMedlemmer}
                         vaerdi={min?.credited_to || "mig"}
-                        busy={skifterModtager || min?.status === "completed"}
+                        busy={skifterModtager}
                         onVaelg={(v) => skiftModtager(min?.id, v)}
-                        hjaelpetekst={min?.status === "completed"
-                          ? "Tjansen er gjort op, og modtageren kan ikke længere ændres."
-                          : "Tryk på et navn for at flytte pointene."}
+                        hjaelpetekst="Tryk på et navn for at flytte pointene."
                       />
                     );
                   })()}
@@ -3586,6 +3628,7 @@ export default function App() {
             currentUser={currentUser}
             medlemmer={mineMedlemmer}
             maal={pointGoal || 200}
+            harEgetMaal={bidrag?.kun_hjaelper !== true}
             onClose={() => setGiverVidere(false)}
             onAendret={() => { setBidragTik((n) => n + 1); reloadMine(); }}
           />
