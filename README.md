@@ -891,11 +891,25 @@ API'et uden om appen kan ikke pege point på et fremmed medlem.
 1. **Oprettelsen.** Hjælperen sætter kryds i *"Jeg spiller ikke selv — jeg
    hjælper et medlem"* og skriver navnet i fri tekst. Hun kan ikke se
    medlemslisten, før hun er lukket ind, og skal heller ikke kunne det.
-   Teksten lander i `profiles.helper_request`.
-2. **Godkendelsen.** Admin ser ønsket på godkendelseskortet og vælger det
-   rigtige medlem — eller flere, hvis det er to børn — og godkender.
+   Teksten lander i `profiles.helper_request`. **Krydset er hele signalet** —
+   det er dét, der afgør, om admin overhovedet bliver spurgt.
+2. **Godkendelsen.** Har personen krydset af, står koblingen på kortet, og
+   admin vælger det rigtige medlem — eller flere, hvis det er to børn.
    Godkendelse og kobling er **én handling**, for ellers bliver det et andet
    sted, en anden dag. `helper_request` ryddes, når koblingen er lavet.
+
+   Har personen **ikke** krydset af, er det et almindeligt betalende medlem,
+   og så vises koblingen slet ikke. Der står én stille linje — *"Almindeligt
+   medlem — spiller selv og er med i frivilligbidraget"* — med en henvisning,
+   admin kan åbne, hvis personen glemte krydset. De fleste, der opretter sig,
+   er almindelige medlemmer; for dem er spørgsmålet ikke bare overflødigt,
+   det er et sted at trykke forkert, og et forkert tryk flytter, hvem der
+   slipper for at betale.
+
+   **"Godkend alle" kobler ikke nogen.** Har nogen krydset af, siger knappen
+   det: *"1 har skrevet, at de hjælper et medlem — de bliver ikke koblet."*
+   Ellers ville deres tjanser tælle for dem selv, og det ville blive opdaget
+   i marts.
 3. **Tjansen.** Hjælperen vælger ved hver tilmelding, hvem den skal tælle for.
    Hjælper hun kun ét medlem, er det valgt på forhånd; hjælper hun flere, er
    knappen låst, indtil hun har valgt. Valget skrives i **samme** sætning som
@@ -906,7 +920,12 @@ API'et uden om appen kan ikke pege point på et fremmed medlem.
    20 pt fra Finn"*. Hjælperens dashboard har ingen bjælke — hun skal ikke
    betale — men står med *"50 point givet videre"* fordelt på dem, hun hjælper.
 
-Admin kan også koble til og fra bagefter: **Medlemmer → ⋮ → Hjælper eller
+En forælder, der **selv spiller**, kommer ind ad den almindelige vej: hun
+krydser ikke af, bliver godkendt som medlem, og kobles bagefter. Det er med
+vilje — hun *er* et betalende medlem, og koblingen er en tilføjelse, ikke en
+anden slags oprettelse.
+
+Admin kan derfor koble til og fra bagefter: **Medlemmer → ⋮ → Hjælper eller
 forælder**. Fjernes koblingen, bliver de point, der allerede er givet, hvor de
 er: tjansen husker selv, hvem den talte for.
 
@@ -955,7 +974,8 @@ altid. Nu kan hun flytte dem bagefter — som forælderen kan.
   alle andre; mærket er til den, der ikke spiller selv.
 
 Prøv efter: `node hjaelper-check.js` (17), `node hjaelper-admin-check.js` (22),
-`node foraeldre-check.js` (17) og `node hjaelper-fastlaast-check.js` (11), samt
+`node foraeldre-check.js` (17), `node hjaelper-fastlaast-check.js` (11) og
+`node godkend-flow-check.js` (11), samt
 `psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit) og
 `psql -f supabase/tests/85_foraeldre.sql` (15 afsnit).
 

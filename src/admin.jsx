@@ -315,6 +315,11 @@ const AdminApprovals = ({ onChanged }) => {
   // Slags pr. ansøger. En helt ny konto har ingen point, så begge er mulige —
   // og forskellen afgør, om personen selv kommer på bidragslisten.
   const [slags, setSlags]         = useState({});
+  // Koblingen vises kun, hvor den hører hjemme: hos den, der SELV har sagt
+  // ved oprettelsen, at hun hjælper et medlem — eller hvor admin bevidst
+  // åbner den. For et almindeligt betalende medlem er spørgsmålet ikke
+  // bare unødvendigt, det er en anledning til at trykke forkert.
+  const [aabnet, setAabnet]       = useState({});
 
   const load = async () => {
     // Kontaktoplysninger hentes gennem admin_list_members(), fordi selve
@@ -370,6 +375,7 @@ const AdminApprovals = ({ onChanged }) => {
     setExpanded(null);
     setValgte((v) => { const n = { ...v }; delete n[a.id]; return n; });
     setSlags((v) => { const n = { ...v }; delete n[a.id]; return n; });
+    setAabnet((v) => { const n = { ...v }; delete n[a.id]; return n; });
     setApprovalError(fejl.length ? `Godkendt, men koblingen fejlede — ${fejl.join(" · ")}` : null);
     onChanged?.();
   };
@@ -410,7 +416,21 @@ const AdminApprovals = ({ onChanged }) => {
 
       <div className="flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Afventer ({pending.length})</div>
-        {pending.length > 1 && <button onClick={() => { pending.forEach(approve); }} className="text-[11px] font-bold text-emerald-700">Godkend alle</button>}
+        {/* "Godkend alle" kobler ikke nogen — den godkender. Har nogen krydset
+            af, at de hjælper et medlem, ryger de igennem uden kobling, og så
+            tæller deres tjanser for dem selv. Det skal stå her, ikke opdages
+            i marts. Koblingen kan stadig laves bagefter under Medlemmer. */}
+        {pending.length > 1 && (
+          <div className="text-right">
+            <button onClick={() => { pending.forEach(approve); }} className="text-[11px] font-bold text-emerald-700">Godkend alle</button>
+            {pending.some((a) => a.helperRequest) && (
+              <div className="text-[10px] text-amber-700 leading-tight mt-0.5 max-w-[190px]">
+                {pending.filter((a) => a.helperRequest).length} har skrevet, at de hjælper et medlem —
+                de bliver ikke koblet af "Godkend alle".
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {pending.length === 0 ? (
@@ -433,51 +453,79 @@ const AdminApprovals = ({ onChanged }) => {
                 {a.referredBy && <div className="flex items-center gap-2 text-[12px] text-violet-800 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2"><ThumbsUp className="w-3.5 h-3.5 shrink-0" />Anbefalet af <strong>{a.referredBy}</strong></div>}
 
                 {/* ----------------------------------------------------------
-                    HJÆLPER? Står FØR godkend-knappen, fordi det er en del af
-                    den beslutning — ikke noget, man kan huske at gøre senere.
+                    HJÆLPER ELLER FORÆLDER?
+
+                    De fleste, der opretter sig, er almindelige medlemmer:
+                    de spiller selv og betaler frivilligbidrag. For dem er
+                    koblingen ikke bare overflødig — den er et sted at
+                    trykke forkert, og et forkert tryk flytter, hvem der
+                    slipper for at betale.
+
+                    Derfor vises den kun til den, der SELV har krydset af
+                    ved oprettelsen, at hun hjælper et medlem. Er der ingen
+                    afkrydsning, står der én stille linje i stedet, som
+                    admin kan åbne, hvis personen har glemt det.
                     ---------------------------------------------------------- */}
-                <div className={`rounded-xl p-3 border ${a.helperRequest ? "bg-amber-50 border-amber-200" : "bg-white border-stone-200"}`}>
-                  {a.helperRequest ? (
-                    <div className="text-[12px] text-amber-900 leading-relaxed mb-2">
-                      <strong>Har selv skrevet, at det er en hjælper.</strong><br />
-                      Hjælper for: <span className="font-semibold">«{a.helperRequest}»</span>
-                    </div>
-                  ) : (
-                    <div className="text-[12px] text-stone-600 leading-relaxed mb-2">
-                      <strong className="text-stone-800">Er det en hjælper?</strong> Vælg medlemmet, hvis
-                      personen tager tjanser for et medlem og ikke spiller selv.
-                    </div>
-                  )}
+                {(a.helperRequest || aabnet[a.id]) ? (
+                  <div className={`rounded-xl p-3 border ${a.helperRequest ? "bg-amber-50 border-amber-200" : "bg-white border-stone-200"}`}>
+                    {a.helperRequest ? (
+                      <div className="text-[12px] text-amber-900 leading-relaxed mb-2">
+                        <strong>Har selv krydset af, at hun ikke spiller selv.</strong><br />
+                        Hjælper for: <span className="font-semibold">«{a.helperRequest}»</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="text-[12px] text-stone-600 leading-relaxed">
+                          <strong className="text-stone-800">Kobl som hjælper eller forælder.</strong> Kun
+                          hvis personen tager tjanser, der skal tælle for et andet medlem.
+                        </div>
+                        <button type="button"
+                          onClick={() => { setAabnet((v) => ({ ...v, [a.id]: false }));
+                                           setValgte((v) => ({ ...v, [a.id]: [] })); }}
+                          className="shrink-0 p-1 rounded-lg text-stone-400 hover:bg-stone-100">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
 
-                  <SlagsValg vaerdi={slags[a.id] || "helper"}
-                             onVaelg={(v) => setSlags((s2) => ({ ...s2, [a.id]: v }))} />
+                    <SlagsValg vaerdi={slags[a.id] || "helper"}
+                               onVaelg={(v) => setSlags((s2) => ({ ...s2, [a.id]: v }))} />
 
-                  {medlemmer.length === 0 ? (
-                    <p className="text-[11px] text-stone-500">Der er endnu ingen godkendte medlemmer at koble til.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {medlemmer.map((m) => {
-                        const valgt = (valgte[a.id] || []).includes(m.id);
-                        return (
-                          <button key={m.id} type="button" onClick={() => vaelg(a.id, m.id)}
-                            className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${valgt ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-stone-600 border-stone-200"}`}>
-                            {m.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                    {medlemmer.length === 0 ? (
+                      <p className="text-[11px] text-stone-500">Der er endnu ingen godkendte medlemmer at koble til.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {medlemmer.map((m) => {
+                          const valgt = (valgte[a.id] || []).includes(m.id);
+                          return (
+                            <button key={m.id} type="button" onClick={() => vaelg(a.id, m.id)}
+                              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${valgt ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-stone-600 border-stone-200"}`}>
+                              {m.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                  {(valgte[a.id] || []).length > 0 && (
-                    <p className="text-[11px] text-emerald-800 mt-2 leading-relaxed">
-                      Bliver {(slags[a.id] || "helper") === "parent" ? "forælder" : "hjælper"} for{" "}
-                      {(valgte[a.id] || []).length} medlem
-                      {(valgte[a.id] || []).length > 1 ? "mer" : ""}. Personen kommer med på ranglisten
-                      med sine egne point — men de point, der gives videre, tæller mod
-                      frivilligbidraget hos medlemmet i stedet.
-                    </p>
-                  )}
-                </div>
+                    {(valgte[a.id] || []).length > 0 && (
+                      <p className="text-[11px] text-emerald-800 mt-2 leading-relaxed">
+                        Bliver {(slags[a.id] || "helper") === "parent" ? "forælder" : "hjælper"} for{" "}
+                        {(valgte[a.id] || []).length} medlem
+                        {(valgte[a.id] || []).length > 1 ? "mer" : ""}. Personen kommer med på ranglisten
+                        med sine egne point — men de point, der gives videre, tæller mod
+                        frivilligbidraget hos medlemmet i stedet.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-stone-400 leading-relaxed">
+                    Almindeligt medlem — spiller selv og er med i frivilligbidraget.{" "}
+                    <button type="button" onClick={() => setAabnet((v) => ({ ...v, [a.id]: true }))}
+                      className="font-semibold text-stone-500 underline underline-offset-2 hover:text-stone-700">
+                      Er det en hjælper eller forælder?
+                    </button>
+                  </div>
+                )}
 
                 {rejecting === a.id ? (
                   <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 space-y-2">
