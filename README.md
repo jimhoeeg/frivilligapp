@@ -524,6 +524,63 @@ Medlemmerne henvises til `LEGAL_CONTACT` i `src/App.jsx`, i dag
 `randersvolleyball@gmail.com`. Det er den adresse, en anmodning om indsigt,
 rettelse eller sletning lander på. Aftal hvem der læser den.
 
+## Skabeloner
+
+Skabelonerne er de opgaver, klubben bygger nye tjanser ud fra: titel, point,
+pladser, sværhedsgrad og vejledning, så ingen skal skrive det samme igen.
+
+**De lå to steder, og kun det ene kunne klubben røre.** 40 forslag stod
+hårdkodet i `admin.jsx`; klubbens egne lå i `task_templates`. Det var ikke to
+slags data — det var ét datasæt, hvor halvdelen lå det forkerte sted. En
+klub, der har brugt appen et halvt år, ved bedre end koden, hvad der står i
+deres kioskvagt.
+
+Nu ligger alle 40 i databasen som almindelige rækker, og alt kan rettes,
+omdøbes og slettes.
+
+### Hvor man retter dem
+
+**Admin → Skabeloner.** Liste med søgefelt og kategorifiltre; tryk på en for
+at rette den. Derfra også **Ny skabelon** og **Gendan appens forslag**.
+
+**Eller undervejs:** bygger man en opgave ud fra en skabelon og retter noget,
+skifter knappen nederst i opgaveformularen fra *"Gem som skabelon"* til
+**"Opdatér skabelonen"**. Det er den korte vej — man opdager typisk først, at
+vejledningen mangler et trin, mens man er i gang med at oprette næste uges
+vagt.
+
+Ændrer man *titlen*, er hensigten tvetydig, og appen gætter ikke: den spørger
+om den gamle skal rettes, eller om det er en ny skabelon ved siden af. Uden
+det spørgsmål samler man dubletter uden at opdage det.
+
+### To ting, der står i skærmbilledet med vilje
+
+- **At rette en skabelon ændrer ikke opgaver, der allerede er oprettet.** En
+  skabelon er et udgangspunkt, ikke en forbindelse. Uden den sætning retter
+  man en formulering og tror, at næste uges kioskvagt også blev rettet.
+- **To skabeloner må ikke hedde det samme i samme kategori** (`unique
+  (category, title)`). Afvisningen oversættes til dansk; `duplicate key value
+  violates unique constraint` siger ingenting til en, der ville rette en
+  stavefejl.
+
+### Gendan appens forslag
+
+`seed_task_templates()` bærer de 40 originaler og lægger **kun det ind, der
+mangler** (`on conflict do nothing`). Derfor kan den køres igen uden at lave
+dubletter, og uden at skrive hen over noget, klubben selv har rettet. Det er
+også den, migrationen kalder, så listen findes ét sted — ikke både i en
+migration og i koden.
+
+Rækkerne i migrationen er **ikke skrevet af i hånden**. Et script læser de
+samme lister, appen selv brugte — også ikonforslaget — så hver skabelon fik
+præcis det ikon, den havde før.
+
+Hvem der rettede hvad står på rækken (`updated_at`, `updated_by`, sat af en
+trigger) og i audit-loggen.
+
+Prøv efter: `node skabelon-check.js` (22 checks) og
+`psql -f supabase/tests/90_skabeloner.sql` (10 afsnit).
+
 ## Ikoner
 
 Appen havde fire ikoner: fløjte, kaffekop, hus og kage. De blev valgt ud fra

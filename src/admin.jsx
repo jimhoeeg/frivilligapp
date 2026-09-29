@@ -7,7 +7,7 @@
 //
 // Det, både medlemmerne og admins bruger, ligger i shared.jsx.
 import {
-  useState, useEffect, useMemo, useCallback
+  useState, useEffect, useMemo, useCallback, useRef
 } from "react";
 import { supabase } from "./supabaseClient";
 import {
@@ -74,6 +74,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
     { id: "confirm",   label: "Bekræft",       icon: CheckCircle2, superOnly: false, badge: pendingCount },
     { id: "approvals", label: "Godkendelser",   icon: UserCheck,   superOnly: false, badge: approvalCount },
     { id: "tasks",     label: "Opgaver",        icon: ListChecks,  superOnly: false },
+    { id: "templates", label: "Skabeloner",     icon: Copy,        superOnly: false },
     { id: "members",   label: "Medlemmer",      icon: Users,       superOnly: false },
     { id: "teams",     label: "Hold",           icon: Users,       superOnly: true  },
     { id: "roles",     label: "Roller",         icon: ShieldCheck, superOnly: true  },
@@ -123,6 +124,7 @@ const AdminDashboard = ({ currentUser, onBack, tasks, setTasks, onPointsChanged 
         {section === "confirm"   && <AdminConfirmations currentUser={currentUser} onOpenTask={(id) => { setOpenSignups(id); setSection("tasks"); }} />}
         {section === "approvals" && <AdminApprovals onChanged={refreshPending} />}
         {section === "tasks"     && <AdminTasks tasks={tasks} setTasks={setTasks} currentUser={currentUser} openSignups={openSignups} onSignupsOpened={() => setOpenSignups(null)} onConfirmed={() => { refreshPending(); onPointsChanged?.(); }} />}
+        {section === "templates" && <AdminSkabeloner currentUser={currentUser} />}
         {section === "members"   && <AdminMembers currentUserRole={currentUserRole} currentUser={currentUser} />}
         {section === "teams"     && isSuperAdmin && <AdminTeams />}
         {section === "roles"     && isSuperAdmin && <AdminRoles currentUser={currentUser} />}
@@ -510,6 +512,308 @@ const AdminApprovals = ({ onChanged }) => {
           ))}
         </div>
       )}
+    </div>
+  );
+};
+
+// ---- SKABELONER ----
+//
+// Listen klubben bygger opgaver ud fra. Den lå før halvt i koden og halvt i
+// databasen; nu ligger den ét sted, og alt i den kan rettes.
+//
+// Det vigtige at sige højt i skærmbilledet: at rette en skabelon ændrer IKKE
+// opgaver, der allerede er oprettet fra den. En skabelon er et udgangspunkt,
+// ikke en forbindelse. Står det ikke der, retter man en formulering og tror,
+// at næste uges kioskvagt også blev rettet.
+const TOM_SKABELON = {
+  id: null, category: "", title: "", points: 10, difficulty: "Let",
+  spots_total: 2, duration_type: "single", time: "", location: "",
+  icon: "setup", description: "",
+};
+
+const AdminSkabeloner = ({ currentUser }) => {
+  const [alle, setAlle]       = useState(null);
+  const [kat, setKat]         = useState("Alle");
+  const [soeg, setSoeg]       = useState("");
+  const [redigerer, setRed]   = useState(null);   // hele skabelonen, eller TOM_SKABELON
+  const [gemmer, setGemmer]   = useState(false);
+  const [fejl, setFejl]       = useState(null);
+  const [besked, setBesked]   = useState(null);
+  const [gendanner, setGendanner] = useState(false);
+  const [sletter, setSletter] = useState(null);
+
+  // Kvitteringer forsvinder af sig selv efter et stykke tid. Gør man to ting
+  // hurtigt efter hinanden, nåede den FØRSTE nedtælling at slette den ANDEN
+  // besked — og så stod man med en knap, der lod som om den ikke gjorde
+  // noget. Timeren skal derfor kunne afbrydes.
+  const beskedTimer = useRef(null);
+  const visBesked = useCallback((tekst, ms = 4000) => {
+    if (beskedTimer.current) clearTimeout(beskedTimer.current);
+    setBesked(tekst);
+    beskedTimer.current = setTimeout(() => setBesked(null), ms);
+  }, []);
+  useEffect(() => () => { if (beskedTimer.current) clearTimeout(beskedTimer.current); }, []);
+
+  const kategorier = Object.keys(KATEGORI_IKON);
+
+  const hent = useCallback(() => {
+    supabase.from("task_templates").select("*").order("category").order("title")
+      .then(({ data, error }) => {
+        if (error) { setFejl(`Kunne ikke hente skabelonerne: ${error.message}`); setAlle([]); return; }
+        setAlle(data || []);
+      });
+  }, []);
+  useEffect(hent, [hent]);
+
+  const vist = (alle || []).filter((t) => {
+    if (kat !== "Alle" && t.category !== kat) return false;
+    if (soeg && !`${t.title} ${t.description || ""}`.toLowerCase().includes(soeg.toLowerCase())) return false;
+    return true;
+  });
+
+  const gem = async () => {
+    const t = redigerer;
+    if (!t.title.trim() || !t.category) return;
+    setGemmer(true); setFejl(null);
+
+    const felter = {
+      category: t.category, title: t.title.trim(), points: parseInt(t.points) || 10,
+      difficulty: t.difficulty, spots_total: parseInt(t.spots_total) || 2,
+      duration_type: t.duration_type || "single",
+      time: t.time || null, location: t.location || null,
+      icon: t.icon || foreslaaIkon(t.title, t.category),
+      description: t.description || null,
+    };
+
+    const { error } = t.id
+      ? await supabase.from("task_templates").update(felter).eq("id", t.id)
+      : await supabase.from("task_templates").insert({ ...felter, created_by: currentUser?.id || null });
+    setGemmer(false);
+
+    if (error) {
+      const dublet = /duplicate key|unique/i.test(error.message || "");
+      setFejl(dublet
+        ? `Der findes allerede en skabelon, der hedder "${t.title.trim()}" i ${t.category}.`
+        : `Kunne ikke gemme: ${error.message}`);
+      return;
+    }
+    logAction("settings", t.id ? `Rettede skabelonen "${felter.title}"` : `Oprettede skabelonen "${felter.title}"`, currentUser);
+    setRed(null);
+    hent();
+    visBesked(t.id ? "Skabelonen er rettet" : "Skabelonen er oprettet");
+  };
+
+  const slet = async (t) => {
+    const { error } = await supabase.from("task_templates").delete().eq("id", t.id);
+    if (error) { setFejl(`Kunne ikke slette: ${error.message}`); return; }
+    logAction("settings", `Slettede skabelonen "${t.title}"`, currentUser);
+    setSletter(null); setRed(null); hent();
+  };
+
+  const gendan = async () => {
+    setGendanner(true); setFejl(null);
+    const { data, error } = await supabase.rpc("seed_task_templates");
+    setGendanner(false);
+    if (error) { setFejl(`Kunne ikke hente forslagene: ${error.message}`); return; }
+    hent();
+    visBesked(data > 0
+      ? `${data} af appens forslag er lagt ind igen`
+      : "Alle appens forslag er der i forvejen — intet blev ændret", 5000);
+    if (data > 0) logAction("settings", `Hentede ${data} af appens skabeloner tilbage`, currentUser);
+  };
+
+  // ---------------------------------------------------------- REDIGERING ---
+  if (redigerer) {
+    const t = redigerer;
+    const saet = (felt, vaerdi) => setRed((r) => ({ ...r, [felt]: vaerdi }));
+    return (
+      <div className="space-y-3">
+        <button onClick={() => { setRed(null); setFejl(null); }} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-stone-600">
+          <ArrowLeft className="w-4 h-4" />Tilbage til skabelonerne
+        </button>
+
+        <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 space-y-3">
+          <div className="text-[15px] font-bold text-stone-900">
+            {t.id ? "Ret skabelon" : "Ny skabelon"}
+          </div>
+
+          <AdminInput label="Titel" value={t.title} onChange={(e) => saet("title", e.target.value)}
+            placeholder="F.eks. Kioskvagt til alm. hjemmekamp" />
+
+          <div>
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Kategori</label>
+            <select value={t.category} onChange={(e) => saet("category", e.target.value)}
+              className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none">
+              <option value="">Vælg kategori...</option>
+              {kategorier.map((k) => <option key={k} value={k}>{k}</option>)}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <AdminInput label="Point" type="number" value={t.points} onChange={(e) => saet("points", e.target.value)} />
+            <div>
+              <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Sværhed</label>
+              <select value={t.difficulty} onChange={(e) => saet("difficulty", e.target.value)}
+                className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none">
+                {["Let","Medium","Hård"].map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <AdminInput label="Pladser" type="number" value={t.spots_total} onChange={(e) => saet("spots_total", e.target.value)} />
+            <div>
+              <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Varighed</label>
+              <select value={t.duration_type || "single"} onChange={(e) => saet("duration_type", e.target.value)}
+                className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none">
+                {DURATION_OPTIONS.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <AdminInput label="Tidsrum (valgfrit)" value={t.time || ""} onChange={(e) => saet("time", e.target.value)} placeholder="F.eks. 16:30-21:00" />
+          <AdminInput label="Sted (valgfrit)" value={t.location || ""} onChange={(e) => saet("location", e.target.value)} placeholder="F.eks. Randers Hallen" />
+          <AdminInput label="Vejledning (ét trin pr. linje)" textarea value={t.description || ""} onChange={(e) => saet("description", e.target.value)}
+            placeholder={"Mød op 15 min. før...\nTjek udstyret...\nRyd op efter dig..."} />
+
+          <div className="bg-stone-50 border border-stone-200 rounded-xl p-3">
+            <p className="text-[11px] text-stone-600 leading-relaxed">
+              Skabelonen er et udgangspunkt for nye opgaver. At rette den ændrer
+              <strong className="text-stone-800"> ikke</strong> opgaver, der allerede er oprettet.
+            </p>
+          </div>
+
+          {fejl && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-[12px] text-red-800">{fejl}</p>
+            </div>
+          )}
+
+          <div className="flex gap-2 pt-1">
+            {t.id && (
+              <button onClick={() => setSletter(t)} className="px-3 py-3 rounded-xl bg-red-50 border border-red-200 text-red-700">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+            <button onClick={() => { setRed(null); setFejl(null); }} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold text-[13px]">
+              Fortryd
+            </button>
+            <button onClick={gem} disabled={!t.title.trim() || !t.category || gemmer}
+              className="flex-[2] py-3 rounded-xl text-white font-bold text-[13px] shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+              <Save className="w-4 h-4" />{gemmer ? "Gemmer..." : t.id ? "Gem ændringer" : "Opret skabelon"}
+            </button>
+          </div>
+        </div>
+
+        {sletter && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setSletter(null)}>
+            <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="text-[15px] font-bold text-stone-900 mb-1">Slet skabelonen?</div>
+              <p className="text-[13px] text-stone-500 leading-relaxed mb-4">
+                <strong className="text-stone-800">{sletter.title}</strong> forsvinder fra listen.
+                Opgaver, der er oprettet fra den, bliver hvor de er. Er det en af appens egne,
+                kan den hentes tilbage med "Gendan appens forslag".
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setSletter(null)} className="flex-1 py-2.5 rounded-xl bg-stone-100 text-stone-700 text-[13px] font-semibold">Fortryd</button>
+                <button onClick={() => slet(sletter)} className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-[13px] font-bold">Slet</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------- LISTEN ---
+  return (
+    <div className="space-y-3">
+      <div className="bg-violet-50 border border-violet-200 rounded-xl p-3 flex gap-2.5">
+        <Info className="w-4 h-4 text-violet-600 shrink-0 mt-0.5" />
+        <p className="text-[11px] text-violet-900 leading-relaxed">
+          Skabeloner er de opgaver, I bygger nye tjanser ud fra — titel, point, pladser og
+          vejledning, så I slipper for at skrive det samme igen. At rette en skabelon ændrer
+          ikke opgaver, der allerede er oprettet.
+        </p>
+      </div>
+
+      {besked && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
+          <p className="text-[12px] text-emerald-800 font-semibold">{besked}</p>
+        </div>
+      )}
+      {fejl && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+          <p className="text-[12px] text-red-800">{fejl}</p>
+        </div>
+      )}
+
+      <button onClick={() => { setRed({ ...TOM_SKABELON, category: kat === "Alle" ? kategorier[0] : kat }); setFejl(null); }}
+        className="w-full py-3 rounded-xl text-white font-bold text-[13px] shadow-lg flex items-center justify-center gap-2"
+        style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+        <Plus className="w-4 h-4" />Ny skabelon
+      </button>
+
+      <div className="flex items-center gap-2 bg-white rounded-xl px-3 py-2.5 border border-stone-200 shadow-sm">
+        <Search className="w-4 h-4 text-stone-400" />
+        <input value={soeg} onChange={(e) => setSoeg(e.target.value)} placeholder="Søg i skabeloner..." className="flex-1 bg-transparent outline-none text-sm" />
+      </div>
+
+      <ScrollRow className="flex gap-2 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+        {["Alle", ...kategorier].map((k) => (
+          <button key={k} onClick={() => setKat(k)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all whitespace-nowrap ${kat === k ? "text-white" : "bg-white text-stone-700 border border-stone-200"}`}
+            style={kat === k ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+            {k}
+          </button>
+        ))}
+      </ScrollRow>
+
+      {alle === null ? (
+        <p className="text-[12px] text-stone-400 px-1">Henter skabeloner…</p>
+      ) : vist.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-stone-200 p-6 text-center">
+          <p className="text-[13px] text-stone-500">
+            {soeg ? "Ingen skabeloner passer på søgningen." : "Ingen skabeloner her endnu."}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-stone-100 divide-y divide-stone-100 shadow-sm overflow-hidden">
+          {vist.map((t) => (
+            <button key={t.id} onClick={() => { setRed({ ...t }); setFejl(null); }}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-stone-50 active:bg-stone-100 text-left">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                <CategoryIcon type={t.icon} className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[13px] text-stone-900 leading-snug">{t.title}</div>
+                <div className="text-[11px] text-stone-500 truncate">
+                  {t.category}
+                  {t.updated_at && <> · rettet {new Date(t.updated_at).toLocaleDateString("da-DK")}</>}
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[13px] font-black text-emerald-700">{t.points} pt</div>
+                <div className="text-[10px] text-stone-400">{t.difficulty}</div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4">
+        <div className="text-[13px] font-bold text-stone-900 mb-1">Gendan appens forslag</div>
+        <p className="text-[12px] text-stone-500 leading-relaxed mb-3">
+          Lægger de 40 skabeloner ind, appen kom med. Den henter kun dem, der mangler —
+          jeres egne rettelser og jeres egne skabeloner bliver ikke rørt.
+        </p>
+        <button onClick={gendan} disabled={gendanner}
+          className="w-full py-2.5 rounded-xl border border-stone-200 text-stone-700 font-semibold text-[13px] hover:bg-stone-50 disabled:opacity-50">
+          {gendanner ? "Henter..." : "Hent appens forslag"}
+        </button>
+      </div>
     </div>
   );
 };
@@ -1357,88 +1661,19 @@ const computeDateDisplay = (startISO, durationType) => {
 };
 
 
-const TASK_TEMPLATES = [
-  {
-    label: "Kampafvikling & Sekretærbord", icon: "whistle",
-    templates: [
-      { title: "Dømme kampe som klubdommer (lokalrækker)", points: 15, difficulty: "Medium", description: "Døm en kamp i lokalrækkerne som klubdommer.\nMød op 15 min. før kampstart.\nAflever kampskema til halsoveren efter kampen." },
-      { title: "Sekretærbordet – elektronisk holdkort/point", points: 10, difficulty: "Let", description: "Sid ved sekretærbordet og før elektronisk holdkort.\nVær på plads senest 20 min. før kampstart.\nKontakt kampansvarlig ved tvivl." },
-      { title: "Halspeaker til divisions-/hjemmekamp", points: 10, difficulty: "Let", description: "Vær halspeaker ved hjemmekampe.\nAnnoncér hold, spillerskift og resultater.\nBrug klubbens speaker-udstyr." },
-      { title: "Linjedommer til stor kamp", points: 10, difficulty: "Let", description: "Vær linjedommer ved en større kamp.\nMød op 30 min. før kampstart til briefing.\nFølg dommernes anvisninger under kampen." },
-      { title: "Opsætning/nedtagning af bane og net", points: 5, difficulty: "Let", description: "Opsæt eller tag baner og net ned ved kampdag.\nTjek at net er i korrekt højde.\nLæg alt udstyr tilbage på rette plads." },
-      { title: "Kampansvarlig/Halsover", points: 15, difficulty: "Medium", description: "Mød op som den første og lås hallen op.\nSørg for at alt er klar til kampen.\nLuk hallen og aflevér nøgler til rette vedkommende." },
-    ],
-  },
-  {
-    label: "Hygge og Socialt", icon: "cake",
-    templates: [
-      { title: "Formand for festudvalget (Sæson)", points: 75, difficulty: "Hård", description: "Vær formand for festudvalget hele sæsonen.\nPlanlæg og koordinér alle sociale arrangementer.\nRapportér til bestyrelsen." },
-      { title: "Udvalgsmedlem i festudvalget (Sæson)", points: 40, difficulty: "Medium", description: "Deltag aktivt i festudvalgets arbejde hele sæsonen.\nHjælp med planlægning og praktisk afholdelse af arrangementer." },
-      { title: "Klargøring og madlavning til fællesspisning", points: 15, difficulty: "Let", description: "Hjælp med at klargøre og lave mad til fællesspisning.\nMød op 1 time før arrangementet starter.\nRyd op bagefter." },
-      { title: "Kioskvagt til alm. hjemmekamp (ca. 2-3 timer)", points: 10, difficulty: "Let", description: "Bemand kiosken under en hjemmekamp.\nSørg for at varer er fyldt op.\nAflever kassen til kassereren efter kampen." },
-      { title: "Bage kage / lave madpakker til et hold", points: 5, difficulty: "Let", description: "Bag kage eller lav madpakker til et hold.\nAftaler omfang med holdleder." },
-      { title: "Oprydning/Rengøring efter klubfest", points: 15, difficulty: "Let", description: "Hjælp med oprydning og rengøring efter klubfest eller arrangement.\nBliv til alt er ryddet op og hallen er klar til næste brug." },
-      { title: "Indkøber til kiosken (Sæson)", points: 50, difficulty: "Medium", description: "Stå for indkøb til klubkiosken hele sæsonen.\nHold styr på lagerstatus og bestil varer.\nSørg for at priser er opdaterede." },
-    ],
-  },
-  {
-    label: "Holdleder & Transport", icon: "setup",
-    templates: [
-      { title: "Fast holdleder for et ungdoms- eller seniorhold (Sæson)", points: 75, difficulty: "Hård", description: "Vær fast holdleder for et hold hele sæsonen.\nKommunikér med forældre, spillere og trænere.\nSørg for tilmelding, kørsel og praktiske forhold." },
-      { title: "Kørsel til udekamp inkl. heppekor", points: 15, difficulty: "Let", description: "Kør spillere til udekamp og hep holdet under kampen.\nAftaler mødested og tidspunkt med holdleder.\nSørg for at alle kommer sikkert hjem." },
-      { title: "Kørsel til udekamp – kun aflevering/afhentning", points: 5, difficulty: "Let", description: "Kør spillere til eller fra udekamp.\nAftaler tidspunkt og sted med holdleder." },
-      { title: "Fast vaskemaskine – holdets trøjer hele sæsonen", points: 50, difficulty: "Medium", description: "Vask holdets spillertøj efter samtlige kampe og stævner hele sæsonen.\nAftaler afhentning og aflevering med holdleder." },
-      { title: "Vask af spillertøj efter én kamp/stævne", points: 5, difficulty: "Let", description: "Vask holdets spillertøj efter én kamp eller et stævne.\nAftaler afhentning og aflevering med holdleder." },
-    ],
-  },
-  {
-    label: "Stævneplanlægning og Afholdelse", icon: "whistle",
-    templates: [
-      { title: "Stævneleder/Hovedansvarlig for klubbens eget stævne", points: 75, difficulty: "Hård", description: "Vær overordnet ansvarlig for afviklingen af et klubstævne.\nKoordinér alle frivillige og leverandører.\nSørg for at stævneprogrammet følges." },
-      { title: "Medlem af stævneudvalg (planlægning)", points: 40, difficulty: "Medium", description: "Deltag i planlægningen af klubbens stævne.\nMød til udvalgets møder og tag ansvar for aftalte opgaver." },
-      { title: "Natvagt/Halsover ved overnatningsstævne", points: 30, difficulty: "Medium", description: "Vær halsover om natten ved overnatningsstævne (ca. kl. 23–07).\nSørg for ro og tryghed for de deltagende unge." },
-      { title: "Stævnesekretariatet – registrér resultater (halvdags)", points: 20, difficulty: "Let", description: "Sid i stævnesekretariatet og registrér resultater og tider.\nStyr kampuret og koordinér med dommerne." },
-      { title: "Kioskvagt ved stort weekendstævne (vagt á 3 timer)", points: 15, difficulty: "Let", description: "Bemand kiosken i 3 timer under weekendstævnet.\nSørg for at varer er fyldt op løbende." },
-      { title: "Opsætning fredag aften inden stævne / Hovedrengøring søndag", points: 15, difficulty: "Let", description: "Hjælp med at sætte hallen op fredag aften eller stå for hovedrengøring søndag.\nFølg stævnelederens anvisninger." },
-    ],
-  },
-  {
-    label: "Kommunikation & PR", icon: "coffee",
-    templates: [
-      { title: "Webmaster / Hovedansvarlig for SoMe (Sæson)", points: 75, difficulty: "Hård", description: "Vær ansvarlig for klubbens hjemmeside og sociale medier hele sæsonen.\nPost regelmæssige opdateringer og resultater.\nKoordinér indhold med bestyrelsen." },
-      { title: "Sponsorudvalg (Sæson – indhente sponsorer)", points: 75, difficulty: "Hård", description: "Vær en del af sponsorudvalget og indhent sponsorer til klubben hele sæsonen.\nKontakt lokale virksomheder og lav sponsoraftaler." },
-      { title: "Fotograf til kampdag/stævne inkl. redigering og deling", points: 15, difficulty: "Let", description: "Tag billeder ved en kampdag eller stævne.\nRedigér udvalgte billeder og del med klubben.\nBrug klubbens fotokanaler til deling." },
-      { title: "Skrive kampreferater / artikler til hjemmeside/Facebook", points: 10, difficulty: "Let", description: "Skriv et kort kampreferat eller en artikel til hjemmeside eller Facebook.\nAflever tekst til SoMe-ansvarlig senest dagen efter kampen." },
-      { title: "Lave grafisk materiale (plakater, opslag, stævneprogram)", points: 10, difficulty: "Let", description: "Lav grafisk materiale til klubbens aktiviteter.\nBrug klubbens farver og logo.\nAflever filer til SoMe-ansvarlig i aftalt format." },
-      { title: "Dele flyers / hænge plakater op i lokalområdet", points: 5, difficulty: "Let", description: "Del flyers eller hæng plakater op i lokalområdet.\nFå materiale udleveret af SoMe-ansvarlig.\nIndmeld hvilke steder du har besøgt." },
-    ],
-  },
-  {
-    label: "Faciliteter & Materialer", icon: "setup",
-    templates: [
-      { title: "Materialeansvarlig (Sæson)", points: 75, difficulty: "Hård", description: "Hold overblik over bolde, tøj, net og øvrigt udstyr hele sæsonen.\nRegistrér slitage og bestil nyt ved behov.\nRapportér til bestyrelsen." },
-      { title: "Klargøring af beachvolleyball-baner (arbejdsdag)", points: 20, difficulty: "Medium", description: "Hjælp med at klargøre beachvolleyball-banerne til sæsonen.\nMød op til den aftalte arbejdsdag.\nMedtag egnet fodtøj og arbejdstøj." },
-      { title: "Vedligehold af beach-baner (luge ukrudt, rive baner)", points: 10, difficulty: "Let", description: "Vedligehold beachbanerne ved at luge ukrudt og rive sand.\nCa. 2 timers arbejde pr. gang." },
-      { title: "Hovedoprydning og organisering af boldrum", points: 15, difficulty: "Let", description: "Ryd op og organiser klubbens boldrum.\nSørg for at alt udstyr er på rette plads og mærket." },
-      { title: "Småreparationer (sy net, fikse boldvogne, pumpe bolde)", points: 10, difficulty: "Let", description: "Foretag småreparationer på klubbens udstyr.\nSy net, reparer boldvogne eller pump bolde.\nRapportér større skader til materialeansvarlig." },
-    ],
-  },
-  {
-    label: "Klubadministration", icon: "setup",
-    templates: [
-      { title: "Bestyrelsesmedlem (Formand, Kasserer m.fl.)", points: 100, difficulty: "Hård", description: "Sidder i klubbens bestyrelse hele sæsonen.\nDeltager i bestyrelsesmøder og varetager bestyrelsespost.\nRapporterer til generalforsamlingen." },
-      { title: "Revisor / Økonomisk hjælp (Sæson)", points: 40, difficulty: "Medium", description: "Hjælp med revision eller økonomi hele sæsonen.\nGennemgå regnskab og bilag.\nRapportér til kassereren." },
-      { title: "Børneattest-ansvarlig (Sæson)", points: 40, difficulty: "Medium", description: "Indhent og tjek børneattester for alle relevante frivillige.\nHold register opdateret hele sæsonen.\nRapportér mangler til formanden." },
-      { title: "Hjælp til medlemsregistrering og kontingentkørsel", points: 25, difficulty: "Let", description: "Hjælp med at registrere nye medlemmer og køre kontingentopkrævning.\nAftaler opgaveomfang med kassereren." },
-      { title: "Fonds-ansøger (skrive og sende fondansøgninger)", points: 25, difficulty: "Medium", description: "Skriv og send ansøgninger til fonde og puljer på vegne af klubben.\nKoordinér med bestyrelsen om behovsområder.\nRapportér svar og tildelinger." },
-    ],
-  },
-];
+// De 40 skabeloner, der stod her, ligger nu i databasen (task_templates).
+// De blev flyttet, fordi halvdelen af listen lå det forkerte sted: klubben
+// kunne rette sine egne, men ikke appens — og efter et halvt års brug ved
+// klubben bedre end koden, hvad der står i deres kioskvagt.
+//
+// Originalerne findes stadig, i seed_task_templates(). "Gendan appens
+// forslag" under Admin → Skabeloner henter dem tilbage; den lægger kun det
+// ind, der mangler, og rører ikke det, klubben selv har rettet.
 
 const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const isNew = !task;
   const [step, setStep]             = useState(isNew ? "pick" : "form");
-  const [tplCat, setTplCat]         = useState(TASK_TEMPLATES[0].label);
+  const [tplCat, setTplCat]         = useState(Object.keys(KATEGORI_IKON)[0]);
   const [title, setTitle]           = useState(task?.title || "");
   const [category, setCategory]     = useState(task?.category || "Kampafvikling & Sekretærbord");
   const [icon, setIcon]             = useState(task?.icon || "whistle");
@@ -1491,7 +1726,13 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const pointsChanged = !isNew && parseInt(visPoints) !== (task?.points ?? null);
   const affected      = (claimCounts?.signed_up || 0) + (claimCounts?.completed || 0);
 
+  // Hvilken skabelon opgaven kom fra. Uden den kan "Opdatér skabelonen" ikke
+  // vide, hvad den skal opdatere — og en titelændring ville stille og roligt
+  // lave en ny skabelon ved siden af den gamle.
+  const [fraTpl, setFraTpl] = useState(null);
+
   const applyTemplate = (tpl, catLabel, ekstra) => {
+    setFraTpl(ekstra?.id ? { id: ekstra.id, title: tpl.title, category: catLabel } : null);
     setTitle(tpl.title); setCategory(catLabel);
     // Klubbens egne skabeloner husker det ikon, admin valgte. Appens egne
     // forslag har ikke noget eget ikon — der er titlen bedre end kategorien.
@@ -1521,8 +1762,8 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
     onSave({ title, category, icon: visIkon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description });
   };
 
-  // Klubbens egne skabeloner, gemt i databasen. De staar side om side med
-  // appens indbyggede i vaelgeren.
+  // Skabelonerne. Alle ligger i databasen nu — både dem appen kom med og dem,
+  // klubben selv har bygget. Der er ikke længere to slags.
   const [egne, setEgne] = useState([]);
   const [gemmerTpl, setGemmerTpl] = useState(false);
   const [tplBesked, setTplBesked] = useState(null);
@@ -1532,38 +1773,58 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   }, []);
   useEffect(hentEgne, [hentEgne]);
 
-  // Gem den udfyldte opgave som skabelon. Dato, tidspunkt og pladser er det,
-  // der skifter fra gang til gang — titel, point, vejledning og kategori er
-  // det, man ikke gider skrive igen.
-  const gemSomSkabelon = async () => {
+  // Felterne, en skabelon husker. Dato og tidspunkt for DAGEN er netop det,
+  // den ikke skal huske — den er ny hver gang.
+  const tplFelter = () => ({
+    category, title: title.trim(), points: parseInt(visPoints) || 10,
+    difficulty, spots_total: parseInt(spots) || 2, duration_type: durationType,
+    time: time || null, location: location || null, icon: visIkon,
+    description: description || null,
+  });
+
+  // Kom opgaven fra en skabelon, og hedder den stadig det samme? Så er
+  // "opdatér" det, man mener. Er titlen ændret, er det tvetydigt — og dér
+  // skal appen spørge i stedet for at gætte: gemmer den bare, står der
+  // pludselig to skabeloner, og ingen opdager det før næste sæson.
+  const tplUaendretTitel = fraTpl && fraTpl.title === title.trim() && fraTpl.category === category;
+  const tplTitelAendret  = fraTpl && !tplUaendretTitel;
+
+  const skrivSkabelon = async (maade) => {
     if (!title.trim()) return;
     setGemmerTpl(true);
     setTplBesked(null);
-    const { error } = await supabase.from("task_templates").upsert({
-      category, title: title.trim(), points: parseInt(visPoints) || 10,
-      difficulty, spots_total: parseInt(spots) || 2, duration_type: durationType,
-      time: time || null, location: location || null, icon: visIkon,
-      description: description || null,
-      created_by: currentUser?.id || null,
-    }, { onConflict: "category,title" });
+
+    let error;
+    if (maade === "opdater" && fraTpl) {
+      ({ error } = await supabase.from("task_templates").update(tplFelter()).eq("id", fraTpl.id));
+    } else {
+      ({ error } = await supabase.from("task_templates")
+        .upsert({ ...tplFelter(), created_by: currentUser?.id || null },
+                { onConflict: "category,title" }));
+    }
     setGemmerTpl(false);
+
     if (error) {
-      setTplBesked({ type: "fejl", text: `Kunne ikke gemme skabelonen: ${error.message}` });
+      // Den unikke nøgle på kategori+titel er den hyppigste grund, og
+      // "duplicate key value violates unique constraint" siger ingenting
+      // til en, der bare ville rette en stavefejl.
+      const dublet = /duplicate key|unique/i.test(error.message || "");
+      setTplBesked({ type: "fejl", text: dublet
+        ? `Der findes allerede en skabelon, der hedder "${title.trim()}" i ${category}.`
+        : `Kunne ikke gemme skabelonen: ${error.message}` });
       return;
     }
-    setTplBesked({ type: "ok", text: `Gemt som skabelon under "${category}"` });
+
+    if (maade === "opdater") {
+      setFraTpl((f) => f && { ...f, title: title.trim(), category });
+      setTplBesked({ type: "ok", text: `Skabelonen er opdateret` });
+    } else {
+      setTplBesked({ type: "ok", text: `Gemt som skabelon under "${category}"` });
+    }
     hentEgne();
     setTimeout(() => setTplBesked(null), 4000);
   };
 
-  const sletSkabelon = async (id) => {
-    await supabase.from("task_templates").delete().eq("id", id);
-    hentEgne();
-  };
-
-  const activeTplGroup = TASK_TEMPLATES.find((g) => g.label === tplCat) || TASK_TEMPLATES[0];
-
-  // Klubbens egne i den valgte kategori
   const egneIKategori = egne.filter((t) => t.category === tplCat);
 
   if (step === "pick") {
@@ -1578,61 +1839,47 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
           </div>
           {/* Category tabs */}
           <ScrollRow wrapperClassName="shrink-0" className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide border-b border-stone-100">
-            {TASK_TEMPLATES.map((g) => (
-              <button key={g.label} onClick={() => setTplCat(g.label)}
-                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === g.label ? "text-white" : "bg-stone-100 text-stone-700"}`}
-                style={tplCat === g.label ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
-                {g.label}
+            {Object.keys(KATEGORI_IKON).map((label) => (
+              <button key={label} onClick={() => setTplCat(label)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${tplCat === label ? "text-white" : "bg-stone-100 text-stone-700"}`}
+                style={tplCat === label ? { background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` } : {}}>
+                {label}
               </button>
             ))}
           </ScrollRow>
-          {/* Template list */}
+          {/* Skabelonerne i den valgte kategori. Én liste — der er ikke
+              længere forskel på "appens" og "klubbens". */}
           <div className="overflow-y-auto flex-1 p-4 space-y-2 pb-24">
-            {/* Klubbens egne foerst — det er dem, admin selv har bygget */}
-            {egneIKategori.length > 0 && (
-              <>
-                <div className="text-[10px] uppercase tracking-widest font-bold text-emerald-700 pt-1">
-                  Klubbens egne
-                </div>
-                {egneIKategori.map((tpl) => (
-                  <div key={tpl.id} className="relative group">
-                    <button
-                      onClick={() => applyTemplate(
-                        { title: tpl.title, points: tpl.points, difficulty: tpl.difficulty, description: tpl.description || "" },
-                        tpl.category,
-                        { spots: tpl.spots_total, time: tpl.time, location: tpl.location, durationType: tpl.duration_type, icon: tpl.icon }
-                      )}
-                      className="w-full text-left bg-emerald-50/60 hover:bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 pr-11 transition-all"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
-                        <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full whitespace-nowrap">{tpl.points} pt</span>
-                      </div>
-                      <span className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-stone-200 text-stone-600">{tpl.difficulty}</span>
-                    </button>
-                    <button
-                      onClick={() => sletSkabelon(tpl.id)}
-                      title="Slet skabelon"
-                      className="absolute top-2.5 right-2.5 p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                <div className="text-[10px] uppercase tracking-widest font-bold text-stone-400 pt-3">
-                  Appens forslag
-                </div>
-              </>
-            )}
-
-            {activeTplGroup.templates.map((tpl) => (
-              <button key={tpl.title} onClick={() => applyTemplate(tpl, activeTplGroup.label)}
-                className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all">
+            {egneIKategori.length === 0 ? (
+              <div className="bg-white border border-dashed border-stone-200 rounded-xl p-5 text-center">
+                <p className="text-[13px] text-stone-500 leading-snug">
+                  Ingen skabeloner i <strong className="text-stone-700">{tplCat}</strong> endnu.
+                </p>
+                <p className="text-[11px] text-stone-400 mt-1">
+                  Byg opgaven nedenfor, og gem den som skabelon — eller hent appens forslag
+                  tilbage under <strong>Admin → Skabeloner</strong>.
+                </p>
+              </div>
+            ) : egneIKategori.map((tpl) => (
+              <button
+                key={tpl.id}
+                onClick={() => applyTemplate(
+                  { title: tpl.title, points: tpl.points, difficulty: tpl.difficulty, description: tpl.description || "" },
+                  tpl.category,
+                  { id: tpl.id, spots: tpl.spots_total, time: tpl.time, location: tpl.location, durationType: tpl.duration_type, icon: tpl.icon }
+                )}
+                className="w-full text-left bg-stone-50 hover:bg-emerald-50 border border-stone-200 hover:border-emerald-300 rounded-xl px-4 py-3 transition-all"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-semibold text-[13px] text-stone-900 leading-snug">{tpl.title}</span>
                   <span className="shrink-0 text-[11px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full whitespace-nowrap">{tpl.points} pt</span>
                 </div>
-                <span className={`inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${tpl.difficulty === "Hård" ? "bg-pink-100 text-pink-700" : tpl.difficulty === "Medium" ? "bg-violet-100 text-violet-700" : "bg-stone-200 text-stone-600"}`}>{tpl.difficulty}</span>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${tpl.difficulty === "Hård" ? "bg-pink-100 text-pink-700" : tpl.difficulty === "Medium" ? "bg-violet-100 text-violet-700" : "bg-stone-200 text-stone-600"}`}>{tpl.difficulty}</span>
+                  {tpl.updated_at && (
+                    <span className="text-[10px] text-stone-400">rettet af klubben</span>
+                  )}
+                </div>
               </button>
             ))}
           </div>
@@ -1839,16 +2086,48 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
             </div>
           )}
 
-          {/* Gem den udfyldte opgave til naeste gang. Kraever kun en titel —
-              dato og tidspunkt er netop det, en skabelon IKKE skal huske. */}
-          <button
-            onClick={gemSomSkabelon}
-            disabled={!title.trim() || gemmerTpl}
-            className="w-full py-2.5 rounded-xl border border-stone-200 text-stone-700 font-semibold text-[13px] flex items-center justify-center gap-2 disabled:opacity-50 hover:bg-stone-50"
-          >
-            <Copy className="w-4 h-4 text-stone-500" />
-            {gemmerTpl ? "Gemmer..." : `Gem som skabelon i "${category}"`}
-          </button>
+          {/* Skabelonen. Kræver kun en titel — dato og tidspunkt er netop
+              det, en skabelon IKKE skal huske.
+
+              Tre tilstande, fordi der er tre forskellige hensigter:
+              opdatér den, jeg kom fra · gem en ny · omdøb (og så skal man
+              vælge, for ellers ender man med to). */}
+          {tplTitelAendret ? (
+            <div className="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2">
+              <p className="text-[12px] text-amber-900 leading-relaxed">
+                Du har ændret titlen. Skal <strong>«{fraTpl.title}»</strong> rettes,
+                eller skal det være en ny skabelon ved siden af?
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => skrivSkabelon("opdater")} disabled={gemmerTpl}
+                  className="flex-1 py-2 rounded-lg bg-white border border-amber-300 text-amber-900 font-bold text-[12px] disabled:opacity-50">
+                  Ret den gamle
+                </button>
+                <button onClick={() => skrivSkabelon("ny")} disabled={gemmerTpl}
+                  className="flex-1 py-2 rounded-lg bg-white border border-stone-200 text-stone-700 font-bold text-[12px] disabled:opacity-50">
+                  Gem som ny
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => skrivSkabelon(tplUaendretTitel ? "opdater" : "ny")}
+              disabled={!title.trim() || gemmerTpl}
+              className={`w-full py-2.5 rounded-xl border font-semibold text-[13px] flex items-center justify-center gap-2 disabled:opacity-50 ${tplUaendretTitel ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-stone-200 text-stone-700 hover:bg-stone-50"}`}
+            >
+              <Copy className={`w-4 h-4 ${tplUaendretTitel ? "text-emerald-600" : "text-stone-500"}`} />
+              {gemmerTpl ? "Gemmer..."
+                : tplUaendretTitel ? "Opdatér skabelonen"
+                : `Gem som skabelon i "${category}"`}
+            </button>
+          )}
+
+          {tplUaendretTitel && (
+            <p className="text-[11px] text-stone-400 leading-relaxed -mt-1">
+              Ændrer kun skabelonen til næste gang. Opgaver, der allerede er oprettet fra
+              den, står som de står.
+            </p>
+          )}
 
           <div className="flex gap-2">
             <button onClick={onClose} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold">Annullér</button>

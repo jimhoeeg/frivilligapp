@@ -5,7 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  // vejledning/ er et node-script, der tager skaermbilleder — ikke appkode.
+  // Uden den her linje falder "npx eslint ." paa require og __dirname, og saa
+  // holder man op med at koere den.
+  globalIgnores(['dist', 'vejledning']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

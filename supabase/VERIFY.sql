@@ -99,7 +99,8 @@ select 7, 'Alle funktioner appen kalder findes',
         ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows'),('task_signups'),
         ('my_badges'),
         ('bidrag_point'),('er_hjaelper'),('admin_set_helper'),('my_helper_members'),
-        ('my_helpers'),('my_bidrag'),('set_claim_credit'),('kun_hjaelper')
+        ('my_helpers'),('my_bidrag'),('set_claim_credit'),('kun_hjaelper'),
+        ('seed_task_templates')
       ) as f(navn)
       where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                          where n.nspname='public' and p.proname=f.navn)) = 0
@@ -114,11 +115,12 @@ select 7, 'Alle funktioner appen kalder findes',
         ('admin_season_reset_preview'),('admin_season_list'),('admin_season_rows'),('task_signups'),
         ('my_badges'),
         ('bidrag_point'),('er_hjaelper'),('admin_set_helper'),('my_helper_members'),
-        ('my_helpers'),('my_bidrag'),('set_claim_credit'),('kun_hjaelper')
+        ('my_helpers'),('my_bidrag'),('set_claim_credit'),('kun_hjaelper'),
+        ('seed_task_templates')
       ) as f(navn)
       where not exists (select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                          where n.nspname='public' and p.proname=f.navn)),
-      'alle 33 findes')
+      'alle 34 findes')
 
 -- ---------------------------------------------------------- RETTIGHEDER ----
 union all
@@ -235,10 +237,10 @@ union all
 select 18.6, 'Kun appens egne funktioner er aabne for indloggede',
   case when (select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
               where n.nspname='public'
-                and has_function_privilege('authenticated', p.oid, 'execute')) = 33
+                and has_function_privilege('authenticated', p.oid, 'execute')) = 34
        then 'OK' else 'FEJL' end,
   (select count(*) filter (where has_function_privilege('authenticated', p.oid, 'execute'))::text
-          || ' af ' || count(*)::text || ' – forventet 33'
+          || ' af ' || count(*)::text || ' – forventet 34'
      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public')
 
 union all
