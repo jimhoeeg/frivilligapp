@@ -22,7 +22,7 @@ const trin = (...t) => t.map((text, i) => ({ step_order:i+1, text }));
 const OPGAVER = [
   { id:"t1", title:"Kioskvagt ved hjemmekamp", category:"Hygge og Socialt", icon:"kiosk",
     date:"lør. 3. okt", date_full:"2026-10-03", date_end:null, duration_type:"single",
-    time:"16:30-21:00", location:"Randers Hallen", points:15, difficulty:"Let", urgent:false,
+    time:"16:30-21:00", location:"Randers Hallen", points:30, difficulty:"Let", urgent:false,
     spots_left:1, spots_total:3, created_at:"2026-09-10T08:00:00Z",
     task_steps: trin("Mød 30 min før kampstart og tænd kaffemaskinen.",
                      "Sælg fra kiosken i pauserne — kassen står i skabet bag disken.",
@@ -30,42 +30,44 @@ const OPGAVER = [
                      "Ryd op, sluk og lås.") },
   { id:"t2", title:"Dommerbord og skriver ved hjemmekamp", category:"Kampafvikling", icon:"whistle",
     date:"søn. 4. okt", date_full:"2026-10-04", date_end:null, duration_type:"single",
-    time:"12:00-15:00", location:"Randers Hallen", points:15, difficulty:"Medium", urgent:true,
+    time:"12:00-15:00", location:"Randers Hallen", points:30, difficulty:"Medium", urgent:true,
     spots_left:1, spots_total:3, created_at:"2026-09-18T08:00:00Z",
     task_steps: trin("Mød 20 min før kampstart ved dommerbordet.",
                      "Skriv kampskemaet — en fra holdet viser dig det første sæt.",
                      "Aflever skemaet til dommeren efter kampen.") },
   { id:"t3", title:"Bage kage til hjemmekamp", category:"Hygge og Socialt", icon:"cake",
     date:"lør. 10. okt", date_full:"2026-10-10", date_end:null, duration_type:"single",
-    time:"Afleveres inden 15:00", location:"Randers Hallen", points:10, difficulty:"Let", urgent:false,
+    time:"Afleveres inden 15:00", location:"Randers Hallen", points:20, difficulty:"Let", urgent:false,
     spots_left:2, spots_total:4, created_at:"2026-09-12T08:00:00Z",
     task_steps: trin("Bag en kage til ca. 20 personer.", "Aflever den i kiosken inden kampstart.") },
   { id:"t4", title:"Opsætning af net og baner", category:"Faciliteter og Materialer", icon:"setup",
     date:"lør. 10. okt", date_full:"2026-10-10", date_end:null, duration_type:"single",
-    time:"08:30-10:00", location:"Randers Hallen", points:10, difficulty:"Let", urgent:false,
+    time:"08:30-10:00", location:"Randers Hallen", points:20, difficulty:"Let", urgent:false,
     spots_left:3, spots_total:4, created_at:"2026-09-14T08:00:00Z",
     task_steps: trin("Hent net og stolper i depotet.", "Sæt banerne op efter stregerne.",
                      "Tjek at nettet er i den rigtige højde.") },
   { id:"t5", title:"Holdleder for Damer 2 (halvsæson)", category:"Holdleder og Transport", icon:"team",
     date:"sep. 2026 – mar. 2027", date_full:"2026-09-01", date_end:"2027-03-31", duration_type:"half_season",
-    time:"", location:"Følger holdet", points:75, difficulty:"Hård", urgent:false,
+    time:"", location:"Følger holdet", points:150, difficulty:"Hård", urgent:false,
     spots_left:1, spots_total:1, created_at:"2026-08-25T08:00:00Z",
     task_steps: trin("Hold kontakt til træner og spillere om kampe og afbud.",
                      "Sørg for kørsel til udekampe.",
                      "Meld resultater ind efter kampene.") },
   { id:"t6", title:"Fotograf til stævne", category:"Kommunikation og SoMe", icon:"camera",
     date:"søn. 18. okt", date_full:"2026-10-18", date_end:null, duration_type:"single",
-    time:"09:00-15:00", location:"Randers Hallen", points:15, difficulty:"Let", urgent:false,
+    time:"09:00-15:00", location:"Randers Hallen", points:30, difficulty:"Let", urgent:false,
     spots_left:2, spots_total:2, created_at:"2026-09-20T08:00:00Z",
     task_steps: trin("Tag billeder i løbet af dagen.", "Send de bedste til klubbens SoMe-ansvarlige.") },
 ];
 
 // Hun står på to: én gennemført, én kommende.
 const MINE = [
-  { id:"c1", task_id:"t1", status:"signed_up", points_awarded:15, credited_to:null },
+  // Skal matche opgavens pointtal, ellers staar der "15 pt afventer
+  // bekraeftelse" under et kort, der siger 30.
+  { id:"c1", task_id:"t1", status:"signed_up", points_awarded:30, credited_to:null },
 ];
 const FULDFOERTE = [
-  { id:"c9", task_id:"t9", status:"completed", points_awarded:15, credited_to:null },
+  { id:"c9", task_id:"t9", status:"completed", points_awarded:30, credited_to:null },
 ];
 
 const RANGLISTE = [
@@ -126,8 +128,13 @@ const opsaet = async (ctx, { medMine = true } = {}) => {
       if ((url.search || "").includes("points=gt.")) {
         const graense = parseInt((url.search.match(/points=gt\.(\d+)/) || [])[1] || "0", 10);
         const over = RANGLISTE.filter(m => (m.points || 0) > graense).length;
+        // content-range er ikke en af de headere, browseren maa laese over
+        // CORS af sig selv. Uden expose-headers ser supabase-js ingen
+        // taelling, og dashboardet skriver plads #1 til alle.
         return r.fulfill({ status:200, contentType:"application/json",
-          headers:{ "content-range": `*/${over}` }, body:"[]" });
+          headers:{ "content-range": `*/${over}`,
+                    "access-control-expose-headers": "content-range" },
+          body:"[]" });
       }
       return json(RANGLISTE);
     }
@@ -205,13 +212,27 @@ const gem = async (page, navn, { helSide = false } = {}) => {
   await p.waitForTimeout(500);
 
   // 6. Dashboard med point
-  await p.getByRole("button",{name:"Dashboard"}).click();
+  await p.getByRole("button",{name:"Dashboard",exact:true}).click();
   await p.waitForTimeout(1000);
   await gem(p, "dashboard-point");
+  // Maerkerne staar laengere nede. Uden rulningen blev 06 en noejagtig kopi
+  // af 05 — samme billede, to forskellige billedtekster.
+  // scrollIntoViewIfNeeded rykkede ingenting her, og 06 blev en kopi af 05.
+  // Vinduet rulles i stedet direkte, og der tjekkes bagefter, at maerkerne
+  // faktisk staar paa skaermen.
+  await p.evaluate(() => window.scrollTo(0, 900));
+  await p.waitForTimeout(700);
+  const maerkerSynlige = await p.evaluate(() => {
+    const el = [...document.querySelectorAll("h2")].find((h) => /Fundne mærker/.test(h.textContent));
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.top >= 0 && r.top < window.innerHeight;
+  });
+  if (!maerkerSynlige) console.log("  ADVARSEL: maerkerne er ikke paa skaermen");
   await gem(p, "dashboard-maerker");
 
   // 7. Kalender
-  await p.getByRole("button",{name:"Opgaver"}).click();
+  await p.getByRole("button",{name:"Opgaver",exact:true}).click();
   await p.waitForTimeout(600);
   // De tre runde knapper øverst: kalender, bytte, klokke. Kalenderen er den første.
   await p.locator("button.rounded-full.bg-white\\/10").first().click();
@@ -222,12 +243,12 @@ const gem = async (page, navn, { helSide = false } = {}) => {
   await p.waitForTimeout(700);
 
   // 8. Rangliste
-  await p.getByRole("button",{name:"Rangliste"}).click();
+  await p.getByRole("button",{name:"Rangliste",exact:true}).click();
   await p.waitForTimeout(900);
   await gem(p, "rangliste");
 
   // 9. Byttecentralen — de runde knapper findes kun paa opgavefanen.
-  await p.getByRole("button",{name:"Opgaver"}).click();
+  await p.getByRole("button",{name:"Opgaver",exact:true}).click();
   await p.waitForTimeout(700);
   await p.locator("button.rounded-full.bg-white\\/10").nth(1).click();
   await p.waitForTimeout(900);
@@ -239,11 +260,14 @@ const gem = async (page, navn, { helSide = false } = {}) => {
   await p.locator("button.rounded-full.bg-white\\/10").nth(2).click();
   await p.waitForTimeout(900);
   await gem(p, "beskeder");
-  await p.getByRole("button",{name:/Luk|Tilbage/}).first().click().catch(()=>{});
-  await p.waitForTimeout(600);
+  // Beskedpanelet ligger som et overlay hen over bundmenuen. At lukke det
+  // med en knap er skroebeligt; en genindlaesning rydder skaermen sikkert.
+  await p.reload({ waitUntil:"commit" });
+  await p.waitForFunction(() => document.body.innerText.includes("Frivillig-feed"), null, { timeout:20000 }).catch(()=>{});
+  await p.waitForTimeout(1000);
 
   // 11. Profil
-  await p.getByRole("button",{name:"Profil"}).click();
+  await p.getByRole("button",{name:"Profil",exact:true}).click();
   await p.waitForTimeout(900);
   await gem(p, "profil");
 
