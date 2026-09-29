@@ -1606,10 +1606,10 @@ const TaskDatePicker = ({ value, onChange }) => {
 // Tallene er ikke fundet paa. De er laest ud af klubbens egne 40 skabeloner,
 // saa et forslag ligner det, klubben allerede har besluttet:
 //
-//   Let      5-25 pt   (median 10)  - en enkelt vagt
-//   Medium  15-50 pt   (median 40)  - 15 for en kraevende enkeltvagt,
-//                                     40-50 for en saesonrolle
-//   Hård    75-100 pt  (median 75)  - seks af syv saesonroller staar paa 75
+//   Let      10-50 pt   (median 20)  - en enkelt vagt
+//   Medium   30-100 pt  (median 80)  - 30 for en kraevende enkeltvagt,
+//                                      80-100 for en saesonrolle
+//   Hård    150-200 pt  (median 150) - seks af syv saesonroller staar paa 150
 //
 // Varigheden er den staerkeste faktor, ikke svaerhedsgraden alene: "Formand
 // for festudvalget (Sæson)" og "Materialeansvarlig (Sæson)" er begge Hård og
@@ -1617,10 +1617,14 @@ const TaskDatePicker = ({ value, onChange }) => {
 // formel — den rammer de tal, klubben faktisk bruger.
 //
 // Det er et FORSLAG. Skriver en admin selv et tal, roerer appen det ikke igen.
+// 29. september 2026: klubben fordoblede alle pointtal for at gøre det mere
+// attraktivt at være frivillig. Forslaget skal følge med — ellers foreslår
+// appen 15 til en ny tjans, mens den tilsvarende gamle står på 30, og admin
+// retter det samme tal i hånden hver eneste gang.
 const POINT_FORSLAG = {
-  Let:    { single: 10, week: 15, month: 20, half_season: 30, year: 40 },
-  Medium: { single: 15, week: 25, month: 40, half_season: 50, year: 50 },
-  "Hård": { single: 25, week: 40, month: 60, half_season: 75, year: 75 },
+  Let:    { single: 20, week: 30, month: 40, half_season:  60, year:  80 },
+  Medium: { single: 30, week: 50, month: 80, half_season: 100, year: 100 },
+  "Hård": { single: 50, week: 80, month: 120, half_season: 150, year: 150 },
 };
 
 const foreslaaPoint = (difficulty, durationType) =>

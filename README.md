@@ -959,6 +959,43 @@ Prøv efter: `node hjaelper-check.js` (17), `node hjaelper-admin-check.js` (22),
 `psql -f supabase/tests/80_hjaelpere.sql` (17 afsnit) og
 `psql -f supabase/tests/85_foraeldre.sql` (15 afsnit).
 
+## Dobbelte point (29. september 2026)
+
+Klubben fordoblede alle pointtal for at gøre det mere attraktivt at være
+frivillig. En kioskvagt gik fra 10 til 20, en bestyrelsespost fra 75 til 150.
+
+Tre ting blev fordoblet, og de hører sammen:
+
+| Hvad | Hvorfor |
+|---|---|
+| `tasks.points` | selve opgaverne |
+| `task_templates.points` | ellers ville næste tjans fra skabelonen være det halve værd |
+| `POINT_FORSLAG` i `admin.jsx` | ellers foreslår appen 15, mens listen siger 30 |
+| `seed_task_templates()` | ellers ville en gendannet skabelon stille og roligt være halv |
+
+**De, der allerede havde gjort arbejdet, fulgte med.** Triggeren
+`task_points_changed()` opdaterer `points_awarded` på alle tilmeldinger og
+justerer summen for dem, hvis tjans er gjort op. Den, der tog kioskvagten i
+september, står ikke tilbage med det halve af den, der tager den i oktober.
+Medlemmer med en bekræftet tjans fik besked i appen; det bliver ikke til en
+mail, for `points_adjusted` er ikke blandt de fire typer, der sendes ud.
+
+### Målet fulgte ikke med
+
+`point_goal` står stadig på 200. Når alle tal fordobles og målet bliver
+stående, er barren i praksis **halveret**: der skal fremover det halve
+arbejde til for at slippe for frivilligbidraget på 400 kr. Det kan udmærket
+være meningen — men det er en beslutning om penge, ikke om point, og den
+træffes under **Admin → Indstillinger**.
+
+Tallene den dag beslutningen blev taget: 28 opgaver med 697 point i alt,
+32 medlemmer der hver skal nå 200, altså 6400 point. Selv fordoblet dækker
+opgavepuljen (1394) omkring en femtedel af det. Skal målet kunne nås af
+andre end de mest aktive, er det antallet af opgaver, der skal op — ikke
+kun tallet på hver.
+
+Prøv efter: `psql -f supabase/tests/95_dobbelte_point.sql` (5 afsnit).
+
 ## Pointmodel
 
 En tilmelding har tre tilstande:
