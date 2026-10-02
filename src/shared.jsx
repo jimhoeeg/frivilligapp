@@ -114,11 +114,25 @@ const ScrollRow = ({ children, className = "", arrowClass = "", wrapperClassName
   }, [update, children]);
 
   // Hold den aktive knap synlig, også når fanen skiftes inde fra koden.
+  //
+  // Her stod scrollIntoView(). Den ruller ALLE rullbare forfædre — også
+  // selve siden. Fanerækken sidder øverst i admin-panelet, så hver gang
+  // noget blev gentegnet (og effekten afhænger af children, altså hver
+  // eneste gentegning), blev siden hevet op til toppen. Åbnede man ⋮-menuen
+  // på en tjans langt nede i listen, sprang skærmen op, og man skulle finde
+  // tjansen forfra.
+  //
+  // Nu flyttes kun rækken selv, og kun hvis knappen faktisk er ude af syne.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const active = el.querySelector('[data-active="true"]');
-    if (active) active.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    if (!active) return;
+    const a = active.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const luft = 12;
+    if (a.left < r.left)        el.scrollBy({ left: a.left - r.left - luft,   behavior: "smooth" });
+    else if (a.right > r.right) el.scrollBy({ left: a.right - r.right + luft, behavior: "smooth" });
   }, [children]);
 
   // Lodret hjul → vandret rulning. Kun når der faktisk ER noget at rulle,
@@ -349,7 +363,11 @@ const parseTaskDate = (task) => {
 
 // Sådan ser en tilmelding ud i medlemmets egne skærme.
 const CLAIM_STATE = {
-  signed_up: { label: "Afventer bekræftelse", cls: "bg-amber-50 text-amber-800 border-amber-200",       icon: Clock },
+  // "Afventer bekræftelse" stod her før. Medlemmerne læste det som om de
+  // skulle have lov af klubben for at TAGE tjansen — men tilmeldingen er
+  // deres egen, og bekræftelsen handler kun om, at tjansen er udført.
+  // Tilstanden hedder derfor det, den er: man er tilmeldt.
+  signed_up: { label: "Tilmeldt",             cls: "bg-amber-50 text-amber-800 border-amber-200",       icon: Clock },
   completed: { label: "Godkendt",             cls: "bg-emerald-50 text-emerald-800 border-emerald-200", icon: CheckCircle2 },
   no_show:   { label: "Ikke gennemført",      cls: "bg-stone-100 text-stone-600 border-stone-200",      icon: AlertTriangle },
 };

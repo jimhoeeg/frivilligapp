@@ -1016,6 +1016,41 @@ kun tallet på hver.
 
 Prøv efter: `psql -f supabase/tests/95_dobbelte_point.sql` (5 afsnit).
 
+## "Tilmeldt", ikke "afventer bekræftelse"
+
+Tilstanden `signed_up` hed **"Afventer bekræftelse"** på medlemmets skærm.
+Medlemmerne læste det, som om de skulle have lov af klubben for at *tage*
+tjansen — og det skal de ikke. Tilmeldingen er deres egen; bekræftelsen
+handler kun om, at tjansen er udført.
+
+| Hvor | Før | Nu |
+|---|---|---|
+| Mærkat på en tjans | Afventer bekræftelse | **Tilmeldt** |
+| Point på dashboardet | 30 pt afventer bekræftelse | **30 pt på vej** |
+| Under bjælken | …når en administrator har bekræftet… | Point tæller med, når tjansen er **udført og gjort op** |
+| På tjansen | Pointene tilføjes, når en administrator har bekræftet | **Pladsen er din.** Pointene tilføjes, når tjansen er udført og gjort op |
+
+"Tilmeldt" blev valgt frem for "afventer udførelse", fordi mærkatet også
+sidder på en tjans, der **er** udført og bare mangler at blive gjort op.
+"Tilmeldt" er sandt i begge tilfælde; "afventer udførelse" ville være
+forkert i det ene.
+
+## Skærmen hopper ikke længere i admin
+
+Åbnede man ⋮-menuen på en tjans langt nede i listen, sprang siden op til
+toppen, og man skulle finde tjansen forfra.
+
+`ScrollRow` holdt den aktive fane synlig med `scrollIntoView()`. Den ruller
+**alle** rullbare forfædre — også selve siden — og effekten afhang af
+`children`, altså af hver eneste gentegning. Fanerækken sidder øverst i
+admin-panelet, så enhver tilstandsændring hev siden derop.
+
+Nu regnes den vandrette rulning ud i hånden med `scrollBy` på rækken selv,
+og kun hvis knappen faktisk er ude af syne. Siden røres ikke.
+
+Prøv efter: `node tilmeldt-check.js` (12 checks). Uden rettelserne falder
+den på begge dele: ordene og de 1118 px, siden flytter sig.
+
 ## Pointmodel
 
 En tilmelding har tre tilstande:

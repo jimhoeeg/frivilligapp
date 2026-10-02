@@ -79,8 +79,8 @@ sted — bare gør det i god tid, så en anden kan nå at tage den.
 TRIN 3 · HOLD ØJE MED DINE POINT                              [05]
 
 "Dashboard" er din egen side. Bjælken viser, hvor langt du er mod de 200
-point. Står der "30 pt afventer bekræftelse", har du lavet tjansen, og vi
-mangler bare at trykke på knappen — de point er på vej til dig.
+point. Står der "30 pt på vej", har du taget en tjans, der endnu ikke er
+gjort op — pointene lander, når den er udført og godkendt.
 
 Længere nede står dine mærker.                                    [06]
 Nogle kan du se på forhånd, men der ligger 30 skjulte, som først dukker op,

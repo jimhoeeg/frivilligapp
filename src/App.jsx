@@ -507,7 +507,7 @@ const LEGAL_DOCS = {
         "Du kan melde fra, så længe tjansen ikke er gjort op. Er den først bekræftet som gennemført, skal du kontakte klubben.",
       ]},
       { h: "Point og frivillighedsbidrag", p: [
-        "Du optjener point, når en administrator har bekræftet, at du gennemførte tjansen — ikke allerede når du melder dig til. Indtil da står pointene som \u201eafventer bekræftelse\u201c på dit dashboard.",
+        "Du behøver ikke lov til at tage en tjans — pladsen er din, så snart du melder dig til. Pointene får du derimod først, når tjansen er udført og gjort op af klubben. Indtil da står de som \u201epå vej\u201c på dit dashboard.",
         "Har ingen administrator gjort tjansen op inden for en uge efter opgavens sidste dag, bliver den godkendt automatisk. Det er for ikke at lade nogen vente på point, de har gjort sig fortjent til.",
         "Møder du ikke op uden at melde afbud, kan tjansen blive registreret som ikke gennemført. Så giver den ingen point. Mener du, det er en fejl, så kontakt klubben — det kan altid laves om.",
         "Point bruges til at vise, hvor meget den enkelte bidrager, og kan indgå i klubbens ordning om frivillighedsbidrag. De aktuelle pointmål og beløb fastsættes af bestyrelsen og fremgår i appen.",
@@ -1569,7 +1569,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
             )}
             {pendingPoints > 0 && (
               <div className="inline-flex items-center gap-1 mt-3 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
-                <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
+                <Clock className="w-2.5 h-2.5" />{pendingPoints} pt på vej
               </div>
             )}
             {/* Også hjælperen skal kunne flytte en tjans bagefter. Bliver hun
@@ -1609,7 +1609,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
                 )}
                 {pendingPoints > 0 && (
                   <div className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full bg-white/15 border border-white/20 text-[10px] font-semibold">
-                    <Clock className="w-2.5 h-2.5" />{pendingPoints} pt afventer bekræftelse
+                    <Clock className="w-2.5 h-2.5" />{pendingPoints} pt på vej
                   </div>
                 )}
               </div>
@@ -1679,7 +1679,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
               </div>
             )}
             <div className="text-[10px] text-white/50 mt-2 leading-relaxed">
-              Point tæller med, når en administrator har bekræftet, at tjansen er gennemført.
+              Point tæller med, når tjansen er udført og gjort op.
             </div>
           </div>
           )}
@@ -3472,7 +3472,7 @@ export default function App() {
                       />
                     );
                   })()}
-                  <div className="text-[11px] text-stone-500 text-center">Pointene tilføjes, når en administrator har bekræftet tjansen.</div>
+                  <div className="text-[11px] text-stone-500 text-center">Pladsen er din. Pointene tilføjes, når tjansen er udført og gjort op.</div>
                   <button onClick={() => handleUnclaim(selectedTask.id)} className="w-full py-3.5 rounded-xl font-bold text-emerald-800 bg-emerald-50 border-2 border-emerald-300 flex items-center justify-center gap-2"><Check className="w-5 h-5 text-emerald-600" />Tilmeldt – tryk for at framelde</button>
                 </div>
               ) : !currentUser?.approved ? (
