@@ -29,7 +29,7 @@
 
 
 -- ############################################################################
--- ## AFSNIT 1 af 16: 20260101000000_baseline.sql
+-- ## AFSNIT 1 af 21: 20260101000000_baseline.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -229,7 +229,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 2 af 16: 20260910120000_launch_hardening.sql
+-- ## AFSNIT 2 af 21: 20260910120000_launch_hardening.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1139,7 +1139,7 @@ create index if not exists swap_offers_status_idx      on public.swap_offers (st
 
 
 -- ############################################################################
--- ## AFSNIT 3 af 16: 20260918100000_task_completion.sql
+-- ## AFSNIT 3 af 21: 20260918100000_task_completion.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1640,7 +1640,7 @@ update public.profiles p
 
 
 -- ############################################################################
--- ## AFSNIT 4 af 16: 20260918140000_auto_confirm.sql
+-- ## AFSNIT 4 af 21: 20260918140000_auto_confirm.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -1934,7 +1934,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 5 af 16: 20260918160000_cleanup_orphans.sql
+-- ## AFSNIT 5 af 21: 20260918160000_cleanup_orphans.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2024,7 +2024,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 6 af 16: 20260919080000_policies_from_legacy.sql
+-- ## AFSNIT 6 af 21: 20260919080000_policies_from_legacy.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2201,7 +2201,7 @@ end $$;
 
 
 -- ############################################################################
--- ## AFSNIT 7 af 16: 20260919090000_points_follow_task.sql
+-- ## AFSNIT 7 af 21: 20260919090000_points_follow_task.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2340,7 +2340,7 @@ update public.profiles p
 
 
 -- ############################################################################
--- ## AFSNIT 8 af 16: 20260919110000_client_errors.sql
+-- ## AFSNIT 8 af 21: 20260919110000_client_errors.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2475,7 +2475,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 9 af 16: 20260919140000_lock_function_execute.sql
+-- ## AFSNIT 9 af 21: 20260919140000_lock_function_execute.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -2685,7 +2685,7 @@ $$;
 
 
 -- ############################################################################
--- ## AFSNIT 10 af 16: 20260919160000_season_reset.sql
+-- ## AFSNIT 10 af 21: 20260919160000_season_reset.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3082,7 +3082,7 @@ grant execute on function public.admin_season_rows(text)           to authentica
 
 
 -- ############################################################################
--- ## AFSNIT 11 af 16: 20260922180000_teams_readable_at_signup.sql
+-- ## AFSNIT 11 af 21: 20260922180000_teams_readable_at_signup.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3133,7 +3133,7 @@ create policy "teams_select" on public.teams for select
 
 
 -- ############################################################################
--- ## AFSNIT 12 af 16: 20260925140000_task_templates.sql
+-- ## AFSNIT 12 af 21: 20260925140000_task_templates.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3248,7 +3248,7 @@ grant  execute on function public.task_signups(uuid) to authenticated;
 
 
 -- ############################################################################
--- ## AFSNIT 13 af 16: 20260925220000_badges.sql
+-- ## AFSNIT 13 af 21: 20260925220000_badges.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3477,7 +3477,7 @@ grant execute on function public.my_badges() to authenticated;
 
 
 -- ############################################################################
--- ## AFSNIT 14 af 16: 20260926060000_email_outbox.sql
+-- ## AFSNIT 14 af 21: 20260926060000_email_outbox.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3776,7 +3776,7 @@ $outer$;
 
 
 -- ############################################################################
--- ## AFSNIT 15 af 16: 20260926070000_slet_medlem_med_tjans.sql
+-- ## AFSNIT 15 af 21: 20260926070000_slet_medlem_med_tjans.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -3843,7 +3843,7 @@ $$;
 
 
 -- ############################################################################
--- ## AFSNIT 16 af 16: 20260926090000_tidligt_i_maal.sql
+-- ## AFSNIT 16 af 21: 20260926090000_tidligt_i_maal.sql
 -- ############################################################################
 
 -- ============================================================================
@@ -4037,3 +4037,1496 @@ comment on function public.my_badges() is
 
 revoke all on function public.my_badges() from public, anon;
 grant execute on function public.my_badges() to authenticated;
+
+
+
+-- ############################################################################
+-- ## AFSNIT 17 af 21: 20260926120000_hjaelpere.sql
+-- ############################################################################
+
+-- ============================================================================
+-- HJÆLPERE
+--
+-- En forælder, en kæreste, en nabo — nogen, der ikke er medlem, men gerne
+-- tager en tjans for et medlem. Klubben vil have dem ind i appen, og deres
+-- arbejde skal tælle for medlemmet.
+--
+-- ---------------------------------------------------------------------------
+-- DET HER ER IKKE POINTOVERFØRSEL. Og det er hele pointen.
+--
+-- I samme øjeblik appen kan flytte point fra én konto til en anden, findes
+-- maskineriet — og så bliver det brugt mellem to medlemmer, "bare lige denne
+-- ene gang", af en admin der vil nogen det godt. Derfor flytter ingenting
+-- her. Point bliver liggende, hvor de blev tjent.
+--
+-- I stedet skrives det på selve tilmeldingen, HVEM tjansen tæller for
+-- (task_claims.credited_to). Det står der for altid, også hvis koblingen
+-- senere ændres, og det kan ses i en opgørelse et år efter.
+--
+-- ---------------------------------------------------------------------------
+-- TO TAL, DER BETYDER HVER SIN TING
+--
+--   profiles.points      hvad man SELV har lavet.   → ranglisten
+--   bidrag_point(id)     medlemmets egne + hjælpernes. → frivilligbidraget
+--
+-- Ranglisten er anerkendelse: en hjælper står der med sit eget navn og sine
+-- egne point, for det var hende, der mødte op. Bidragsordningen er penge:
+-- dér tæller det, husstanden har leveret.
+--
+-- Derfor rører denne migration IKKE de triggere, der lægger point til og
+-- trækker fra. Det er appens mest ømtålelige kode, og den behøver ikke at
+-- vide, at hjælpere findes.
+-- ============================================================================
+
+
+-- ------------------------------------------------------------ KOBLINGEN ---
+
+create table if not exists public.helper_links (
+  helper_id  uuid        not null references public.profiles(id) on delete cascade,
+  member_id  uuid        not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  created_by uuid        references public.profiles(id) on delete set null,
+  primary key (helper_id, member_id),
+  constraint helper_ikke_sig_selv check (helper_id <> member_id)
+);
+
+comment on table public.helper_links is
+  'Hvem hjælper hvem. En hjælper kan have flere medlemmer (fx to børn).';
+
+create index if not exists helper_links_member_idx on public.helper_links (member_id);
+
+alter table public.helper_links enable row level security;
+
+-- Alle indloggede må se koblingerne: appen skal kunne skrive "hjælper for
+-- Anna" på en tjans, og medlemmet skal kunne se, hvem der hjælper dem.
+-- Der står ingen personoplysninger i tabellen — kun to id'er.
+drop policy if exists helper_links_select on public.helper_links;
+create policy helper_links_select on public.helper_links
+  for select to authenticated using (true);
+
+revoke all on public.helper_links from public, anon;
+grant select on public.helper_links to authenticated;
+-- Ingen skriver direkte. Det gør admin_set_helper() nedenfor.
+
+
+-- ---------------------------------------------------------- ØNSKET VED ---
+--
+-- En hjælper kan ikke se medlemslisten, før hun er lukket ind — og skal
+-- heller ikke kunne det. Derfor skriver hun ved oprettelsen bare navnet på
+-- den, hun hjælper, i fri tekst. Admin læser det på godkendelseskortet og
+-- vælger det rigtige medlem fra listen. Så er det ét menneske, der afgør
+-- koblingen, og ikke en stavemåde.
+
+alter table public.profiles
+  add column if not exists helper_request text;
+
+comment on column public.profiles.helper_request is
+  'Fri tekst fra oprettelsen: "jeg hjælper Anna Berg". Ryddes, når admin har lavet koblingen.';
+
+
+-- Navnet skal med fra oprettelsen ind i profilen. Resten af funktionen er
+-- uændret; den skrives om i sin helhed, fordi det er sådan, en funktion
+-- rettes i Postgres.
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_is_bootstrap boolean;
+begin
+  v_is_bootstrap := new.email in ('formand@randersVK.dk', 'admin@randersVK.dk');
+
+  insert into public.profiles (id, name, email, phone, team, role, approved, reviewed_at,
+                               helper_request)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
+    new.email,
+    nullif(new.raw_user_meta_data->>'phone', ''),
+    coalesce(new.raw_user_meta_data->>'team', ''),
+    case when v_is_bootstrap then 'super_admin' else 'user' end,
+    v_is_bootstrap,
+    case when v_is_bootstrap then now() else null end,
+    -- Teksten er skrevet af en fremmed. 120 tegn er rigeligt til et navn,
+    -- og sætter et loft over, hvad der kan lægges i databasen herfra.
+    nullif(left(trim(coalesce(new.raw_user_meta_data->>'helper_for', '')), 120), '')
+  )
+  on conflict (id) do nothing;
+
+  return new;
+end;
+$$;
+
+
+-- ------------------------------------------------- HVEM TÆLLER TJANSEN FOR ---
+
+alter table public.task_claims
+  add column if not exists credited_to uuid references public.profiles(id) on delete set null;
+
+comment on column public.task_claims.credited_to is
+  'Hvilket medlem tjansen tæller for i bidragsordningen. NULL = den, der tog den.';
+
+create index if not exists task_claims_credited_idx
+  on public.task_claims (credited_to) where credited_to is not null;
+
+-- Et medlem må vælge modtager for sin egen tilmelding — men kun et medlem,
+-- man rent faktisk er koblet til. Ellers ville "vælg modtager" være præcis
+-- den pointoverførsel, vi ikke bygger.
+create or replace function public.tc_check_credited_to()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if new.credited_to is null or new.credited_to = new.user_id then
+    return new;
+  end if;
+
+  if not exists (
+    select 1 from public.helper_links hl
+     where hl.helper_id = new.user_id and hl.member_id = new.credited_to
+  ) then
+    raise exception 'Tjansen kan kun tælle for et medlem, du er hjælper for';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists tc_credited_to_check on public.task_claims;
+create trigger tc_credited_to_check
+  before insert or update of credited_to on public.task_claims
+  for each row execute function public.tc_check_credited_to();
+
+
+-- ------------------------------------------------------- BIDRAGSTALLET ---
+
+create or replace function public.bidrag_point(p_user uuid)
+returns int
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select greatest(0,
+    coalesce((
+      select sum(coalesce(tc.points_awarded, 0))::int
+        from public.task_claims tc
+       where tc.status = 'completed'
+         and coalesce(tc.credited_to, tc.user_id) = p_user
+    ), 0)
+    + coalesce((select bonus_points from public.profiles where id = p_user), 0)
+  );
+$$;
+
+comment on function public.bidrag_point(uuid) is
+  'Point der tæller mod frivilligbidraget: egne tjanser + hjælpernes + bonus. Ranglisten bruger profiles.points i stedet.';
+
+
+-- --------------------------------------------------- ER MAN HJÆLPER? ---
+
+create or replace function public.er_hjaelper(p_user uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (select 1 from public.helper_links where helper_id = p_user);
+$$;
+
+
+-- ------------------------------------------------- ADMIN SÆTTER KOBLINGEN ---
+--
+-- Fire spærrer, og de er der hver af sin grund:
+--
+--   1. Kun admins. En kobling flytter, hvem der slipper for at betale.
+--   2. Et MEDLEM MED POINT kan ikke gøres til hjælper. Det er den regel, der
+--      lukker døren mellem to medlemmer: kan man ikke blive hjælper efter at
+--      have tjent point, kan man heller ikke begynde at sende dem videre.
+--   3. Den, man hjælper, må ikke selv være hjælper. Ingen kæder.
+--   4. Alt havner i audit-loggen.
+
+create or replace function public.admin_set_helper(
+  p_helper uuid,
+  p_member uuid,
+  p_on     boolean default true
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_helper record;
+  v_member record;
+begin
+  if public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan koble en hjælper til et medlem';
+  end if;
+
+  select id, name, points, role into v_helper from public.profiles where id = p_helper;
+  select id, name into v_member from public.profiles where id = p_member;
+
+  if v_helper.id is null then raise exception 'Hjælperen findes ikke'; end if;
+  if v_member.id is null then raise exception 'Medlemmet findes ikke'; end if;
+
+  if not p_on then
+    delete from public.helper_links where helper_id = p_helper and member_id = p_member;
+    insert into public.audit_log (type, action, actor_name, actor_id)
+    select 'member',
+           format('Fjernede %s som hjælper for %s', v_helper.name, v_member.name),
+           coalesce(p.name, 'Ukendt'), p.id
+      from public.profiles p where p.id = auth.uid();
+    return;
+  end if;
+
+  if p_helper = p_member then
+    raise exception 'Man kan ikke være hjælper for sig selv';
+  end if;
+
+  -- Har man allerede tjent point som medlem, kan man ikke blive hjælper.
+  if not public.er_hjaelper(p_helper) and coalesce(v_helper.points, 0) > 0 then
+    raise exception 'Kontoen har allerede optjent point som medlem og kan ikke gøres til hjælper';
+  end if;
+
+  if public.er_hjaelper(p_member) then
+    raise exception 'Den, man hjælper, må ikke selv være hjælper';
+  end if;
+
+  if exists (select 1 from public.helper_links where member_id = p_helper) then
+    raise exception 'Kontoen har selv hjælpere og kan ikke være hjælper for andre';
+  end if;
+
+  insert into public.helper_links (helper_id, member_id, created_by)
+  values (p_helper, p_member, auth.uid())
+  on conflict do nothing;
+
+  -- Ønsket fra tilmeldingen er efterkommet, og skal ikke blive stående og
+  -- se ud som noget, der mangler at blive gjort.
+  update public.profiles set helper_request = null
+   where id = p_helper and helper_request is not null;
+
+  insert into public.audit_log (type, action, actor_name, actor_id)
+  select 'member',
+         format('Koblede %s som hjælper for %s', v_helper.name, v_member.name),
+         coalesce(p.name, 'Ukendt'), p.id
+    from public.profiles p where p.id = auth.uid();
+end;
+$$;
+
+
+-- ------------------------------------------- HVEM HJÆLPER JEG / MIG? ---
+
+create or replace function public.my_helper_members()
+returns table (member_id uuid, name text, initials text, team text, givet int)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select p.id, p.name, p.initials, p.team,
+         coalesce((
+           select sum(coalesce(tc.points_awarded, 0))::int
+             from public.task_claims tc
+            where tc.user_id = auth.uid()
+              and tc.status = 'completed'
+              and tc.credited_to = p.id
+         ), 0)
+    from public.helper_links hl
+    join public.profiles p on p.id = hl.member_id
+   where hl.helper_id = auth.uid()
+   order by p.name;
+$$;
+
+comment on function public.my_helper_members() is
+  'Hvem hjælperen hjælper, og hvor mange point hun har givet hver af dem.';
+
+create or replace function public.my_helpers()
+returns table (helper_id uuid, name text, initials text, point int)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select p.id, p.name, p.initials,
+         coalesce((
+           select sum(coalesce(tc.points_awarded, 0))::int
+             from public.task_claims tc
+            where tc.user_id = p.id
+              and tc.status = 'completed'
+              and tc.credited_to = auth.uid()
+         ), 0)
+    from public.helper_links hl
+    join public.profiles p on p.id = hl.helper_id
+   where hl.member_id = auth.uid()
+   order by p.name;
+$$;
+
+
+revoke all on function public.admin_set_helper(uuid, uuid, boolean) from public, anon;
+revoke all on function public.bidrag_point(uuid)      from public, anon;
+revoke all on function public.er_hjaelper(uuid)       from public, anon;
+revoke all on function public.my_helper_members()     from public, anon;
+revoke all on function public.my_helpers()            from public, anon;
+revoke all on function public.tc_check_credited_to()  from public, anon, authenticated;
+
+grant execute on function public.admin_set_helper(uuid, uuid, boolean) to authenticated;
+grant execute on function public.bidrag_point(uuid)  to authenticated;
+grant execute on function public.er_hjaelper(uuid)   to authenticated;
+grant execute on function public.my_helper_members() to authenticated;
+grant execute on function public.my_helpers()        to authenticated;
+
+
+-- ============================================================================
+-- DET, APPEN SKAL KUNNE LÆSE
+-- ============================================================================
+
+-- ------------------------------------------------------- MEDLEMMETS TAL ---
+--
+-- Ét kald med hele billedet, så måleren i appen ikke skal regne noget ud
+-- selv. Fem tal, fordi de fortæller fem forskellige ting:
+--
+--   egne           det jeg selv har lavet og beholdt        (også ranglisten)
+--   fra_hjaelpere  det min far eller min kæreste har lavet for mig
+--   bonus          det admin har lagt til i hånden
+--   bidrag         summen — den, bidragsordningen gør op mod målet
+--   givet          det JEG har lavet for andre (kun hjælpere har et tal her)
+
+create or replace function public.my_bidrag()
+returns table (
+  bidrag        int,
+  egne          int,
+  fra_hjaelpere int,
+  bonus         int,
+  givet         int,
+  er_hjaelper   boolean
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with uid as (select auth.uid() as id),
+  mine as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.user_id = uid.id
+       and coalesce(tc.credited_to, tc.user_id) = uid.id
+  ),
+  udefra as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.credited_to = uid.id
+       and tc.user_id <> uid.id
+  ),
+  videre as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.user_id = uid.id
+       and tc.credited_to is not null
+       and tc.credited_to <> uid.id
+  ),
+  bon as (
+    select coalesce(p.bonus_points, 0) as pt
+      from public.profiles p, uid where p.id = uid.id
+  )
+  select greatest(0, mine.sum_pt + udefra.sum_pt + coalesce(bon.pt, 0)),
+         mine.sum_pt,
+         udefra.sum_pt,
+         coalesce(bon.pt, 0),
+         videre.sum_pt,
+         public.er_hjaelper((select id from uid))
+    from mine, udefra, videre left join bon on true;
+$$;
+
+comment on function public.my_bidrag() is
+  'Medlemmets eget bidragsregnskab, delt op så appen kan skrive hvor pointene kommer fra.';
+
+
+-- ------------------------------------------------- SKIFT MODTAGER BAGEFTER ---
+--
+-- Hjælperen vælger modtager, når hun melder sig til. Rammer hun det forkerte
+-- barn, skal hun ikke skulle melde fra og til igen — så mister hun pladsen,
+-- hvis en anden har taget den i mellemtiden.
+--
+-- Medlemmer har ingen UPDATE-ret på task_claims. Derfor går rettelsen gennem
+-- den her funktion, og kun på ens egen tilmelding. Triggeren ovenfor tjekker
+-- alligevel koblingen én gang mere; et sikkerhedsnet, der ikke koster noget.
+
+create or replace function public.set_claim_credit(p_claim uuid, p_member uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_ejer uuid;
+begin
+  select user_id into v_ejer from public.task_claims where id = p_claim;
+
+  if v_ejer is null then
+    raise exception 'Tilmeldingen findes ikke';
+  end if;
+
+  if v_ejer <> auth.uid() then
+    raise exception 'Man kan kun vælge modtager på sin egen tilmelding';
+  end if;
+
+  update public.task_claims
+     set credited_to = case when p_member = v_ejer then null else p_member end
+   where id = p_claim;
+end;
+$$;
+
+
+-- --------------------------------------------------- ADMINS MEDLEMSLISTE ---
+--
+-- Listen får fire nye kolonner. Returtypen ændrer sig, og en funktion med
+-- ændret returtype skal fjernes først — "create or replace" kan ikke.
+
+drop function if exists public.admin_list_members();
+
+create or replace function public.admin_list_members()
+returns table (
+  id                 uuid,
+  name               text,
+  initials           text,
+  email              text,
+  phone              text,
+  team               text,
+  role               text,
+  points             int,
+  tasks_done         int,
+  approved           boolean,
+  reviewed_at        timestamptz,
+  admin_requested    boolean,
+  admin_requested_at timestamptz,
+  created_at         timestamptz,
+  -- Nyt: bidragstallet, og hvem der hjælper hvem.
+  bidrag             int,
+  fra_hjaelpere      int,
+  er_hjaelper        boolean,
+  hjaelper_for       text,
+  helper_request     text
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan se medlemmernes kontaktoplysninger';
+  end if;
+
+  return query
+    select p.id, p.name, p.initials, p.email, p.phone, p.team, p.role,
+           p.points, p.tasks_done, p.approved, p.reviewed_at,
+           p.admin_requested, p.admin_requested_at, p.created_at,
+           public.bidrag_point(p.id),
+           coalesce((
+             select sum(coalesce(tc.points_awarded, 0))::int
+               from public.task_claims tc
+              where tc.status = 'completed'
+                and tc.credited_to = p.id
+                and tc.user_id <> p.id
+           ), 0),
+           exists (select 1 from public.helper_links h where h.helper_id = p.id),
+           (select string_agg(m.name, ', ' order by m.name)
+              from public.helper_links h
+              join public.profiles m on m.id = h.member_id
+             where h.helper_id = p.id),
+           p.helper_request
+    from public.profiles p
+    order by p.points desc, p.name;
+end;
+$$;
+
+
+revoke all on function public.my_bidrag()                    from public, anon;
+revoke all on function public.set_claim_credit(uuid, uuid)    from public, anon;
+revoke all on function public.admin_list_members()            from public, anon;
+
+grant execute on function public.my_bidrag()                 to authenticated;
+grant execute on function public.set_claim_credit(uuid, uuid) to authenticated;
+grant execute on function public.admin_list_members()         to authenticated;
+
+
+
+-- ############################################################################
+-- ## AFSNIT 18 af 21: 20260927080000_foraeldre.sql
+-- ############################################################################
+
+-- ============================================================================
+-- FORÆLDRE: ET MEDLEM, DER OGSÅ GIVER POINT VIDERE
+--
+-- Hjælperne var det lette tilfælde: en far, der ikke selv spiller, og som
+-- derfor ikke har noget mål at nå. Nu skal en forælder, der SELV er medlem,
+-- kunne give point videre til sine børn.
+--
+-- ---------------------------------------------------------------------------
+-- HVORFOR DET NU ER FORSVARLIGT — OG HVORFOR DET ALTID VAR DEN SAMME REGEL
+--
+-- Reglen "en konto med point kan ikke blive hjælper" lukkede døren mellem to
+-- medlemmer. Den var grov. Det, der i virkeligheden beskytter ordningen, er
+-- regnestykket:
+--
+--   EN TJANS TÆLLER FOR ÉN PERSON. ALDRIG TO.
+--
+-- Giver en forælder en tjans på 100 point videre til sit barn, falder
+-- forælderens eget bidragstal med præcis 100. Intet bliver kopieret. Derfor
+-- kan "deling" aldrig dække flere opgørelser, end der er lavet arbejde til:
+-- 400 point dækker to mål på 200, fordi det ER 400 points arbejde.
+--
+-- Det, der ville være snyd — at forælderen beholder sine 400 OG barnet får
+-- 200 — er umuligt, ikke forbudt. coalesce(credited_to, user_id) kan kun
+-- pege på én person ad gangen.
+--
+-- ---------------------------------------------------------------------------
+-- TO SLAGS KOBLING, FORDI DE BETYDER TO FORSKELLIGE TING
+--
+--   'helper'  spiller ikke selv. Har intet mål. Står IKKE på bidragslisten.
+--   'parent'  er medlem med sit eget mål, og giver noget af det videre.
+--
+-- Forskellen kan ikke regnes ud af databasen — et barn er blot et andet
+-- medlem. Det er et menneske, der ved, om kontoen også spiller selv, og
+-- derfor er det admin, der siger det, når koblingen laves.
+--
+-- Den ENE ting, der stadig er spærret, er ringen: giver A videre til B, kan
+-- B ikke give videre til A. To medlemmer, der sender point rundt i en rundkreds,
+-- er ikke en familie — og selv om regnestykket holder, skal ordningen kunne
+-- forklares på et bestyrelsesmøde.
+-- ============================================================================
+
+
+-- ------------------------------------------------------- SLAGS PÅ KOBLINGEN ---
+
+alter table public.helper_links
+  add column if not exists kind text not null default 'helper';
+
+do $$
+begin
+  alter table public.helper_links
+    add constraint helper_links_kind_check check (kind in ('helper', 'parent'));
+exception when duplicate_object then null;
+end $$;
+
+comment on column public.helper_links.kind is
+  '''helper'' = spiller ikke selv, har intet eget mål. ''parent'' = medlem med eget mål, der giver point videre.';
+
+
+-- Har kontoen kun 'helper'-koblinger, har den intet eget mål og hører ikke på
+-- bidragslisten. Har den bare én 'parent'-kobling, er den et medlem som alle
+-- andre — der også giver noget videre.
+create or replace function public.kun_hjaelper(p_user uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (select 1 from public.helper_links where helper_id = p_user)
+     and not exists (select 1 from public.helper_links
+                      where helper_id = p_user and kind = 'parent');
+$$;
+
+comment on function public.kun_hjaelper(uuid) is
+  'Sandt for en ren hjælper: nogen der tager tjanser for andre og ikke selv har et mål at nå.';
+
+
+-- ------------------------------------------------- ADMIN SÆTTER KOBLINGEN ---
+--
+-- Signaturen får et argument mere, og en funktion kan ikke skifte signatur.
+-- Den gamle fjernes med vilje: stod den tilbage, kunne et kald med tre
+-- argumenter gå forbi det nye og lave en kobling uden slags.
+
+drop function if exists public.admin_set_helper(uuid, uuid, boolean);
+
+create or replace function public.admin_set_helper(
+  p_helper uuid,
+  p_member uuid,
+  p_on     boolean default true,
+  p_kind   text    default 'helper'
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_helper record;
+  v_member record;
+  v_ord    text;
+begin
+  if public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan koble en hjælper til et medlem';
+  end if;
+
+  if p_kind not in ('helper', 'parent') then
+    raise exception 'Koblingen skal være enten hjælper eller forælder';
+  end if;
+
+  select id, name, points into v_helper from public.profiles where id = p_helper;
+  select id, name        into v_member from public.profiles where id = p_member;
+
+  if v_helper.id is null then raise exception 'Hjælperen findes ikke'; end if;
+  if v_member.id is null then raise exception 'Medlemmet findes ikke'; end if;
+
+  v_ord := case when p_kind = 'parent' then 'forælder' else 'hjælper' end;
+
+  if not p_on then
+    delete from public.helper_links where helper_id = p_helper and member_id = p_member;
+    insert into public.audit_log (type, action, actor_name, actor_id)
+    select 'member',
+           format('Fjernede %s som %s for %s', v_helper.name, v_ord, v_member.name),
+           coalesce(p.name, 'Ukendt'), p.id
+      from public.profiles p where p.id = auth.uid();
+    return;
+  end if;
+
+  if p_helper = p_member then
+    raise exception 'Man kan ikke give point videre til sig selv';
+  end if;
+
+  -- Kun den RENE hjælper skal være uden point. En forælder ER et medlem og
+  -- har naturligvis point — det er hele grunden til, at hun kan give nogle
+  -- af dem videre.
+  if p_kind = 'helper'
+     and not public.er_hjaelper(p_helper)
+     and coalesce(v_helper.points, 0) > 0 then
+    raise exception 'Kontoen har allerede optjent point som medlem. Kobl den som forælder, hvis personen selv spiller';
+  end if;
+
+  -- Ingen ringe. Kæder er i orden — mormor kan give videre til sin søn, der
+  -- giver videre til sit barn — for en tjans peger altid på ÉN person, og
+  -- point hopper ikke videre af sig selv. Men en rundkreds skal ikke kunne
+  -- opstå: den ser ud som to medlemmer, der deler.
+  if exists (
+    with recursive videre as (
+      select hl.member_id as knude
+        from public.helper_links hl
+       where hl.helper_id = p_member
+      union
+      select hl.member_id
+        from public.helper_links hl
+        join videre v on hl.helper_id = v.knude
+    )
+    select 1 from videre where knude = p_helper
+  ) then
+    raise exception '% giver allerede point videre til % — den kobling ville lave en ring',
+      v_member.name, v_helper.name;
+  end if;
+
+  insert into public.helper_links (helper_id, member_id, created_by, kind)
+  values (p_helper, p_member, auth.uid(), p_kind)
+  on conflict (helper_id, member_id) do update set kind = excluded.kind;
+
+  update public.profiles set helper_request = null
+   where id = p_helper and helper_request is not null;
+
+  insert into public.audit_log (type, action, actor_name, actor_id)
+  select 'member',
+         format('Koblede %s som %s for %s', v_helper.name, v_ord, v_member.name),
+         coalesce(p.name, 'Ukendt'), p.id
+    from public.profiles p where p.id = auth.uid();
+end;
+$$;
+
+
+-- ------------------------------------------- HVEM GIVER JEG VIDERE TIL? ---
+
+drop function if exists public.my_helper_members();
+
+create or replace function public.my_helper_members()
+returns table (member_id uuid, name text, initials text, team text, givet int, kind text)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select p.id, p.name, p.initials, p.team,
+         coalesce((
+           select sum(coalesce(tc.points_awarded, 0))::int
+             from public.task_claims tc
+            where tc.user_id = auth.uid()
+              and tc.status = 'completed'
+              and tc.credited_to = p.id
+         ), 0),
+         hl.kind
+    from public.helper_links hl
+    join public.profiles p on p.id = hl.member_id
+   where hl.helper_id = auth.uid()
+   order by p.name;
+$$;
+
+comment on function public.my_helper_members() is
+  'Hvem man giver point videre til, hvor mange man har givet hver af dem, og om man selv er medlem (parent) eller kun hjælper.';
+
+
+-- ------------------------------------------------------- MEDLEMMETS TAL ---
+--
+-- Ét nyt felt: kun_hjaelper. Uden det kan appen ikke se forskel på en far,
+-- der ikke spiller, og en mor, der gør — og de skal have to forskellige
+-- forsider, fordi den ene har et mål at nå og den anden ikke har.
+
+drop function if exists public.my_bidrag();
+
+create or replace function public.my_bidrag()
+returns table (
+  bidrag        int,
+  egne          int,
+  fra_hjaelpere int,
+  bonus         int,
+  givet         int,
+  er_hjaelper   boolean,
+  kun_hjaelper  boolean
+)
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  with uid as (select auth.uid() as id),
+  mine as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.user_id = uid.id
+       and coalesce(tc.credited_to, tc.user_id) = uid.id
+  ),
+  udefra as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.credited_to = uid.id
+       and tc.user_id <> uid.id
+  ),
+  videre as (
+    select coalesce(sum(coalesce(tc.points_awarded, 0)), 0)::int as sum_pt
+      from public.task_claims tc, uid
+     where tc.status = 'completed'
+       and tc.user_id = uid.id
+       and tc.credited_to is not null
+       and tc.credited_to <> uid.id
+  ),
+  bon as (
+    select coalesce(p.bonus_points, 0) as pt
+      from public.profiles p, uid where p.id = uid.id
+  )
+  select greatest(0, mine.sum_pt + udefra.sum_pt + coalesce(bon.pt, 0)),
+         mine.sum_pt,
+         udefra.sum_pt,
+         coalesce(bon.pt, 0),
+         videre.sum_pt,
+         public.er_hjaelper((select id from uid)),
+         public.kun_hjaelper((select id from uid))
+    from mine, udefra, videre left join bon on true;
+$$;
+
+comment on function public.my_bidrag() is
+  'Medlemmets eget bidragsregnskab, delt op så appen kan skrive hvor pointene kommer fra, og hvor de er gået hen.';
+
+
+-- ------------------------------------------------- FLYT EN TJANS BAGEFTER ---
+--
+-- En forælder har som regel allerede taget tjanserne, når hun opdager, at
+-- barnet mangler point. Derfor skal en BEKRÆFTET tjans også kunne flyttes.
+-- Pointene bliver hos forælderen på ranglisten — det var hende, der mødte op
+-- — men de tæller fra nu af hos barnet i bidragsordningen.
+--
+-- Flytter man en tjans, der allerede er gjort op, står det i audit-loggen.
+-- Det er penge, der flytter sig, og det skal kunne læses et år efter.
+
+create or replace function public.set_claim_credit(p_claim uuid, p_member uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_krav   record;
+  v_navn   text;
+  v_opgave text;
+begin
+  select tc.user_id, tc.status, tc.points_awarded, tc.credited_to, t.title
+    into v_krav
+    from public.task_claims tc
+    join public.tasks t on t.id = tc.task_id
+   where tc.id = p_claim;
+
+  if v_krav.user_id is null then
+    raise exception 'Tilmeldingen findes ikke';
+  end if;
+
+  if v_krav.user_id <> auth.uid() then
+    raise exception 'Man kan kun vælge modtager på sin egen tilmelding';
+  end if;
+
+  update public.task_claims
+     set credited_to = case when p_member = v_krav.user_id then null else p_member end
+   where id = p_claim;
+
+  if v_krav.status = 'completed'
+     and coalesce(v_krav.credited_to, v_krav.user_id) is distinct from p_member then
+    select name into v_navn from public.profiles where id = p_member;
+    insert into public.audit_log (type, action, actor_name, actor_id)
+    select 'member',
+           format('Flyttede %s point fra "%s" til %s',
+                  coalesce(v_krav.points_awarded, 0), v_krav.title,
+                  coalesce(v_navn, 'sig selv')),
+           coalesce(p.name, 'Ukendt'), p.id
+      from public.profiles p where p.id = auth.uid();
+  end if;
+end;
+$$;
+
+
+-- --------------------------------------------------- ADMINS MEDLEMSLISTE ---
+
+drop function if exists public.admin_list_members();
+
+create or replace function public.admin_list_members()
+returns table (
+  id                 uuid,
+  name               text,
+  initials           text,
+  email              text,
+  phone              text,
+  team               text,
+  role               text,
+  points             int,
+  tasks_done         int,
+  approved           boolean,
+  reviewed_at        timestamptz,
+  admin_requested    boolean,
+  admin_requested_at timestamptz,
+  created_at         timestamptz,
+  bidrag             int,
+  fra_hjaelpere      int,
+  er_hjaelper        boolean,
+  kun_hjaelper       boolean,
+  givet_videre       int,
+  hjaelper_for       text,
+  helper_request     text
+)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan se medlemmernes kontaktoplysninger';
+  end if;
+
+  return query
+    select p.id, p.name, p.initials, p.email, p.phone, p.team, p.role,
+           p.points, p.tasks_done, p.approved, p.reviewed_at,
+           p.admin_requested, p.admin_requested_at, p.created_at,
+           public.bidrag_point(p.id),
+           coalesce((
+             select sum(coalesce(tc.points_awarded, 0))::int
+               from public.task_claims tc
+              where tc.status = 'completed'
+                and tc.credited_to = p.id
+                and tc.user_id <> p.id
+           ), 0),
+           public.er_hjaelper(p.id),
+           public.kun_hjaelper(p.id),
+           coalesce((
+             select sum(coalesce(tc.points_awarded, 0))::int
+               from public.task_claims tc
+              where tc.status = 'completed'
+                and tc.user_id = p.id
+                and tc.credited_to is not null
+                and tc.credited_to <> p.id
+           ), 0),
+           (select string_agg(m.name, ', ' order by m.name)
+              from public.helper_links h
+              join public.profiles m on m.id = h.member_id
+             where h.helper_id = p.id),
+           p.helper_request
+    from public.profiles p
+    order by p.points desc, p.name;
+end;
+$$;
+
+
+revoke all on function public.kun_hjaelper(uuid)                            from public, anon;
+revoke all on function public.admin_set_helper(uuid, uuid, boolean, text)   from public, anon;
+revoke all on function public.my_helper_members()                           from public, anon;
+revoke all on function public.my_bidrag()                                   from public, anon;
+revoke all on function public.set_claim_credit(uuid, uuid)                  from public, anon;
+revoke all on function public.admin_list_members()                          from public, anon;
+
+grant execute on function public.kun_hjaelper(uuid)                          to authenticated;
+grant execute on function public.admin_set_helper(uuid, uuid, boolean, text) to authenticated;
+grant execute on function public.my_helper_members()                         to authenticated;
+grant execute on function public.my_bidrag()                                 to authenticated;
+grant execute on function public.set_claim_credit(uuid, uuid)                to authenticated;
+grant execute on function public.admin_list_members()                        to authenticated;
+
+
+
+-- ############################################################################
+-- ## AFSNIT 19 af 21: 20260929090000_skabeloner.sql
+-- ############################################################################
+
+-- ============================================================================
+-- ÉN LISTE SKABELONER, SOM KLUBBEN EJER
+--
+-- Der var to slags, og kun den ene kunne klubben røre:
+--
+--   Appens forslag   40 stykker, hårdkodet i admin.jsx. Uændrede for evigt,
+--                    eller rettere: indtil nogen retter i koden.
+--   Klubbens egne    i databasen. Kunne oprettes og slettes.
+--
+-- Det var ikke to slags data. Det var ét datasæt, hvor halvdelen lå det
+-- forkerte sted. En klub, der har brugt appen et halvt år, ved bedre end
+-- koden, hvad der står i deres kioskvagt.
+--
+-- Nu ligger de 40 i databasen som almindelige rækker. Alt kan rettes,
+-- omdøbes og slettes — og hentes tilbage igen med seed_task_templates(),
+-- som kun lægger det ind, der mangler. Derfor kan den køres igen uden at
+-- lave dubletter, og uden at skrive hen over noget, klubben selv har rettet.
+--
+-- Rækkerne herunder er IKKE skrevet af i hånden. De er lavet af et script,
+-- der læser de samme lister, appen selv bruger — også ikonforslaget, så en
+-- skabelon får præcis det ikon, den fik før.
+-- ============================================================================
+
+
+-- ------------------------------------------------------------ HVEM RETTEDE ---
+--
+-- Når en liste kan ændres af flere, er "hvem rettede den, og hvornår" det
+-- første spørgsmål, der bliver stillet.
+
+alter table public.task_templates
+  add column if not exists updated_at timestamptz,
+  add column if not exists updated_by uuid references public.profiles(id) on delete set null;
+
+create or replace function public.tt_stamp()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  new.updated_at := now();
+  new.updated_by := auth.uid();
+  return new;
+end;
+$$;
+
+drop trigger if exists task_templates_stamp on public.task_templates;
+create trigger task_templates_stamp
+  before update on public.task_templates
+  for each row execute function public.tt_stamp();
+
+
+-- ------------------------------------------------------- APPENS FORSLAG ---
+--
+-- Funktionen bærer originalerne. Står de kun i en migration, kan de ikke
+-- hentes frem igen den dag, nogen har slettet for meget — og så er en
+-- "gendan"-knap et løfte, appen ikke kan holde.
+
+create or replace function public.seed_task_templates()
+returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_antal int;
+begin
+  -- Ingen session betyder, at det er serveren selv (migrationen). Er der en
+  -- session, skal den tilhøre en admin.
+  if auth.uid() is not null
+     and public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan hente appens forslag tilbage';
+  end if;
+
+  with nye as (
+    insert into public.task_templates
+      (category, title, points, difficulty, icon, description, spots_total, duration_type)
+    select v.category, v.title, v.points, v.difficulty, v.icon, v.description, 2, 'single'
+    from (values
+    ('Kampafvikling & Sekretærbord', 'Dømme kampe som klubdommer (lokalrækker)', 15, 'Medium', 'whistle', 'Døm en kamp i lokalrækkerne som klubdommer.
+Mød op 15 min. før kampstart.
+Aflever kampskema til halsoveren efter kampen.'),
+    ('Kampafvikling & Sekretærbord', 'Sekretærbordet – elektronisk holdkort/point', 10, 'Let', 'scorecard', 'Sid ved sekretærbordet og før elektronisk holdkort.
+Vær på plads senest 20 min. før kampstart.
+Kontakt kampansvarlig ved tvivl.'),
+    ('Kampafvikling & Sekretærbord', 'Halspeaker til divisions-/hjemmekamp', 10, 'Let', 'speaker', 'Vær halspeaker ved hjemmekampe.
+Annoncér hold, spillerskift og resultater.
+Brug klubbens speaker-udstyr.'),
+    ('Kampafvikling & Sekretærbord', 'Linjedommer til stor kamp', 10, 'Let', 'whistle', 'Vær linjedommer ved en større kamp.
+Mød op 30 min. før kampstart til briefing.
+Følg dommernes anvisninger under kampen.'),
+    ('Kampafvikling & Sekretærbord', 'Opsætning/nedtagning af bane og net', 5, 'Let', 'net', 'Opsæt eller tag baner og net ned ved kampdag.
+Tjek at net er i korrekt højde.
+Læg alt udstyr tilbage på rette plads.'),
+    ('Kampafvikling & Sekretærbord', 'Kampansvarlig/Halsover', 15, 'Medium', 'key', 'Mød op som den første og lås hallen op.
+Sørg for at alt er klar til kampen.
+Luk hallen og aflevér nøgler til rette vedkommende.'),
+    ('Hygge og Socialt', 'Formand for festudvalget (Sæson)', 75, 'Hård', 'committee', 'Vær formand for festudvalget hele sæsonen.
+Planlæg og koordinér alle sociale arrangementer.
+Rapportér til bestyrelsen.'),
+    ('Hygge og Socialt', 'Udvalgsmedlem i festudvalget (Sæson)', 40, 'Medium', 'committee', 'Deltag aktivt i festudvalgets arbejde hele sæsonen.
+Hjælp med planlægning og praktisk afholdelse af arrangementer.'),
+    ('Hygge og Socialt', 'Klargøring og madlavning til fællesspisning', 15, 'Let', 'food', 'Hjælp med at klargøre og lave mad til fællesspisning.
+Mød op 1 time før arrangementet starter.
+Ryd op bagefter.'),
+    ('Hygge og Socialt', 'Kioskvagt til alm. hjemmekamp (ca. 2-3 timer)', 10, 'Let', 'kiosk', 'Bemand kiosken under en hjemmekamp.
+Sørg for at varer er fyldt op.
+Aflever kassen til kassereren efter kampen.'),
+    ('Hygge og Socialt', 'Bage kage / lave madpakker til et hold', 5, 'Let', 'cake', 'Bag kage eller lav madpakker til et hold.
+Aftaler omfang med holdleder.'),
+    ('Hygge og Socialt', 'Oprydning/Rengøring efter klubfest', 15, 'Let', 'clean', 'Hjælp med oprydning og rengøring efter klubfest eller arrangement.
+Bliv til alt er ryddet op og hallen er klar til næste brug.'),
+    ('Hygge og Socialt', 'Indkøber til kiosken (Sæson)', 50, 'Medium', 'kiosk', 'Stå for indkøb til klubkiosken hele sæsonen.
+Hold styr på lagerstatus og bestil varer.
+Sørg for at priser er opdaterede.'),
+    ('Holdleder & Transport', 'Fast holdleder for et ungdoms- eller seniorhold (Sæson)', 75, 'Hård', 'car', 'Vær fast holdleder for et hold hele sæsonen.
+Kommunikér med forældre, spillere og trænere.
+Sørg for tilmelding, kørsel og praktiske forhold.'),
+    ('Holdleder & Transport', 'Kørsel til udekamp inkl. heppekor', 15, 'Let', 'car', 'Kør spillere til udekamp og hep holdet under kampen.
+Aftaler mødested og tidspunkt med holdleder.
+Sørg for at alle kommer sikkert hjem.'),
+    ('Holdleder & Transport', 'Kørsel til udekamp – kun aflevering/afhentning', 5, 'Let', 'car', 'Kør spillere til eller fra udekamp.
+Aftaler tidspunkt og sted med holdleder.'),
+    ('Holdleder & Transport', 'Fast vaskemaskine – holdets trøjer hele sæsonen', 50, 'Medium', 'laundry', 'Vask holdets spillertøj efter samtlige kampe og stævner hele sæsonen.
+Aftaler afhentning og aflevering med holdleder.'),
+    ('Holdleder & Transport', 'Vask af spillertøj efter én kamp/stævne', 5, 'Let', 'laundry', 'Vask holdets spillertøj efter én kamp eller et stævne.
+Aftaler afhentning og aflevering med holdleder.'),
+    ('Stævneplanlægning og Afholdelse', 'Stævneleder/Hovedansvarlig for klubbens eget stævne', 75, 'Hård', 'trophy', 'Vær overordnet ansvarlig for afviklingen af et klubstævne.
+Koordinér alle frivillige og leverandører.
+Sørg for at stævneprogrammet følges.'),
+    ('Stævneplanlægning og Afholdelse', 'Medlem af stævneudvalg (planlægning)', 40, 'Medium', 'committee', 'Deltag i planlægningen af klubbens stævne.
+Mød til udvalgets møder og tag ansvar for aftalte opgaver.'),
+    ('Stævneplanlægning og Afholdelse', 'Natvagt/Halsover ved overnatningsstævne', 30, 'Medium', 'tent', 'Vær halsover om natten ved overnatningsstævne (ca. kl. 23–07).
+Sørg for ro og tryghed for de deltagende unge.'),
+    ('Stævneplanlægning og Afholdelse', 'Stævnesekretariatet – registrér resultater (halvdags)', 20, 'Let', 'scorecard', 'Sid i stævnesekretariatet og registrér resultater og tider.
+Styr kampuret og koordinér med dommerne.'),
+    ('Stævneplanlægning og Afholdelse', 'Kioskvagt ved stort weekendstævne (vagt á 3 timer)', 15, 'Let', 'kiosk', 'Bemand kiosken i 3 timer under weekendstævnet.
+Sørg for at varer er fyldt op løbende.'),
+    ('Stævneplanlægning og Afholdelse', 'Opsætning fredag aften inden stævne / Hovedrengøring søndag', 15, 'Let', 'net', 'Hjælp med at sætte hallen op fredag aften eller stå for hovedrengøring søndag.
+Følg stævnelederens anvisninger.'),
+    ('Kommunikation & PR', 'Webmaster / Hovedansvarlig for SoMe (Sæson)', 75, 'Hård', 'megaphone', 'Vær ansvarlig for klubbens hjemmeside og sociale medier hele sæsonen.
+Post regelmæssige opdateringer og resultater.
+Koordinér indhold med bestyrelsen.'),
+    ('Kommunikation & PR', 'Sponsorudvalg (Sæson – indhente sponsorer)', 75, 'Hård', 'committee', 'Vær en del af sponsorudvalget og indhent sponsorer til klubben hele sæsonen.
+Kontakt lokale virksomheder og lav sponsoraftaler.'),
+    ('Kommunikation & PR', 'Fotograf til kampdag/stævne inkl. redigering og deling', 15, 'Let', 'camera', 'Tag billeder ved en kampdag eller stævne.
+Redigér udvalgte billeder og del med klubben.
+Brug klubbens fotokanaler til deling.'),
+    ('Kommunikation & PR', 'Skrive kampreferater / artikler til hjemmeside/Facebook', 10, 'Let', 'web', 'Skriv et kort kampreferat eller en artikel til hjemmeside eller Facebook.
+Aflever tekst til SoMe-ansvarlig senest dagen efter kampen.'),
+    ('Kommunikation & PR', 'Lave grafisk materiale (plakater, opslag, stævneprogram)', 10, 'Let', 'gear', 'Lav grafisk materiale til klubbens aktiviteter.
+Brug klubbens farver og logo.
+Aflever filer til SoMe-ansvarlig i aftalt format.'),
+    ('Kommunikation & PR', 'Dele flyers / hænge plakater op i lokalområdet', 5, 'Let', 'flyer', 'Del flyers eller hæng plakater op i lokalområdet.
+Få materiale udleveret af SoMe-ansvarlig.
+Indmeld hvilke steder du har besøgt.'),
+    ('Faciliteter & Materialer', 'Materialeansvarlig (Sæson)', 75, 'Hård', 'gear', 'Hold overblik over bolde, tøj, net og øvrigt udstyr hele sæsonen.
+Registrér slitage og bestil nyt ved behov.
+Rapportér til bestyrelsen.'),
+    ('Faciliteter & Materialer', 'Klargøring af beachvolleyball-baner (arbejdsdag)', 20, 'Medium', 'net', 'Hjælp med at klargøre beachvolleyball-banerne til sæsonen.
+Mød op til den aftalte arbejdsdag.
+Medtag egnet fodtøj og arbejdstøj.'),
+    ('Faciliteter & Materialer', 'Vedligehold af beach-baner (luge ukrudt, rive baner)', 10, 'Let', 'net', 'Vedligehold beachbanerne ved at luge ukrudt og rive sand.
+Ca. 2 timers arbejde pr. gang.'),
+    ('Faciliteter & Materialer', 'Hovedoprydning og organisering af boldrum', 15, 'Let', 'gear', 'Ryd op og organiser klubbens boldrum.
+Sørg for at alt udstyr er på rette plads og mærket.'),
+    ('Faciliteter & Materialer', 'Småreparationer (sy net, fikse boldvogne, pumpe bolde)', 10, 'Let', 'tools', 'Foretag småreparationer på klubbens udstyr.
+Sy net, reparer boldvogne eller pump bolde.
+Rapportér større skader til materialeansvarlig.'),
+    ('Klubadministration', 'Bestyrelsesmedlem (Formand, Kasserer m.fl.)', 100, 'Hård', 'board', 'Sidder i klubbens bestyrelse hele sæsonen.
+Deltager i bestyrelsesmøder og varetager bestyrelsespost.
+Rapporterer til generalforsamlingen.'),
+    ('Klubadministration', 'Revisor / Økonomisk hjælp (Sæson)', 40, 'Medium', 'money', 'Hjælp med revision eller økonomi hele sæsonen.
+Gennemgå regnskab og bilag.
+Rapportér til kassereren.'),
+    ('Klubadministration', 'Børneattest-ansvarlig (Sæson)', 40, 'Medium', 'board', 'Indhent og tjek børneattester for alle relevante frivillige.
+Hold register opdateret hele sæsonen.
+Rapportér mangler til formanden.'),
+    ('Klubadministration', 'Hjælp til medlemsregistrering og kontingentkørsel', 25, 'Let', 'car', 'Hjælp med at registrere nye medlemmer og køre kontingentopkrævning.
+Aftaler opgaveomfang med kassereren.'),
+    ('Klubadministration', 'Fonds-ansøger (skrive og sende fondansøgninger)', 25, 'Medium', 'board', 'Skriv og send ansøgninger til fonde og puljer på vegne af klubben.
+Koordinér med bestyrelsen om behovsområder.
+Rapportér svar og tildelinger.')
+    ) as v(category, title, points, difficulty, icon, description)
+    -- Rører ikke det, klubben selv har rettet eller oprettet.
+    on conflict (category, title) do nothing
+    returning 1
+  )
+  select count(*) into v_antal from nye;
+
+  return v_antal;
+end;
+$$;
+
+comment on function public.seed_task_templates() is
+  'Lægger appens 40 oprindelige skabeloner ind. Kun dem der mangler — kan køres igen uden at lave dubletter eller overskrive klubbens rettelser.';
+
+revoke all on function public.seed_task_templates() from public, anon;
+grant execute on function public.seed_task_templates() to authenticated;
+revoke all on function public.tt_stamp() from public, anon, authenticated;
+
+-- Politikken kræver allerede en session, så anonyme får ingen rækker. Men
+-- rettigheden på tabellen lå der stadig, og resten af appen har vænnet sig
+-- til at trække den slags tilbage eksplicit: to spærrer, ikke én.
+revoke all on public.task_templates from anon;
+
+
+-- ------------------------------------------------------------ KØR DEN NU ---
+
+do $$
+declare v int;
+begin
+  select public.seed_task_templates() into v;
+  raise notice 'skabeloner lagt ind: %', v;
+end $$;
+
+
+
+-- ############################################################################
+-- ## AFSNIT 20 af 21: 20260929100000_dobbelte_point.sql
+-- ############################################################################
+
+-- ============================================================================
+-- DOBBELTE POINT
+--
+-- Bestyrelsen vil gøre det mere attraktivt at være frivillig, og fordobler
+-- derfor pointtallet på alt. En kioskvagt går fra 10 til 20, en
+-- bestyrelsespost fra 75 til 150.
+--
+-- ---------------------------------------------------------------------------
+-- HVAD DER SKER MED DEM, DER ALLEREDE HAR GJORT ARBEJDET
+--
+-- Triggeren task_points_changed() sørger for resten af sig selv: den
+-- opdaterer points_awarded på alle tilmeldinger, justerer summen for dem,
+-- hvis tjans allerede er gjort op, og giver dem besked. Det er med vilje —
+-- den, der tog kioskvagten i september, skal ikke stå tilbage med det halve
+-- af den, der tager den i oktober.
+--
+-- Derfor ét enkelt update. Ikke fordi det er smart, men fordi regnskabet
+-- allerede ved, hvad det skal gøre, når en opgave skifter værdi.
+--
+-- ---------------------------------------------------------------------------
+-- MÅLET ER IKKE ÆNDRET HER
+--
+-- point_goal står stadig på 200. Når alle tal fordobles og målet bliver
+-- stående, er barren i praksis halveret: der skal fremover det halve
+-- arbejde til for at slippe for frivilligbidraget. Det kan udmærket være
+-- meningen — men det er en beslutning om penge, ikke om point, og den
+-- træffes under Admin → Indstillinger, ikke her.
+-- ============================================================================
+
+
+-- ------------------------------------------------------------- OPGAVERNE ---
+
+update public.tasks set points = points * 2;
+
+
+-- ----------------------------------------------------------- SKABELONERNE ---
+--
+-- Ellers ville den næste kioskvagt, nogen opretter fra skabelonen, være
+-- halvt så meget værd som den, der allerede står i listen.
+
+update public.task_templates set points = points * 2;
+
+
+-- ------------------------------------------------- OG APPENS EGNE FORSLAG ---
+--
+-- seed_task_templates() bærer originalerne, og "Gendan appens forslag"
+-- henter dem derfra. Blev de stående på de gamle tal, ville en slettet og
+-- gendannet skabelon stille og roligt være det halve værd — og ingen ville
+-- opdage det før næste sæson. Funktionen skrives om med de nye tal.
+--
+-- Rækkerne er igen ikke skrevet af i hånden: de er de samme som i
+-- 20260929090000_skabeloner.sql, med pointtallet ganget med to af et script.
+
+create or replace function public.seed_task_templates()
+returns int
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_antal int;
+begin
+  if auth.uid() is not null
+     and public.get_my_role() not in ('admin', 'super_admin') then
+    raise exception 'Kun administratorer kan hente appens forslag tilbage';
+  end if;
+
+  with nye as (
+    insert into public.task_templates
+      (category, title, points, difficulty, icon, description, spots_total, duration_type)
+    select v.category, v.title, v.points, v.difficulty, v.icon, v.description, 2, 'single'
+    from (values
+    ('Kampafvikling & Sekretærbord', 'Dømme kampe som klubdommer (lokalrækker)', 30, 'Medium', 'whistle', 'Døm en kamp i lokalrækkerne som klubdommer.
+Mød op 15 min. før kampstart.
+Aflever kampskema til halsoveren efter kampen.'),
+    ('Kampafvikling & Sekretærbord', 'Sekretærbordet – elektronisk holdkort/point', 20, 'Let', 'scorecard', 'Sid ved sekretærbordet og før elektronisk holdkort.
+Vær på plads senest 20 min. før kampstart.
+Kontakt kampansvarlig ved tvivl.'),
+    ('Kampafvikling & Sekretærbord', 'Halspeaker til divisions-/hjemmekamp', 20, 'Let', 'speaker', 'Vær halspeaker ved hjemmekampe.
+Annoncér hold, spillerskift og resultater.
+Brug klubbens speaker-udstyr.'),
+    ('Kampafvikling & Sekretærbord', 'Linjedommer til stor kamp', 20, 'Let', 'whistle', 'Vær linjedommer ved en større kamp.
+Mød op 30 min. før kampstart til briefing.
+Følg dommernes anvisninger under kampen.'),
+    ('Kampafvikling & Sekretærbord', 'Opsætning/nedtagning af bane og net', 10, 'Let', 'net', 'Opsæt eller tag baner og net ned ved kampdag.
+Tjek at net er i korrekt højde.
+Læg alt udstyr tilbage på rette plads.'),
+    ('Kampafvikling & Sekretærbord', 'Kampansvarlig/Halsover', 30, 'Medium', 'key', 'Mød op som den første og lås hallen op.
+Sørg for at alt er klar til kampen.
+Luk hallen og aflevér nøgler til rette vedkommende.'),
+    ('Hygge og Socialt', 'Formand for festudvalget (Sæson)', 150, 'Hård', 'committee', 'Vær formand for festudvalget hele sæsonen.
+Planlæg og koordinér alle sociale arrangementer.
+Rapportér til bestyrelsen.'),
+    ('Hygge og Socialt', 'Udvalgsmedlem i festudvalget (Sæson)', 80, 'Medium', 'committee', 'Deltag aktivt i festudvalgets arbejde hele sæsonen.
+Hjælp med planlægning og praktisk afholdelse af arrangementer.'),
+    ('Hygge og Socialt', 'Klargøring og madlavning til fællesspisning', 30, 'Let', 'food', 'Hjælp med at klargøre og lave mad til fællesspisning.
+Mød op 1 time før arrangementet starter.
+Ryd op bagefter.'),
+    ('Hygge og Socialt', 'Kioskvagt til alm. hjemmekamp (ca. 2-3 timer)', 20, 'Let', 'kiosk', 'Bemand kiosken under en hjemmekamp.
+Sørg for at varer er fyldt op.
+Aflever kassen til kassereren efter kampen.'),
+    ('Hygge og Socialt', 'Bage kage / lave madpakker til et hold', 10, 'Let', 'cake', 'Bag kage eller lav madpakker til et hold.
+Aftaler omfang med holdleder.'),
+    ('Hygge og Socialt', 'Oprydning/Rengøring efter klubfest', 30, 'Let', 'clean', 'Hjælp med oprydning og rengøring efter klubfest eller arrangement.
+Bliv til alt er ryddet op og hallen er klar til næste brug.'),
+    ('Hygge og Socialt', 'Indkøber til kiosken (Sæson)', 100, 'Medium', 'kiosk', 'Stå for indkøb til klubkiosken hele sæsonen.
+Hold styr på lagerstatus og bestil varer.
+Sørg for at priser er opdaterede.'),
+    ('Holdleder & Transport', 'Fast holdleder for et ungdoms- eller seniorhold (Sæson)', 150, 'Hård', 'car', 'Vær fast holdleder for et hold hele sæsonen.
+Kommunikér med forældre, spillere og trænere.
+Sørg for tilmelding, kørsel og praktiske forhold.'),
+    ('Holdleder & Transport', 'Kørsel til udekamp inkl. heppekor', 30, 'Let', 'car', 'Kør spillere til udekamp og hep holdet under kampen.
+Aftaler mødested og tidspunkt med holdleder.
+Sørg for at alle kommer sikkert hjem.'),
+    ('Holdleder & Transport', 'Kørsel til udekamp – kun aflevering/afhentning', 10, 'Let', 'car', 'Kør spillere til eller fra udekamp.
+Aftaler tidspunkt og sted med holdleder.'),
+    ('Holdleder & Transport', 'Fast vaskemaskine – holdets trøjer hele sæsonen', 100, 'Medium', 'laundry', 'Vask holdets spillertøj efter samtlige kampe og stævner hele sæsonen.
+Aftaler afhentning og aflevering med holdleder.'),
+    ('Holdleder & Transport', 'Vask af spillertøj efter én kamp/stævne', 10, 'Let', 'laundry', 'Vask holdets spillertøj efter én kamp eller et stævne.
+Aftaler afhentning og aflevering med holdleder.'),
+    ('Stævneplanlægning og Afholdelse', 'Stævneleder/Hovedansvarlig for klubbens eget stævne', 150, 'Hård', 'trophy', 'Vær overordnet ansvarlig for afviklingen af et klubstævne.
+Koordinér alle frivillige og leverandører.
+Sørg for at stævneprogrammet følges.'),
+    ('Stævneplanlægning og Afholdelse', 'Medlem af stævneudvalg (planlægning)', 80, 'Medium', 'committee', 'Deltag i planlægningen af klubbens stævne.
+Mød til udvalgets møder og tag ansvar for aftalte opgaver.'),
+    ('Stævneplanlægning og Afholdelse', 'Natvagt/Halsover ved overnatningsstævne', 60, 'Medium', 'tent', 'Vær halsover om natten ved overnatningsstævne (ca. kl. 23–07).
+Sørg for ro og tryghed for de deltagende unge.'),
+    ('Stævneplanlægning og Afholdelse', 'Stævnesekretariatet – registrér resultater (halvdags)', 40, 'Let', 'scorecard', 'Sid i stævnesekretariatet og registrér resultater og tider.
+Styr kampuret og koordinér med dommerne.'),
+    ('Stævneplanlægning og Afholdelse', 'Kioskvagt ved stort weekendstævne (vagt á 3 timer)', 30, 'Let', 'kiosk', 'Bemand kiosken i 3 timer under weekendstævnet.
+Sørg for at varer er fyldt op løbende.'),
+    ('Stævneplanlægning og Afholdelse', 'Opsætning fredag aften inden stævne / Hovedrengøring søndag', 30, 'Let', 'net', 'Hjælp med at sætte hallen op fredag aften eller stå for hovedrengøring søndag.
+Følg stævnelederens anvisninger.'),
+    ('Kommunikation & PR', 'Webmaster / Hovedansvarlig for SoMe (Sæson)', 150, 'Hård', 'megaphone', 'Vær ansvarlig for klubbens hjemmeside og sociale medier hele sæsonen.
+Post regelmæssige opdateringer og resultater.
+Koordinér indhold med bestyrelsen.'),
+    ('Kommunikation & PR', 'Sponsorudvalg (Sæson – indhente sponsorer)', 150, 'Hård', 'committee', 'Vær en del af sponsorudvalget og indhent sponsorer til klubben hele sæsonen.
+Kontakt lokale virksomheder og lav sponsoraftaler.'),
+    ('Kommunikation & PR', 'Fotograf til kampdag/stævne inkl. redigering og deling', 30, 'Let', 'camera', 'Tag billeder ved en kampdag eller stævne.
+Redigér udvalgte billeder og del med klubben.
+Brug klubbens fotokanaler til deling.'),
+    ('Kommunikation & PR', 'Skrive kampreferater / artikler til hjemmeside/Facebook', 20, 'Let', 'web', 'Skriv et kort kampreferat eller en artikel til hjemmeside eller Facebook.
+Aflever tekst til SoMe-ansvarlig senest dagen efter kampen.'),
+    ('Kommunikation & PR', 'Lave grafisk materiale (plakater, opslag, stævneprogram)', 20, 'Let', 'gear', 'Lav grafisk materiale til klubbens aktiviteter.
+Brug klubbens farver og logo.
+Aflever filer til SoMe-ansvarlig i aftalt format.'),
+    ('Kommunikation & PR', 'Dele flyers / hænge plakater op i lokalområdet', 10, 'Let', 'flyer', 'Del flyers eller hæng plakater op i lokalområdet.
+Få materiale udleveret af SoMe-ansvarlig.
+Indmeld hvilke steder du har besøgt.'),
+    ('Faciliteter & Materialer', 'Materialeansvarlig (Sæson)', 150, 'Hård', 'gear', 'Hold overblik over bolde, tøj, net og øvrigt udstyr hele sæsonen.
+Registrér slitage og bestil nyt ved behov.
+Rapportér til bestyrelsen.'),
+    ('Faciliteter & Materialer', 'Klargøring af beachvolleyball-baner (arbejdsdag)', 40, 'Medium', 'net', 'Hjælp med at klargøre beachvolleyball-banerne til sæsonen.
+Mød op til den aftalte arbejdsdag.
+Medtag egnet fodtøj og arbejdstøj.'),
+    ('Faciliteter & Materialer', 'Vedligehold af beach-baner (luge ukrudt, rive baner)', 20, 'Let', 'net', 'Vedligehold beachbanerne ved at luge ukrudt og rive sand.
+Ca. 2 timers arbejde pr. gang.'),
+    ('Faciliteter & Materialer', 'Hovedoprydning og organisering af boldrum', 30, 'Let', 'gear', 'Ryd op og organiser klubbens boldrum.
+Sørg for at alt udstyr er på rette plads og mærket.'),
+    ('Faciliteter & Materialer', 'Småreparationer (sy net, fikse boldvogne, pumpe bolde)', 20, 'Let', 'tools', 'Foretag småreparationer på klubbens udstyr.
+Sy net, reparer boldvogne eller pump bolde.
+Rapportér større skader til materialeansvarlig.'),
+    ('Klubadministration', 'Bestyrelsesmedlem (Formand, Kasserer m.fl.)', 200, 'Hård', 'board', 'Sidder i klubbens bestyrelse hele sæsonen.
+Deltager i bestyrelsesmøder og varetager bestyrelsespost.
+Rapporterer til generalforsamlingen.'),
+    ('Klubadministration', 'Revisor / Økonomisk hjælp (Sæson)', 80, 'Medium', 'money', 'Hjælp med revision eller økonomi hele sæsonen.
+Gennemgå regnskab og bilag.
+Rapportér til kassereren.'),
+    ('Klubadministration', 'Børneattest-ansvarlig (Sæson)', 80, 'Medium', 'board', 'Indhent og tjek børneattester for alle relevante frivillige.
+Hold register opdateret hele sæsonen.
+Rapportér mangler til formanden.'),
+    ('Klubadministration', 'Hjælp til medlemsregistrering og kontingentkørsel', 50, 'Let', 'car', 'Hjælp med at registrere nye medlemmer og køre kontingentopkrævning.
+Aftaler opgaveomfang med kassereren.'),
+    ('Klubadministration', 'Fonds-ansøger (skrive og sende fondansøgninger)', 50, 'Medium', 'board', 'Skriv og send ansøgninger til fonde og puljer på vegne af klubben.
+Koordinér med bestyrelsen om behovsområder.
+Rapportér svar og tildelinger.')    ) as v(category, title, points, difficulty, icon, description)
+    on conflict (category, title) do nothing
+    returning 1
+  )
+  select count(*) into v_antal from nye;
+
+  return v_antal;
+end;
+$$;
+
+comment on function public.seed_task_templates() is
+  'Lægger appens 40 oprindelige skabeloner ind, med de dobbelte point fra 29. september 2026. Kun dem der mangler.';
+
+
+
+-- ############################################################################
+-- ## AFSNIT 21 af 21: 20261103090000_opgavetyper.sql
+-- ############################################################################
+
+-- ============================================================================
+-- OPGAVETYPER: VOLLEYBALL · SÆSONOPGAVER · EVENTS
+--
+-- Klubben har fået flere slags tjanser, end forsiden kan bære i én liste. De
+-- deles nu i tre, som medlemmet kan klikke mellem:
+--
+--   Volleyball     alt det løbende — kampe, stævnebord, boldlanger, kørsel
+--   Sæsonopgaver   det man ER hen over en periode — bestyrelse, holdleder
+--   Events         FairPlay Cup
+--
+-- ---------------------------------------------------------------------------
+-- HVORFOR DER KUN KOMMER ÉT NYT FELT
+--
+-- To af de tre typer står allerede i data. Sæsonopgaver er dem, hvor
+-- duration_type ikke er 'single' — det er præcis den gruppe, appen i dag
+-- lægger i en sammenklappet sektion nederst på skærmen. Den skal bare op som
+-- en fane, og det kræver ingen nye kolonner.
+--
+-- Events kan derimod ikke udledes. "Medlem af stævneudvalg (planlægning)
+-- FairPlayCup" ligger i kategorien Stævneplanlægning sammen med klubbens
+-- almindelige stævner, og de to skal IKKE samme sted hen: almindelige
+-- stævner og kampe hører under Volleyball. Derfor ét felt: event_navn.
+--
+-- Det er et navn og ikke et ja/nej-flueben, selvom der i dag kun findes én
+-- værdi. Det koster det samme at skrive, og den dag klubben også vil samle en
+-- Volleyball Camp eller en klubfest under Events, er det et nyt navn i
+-- rullelisten — ikke en ny migration.
+--
+-- Typen gemmes IKKE som en kolonne for sig. Så ville der være to kilder til
+-- det samme — en sæsonrolle, der stod som "Volleyball", fordi nogen havde
+-- rettet varigheden bagefter — og ingen ville opdage det. Typen udledes i
+-- stedet af de to felter, og reglen står ét sted: opgave_type() nedenfor.
+-- ============================================================================
+
+
+-- ------------------------------------------------------------- FELTET ---
+
+alter table public.tasks
+  add column if not exists event_navn text;
+
+comment on column public.tasks.event_navn is
+  'Navnet på det event, tjansen hører til (i dag kun "FairPlay Cup"). Tom = almindelig tjans eller sæsonopgave.';
+
+
+-- --------------------------------------------------------- MELLEMRUM ---
+--
+-- "FairPlay Cup " og "FairPlay Cup" ville blive to events, og ingen ville
+-- kunne se forskellen på skærmen — kun at cuppen pludselig stod to gange.
+-- Navnet trimmes derfor på vej ind, og tomt bliver null.
+--
+-- Titlen trimmes af samme grund. Der ligger i forvejen tjanser i databasen,
+-- hvis titel ender på et mellemrum ("Stævnebord - U17 pokal stævne  "), og
+-- det er dem, der gør to ens tjanser svære at se som ens.
+
+create or replace function public.tasks_trim()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  new.event_navn := nullif(btrim(coalesce(new.event_navn, '')), '');
+  new.title      := btrim(new.title);
+  return new;
+end;
+$$;
+
+drop trigger if exists tasks_trim_trg on public.tasks;
+create trigger tasks_trim_trg
+  before insert or update of title, event_navn on public.tasks
+  for each row execute function public.tasks_trim();
+
+revoke all on function public.tasks_trim() from public, anon, authenticated;
+
+
+-- ------------------------------------------------------------ REGLEN ---
+--
+-- Rækkefølgen er det hele: FairPlay Cups planlægningsudvalg er en sæsonrolle
+-- (duration_type = 'year'), og den skal stå under Events, ikke under
+-- Sæsonopgaver. Event vinder derfor over varighed. Hver tjans får præcis én
+-- type, så ingen kan lede efter en tjans i den fane, hvor den ikke er.
+
+create or replace function public.opgave_type(p_event text, p_duration text)
+returns text
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select case
+    when nullif(btrim(coalesce(p_event, '')), '') is not null then 'event'
+    when coalesce(p_duration, 'single') <> 'single'           then 'saeson'
+    else 'volleyball'
+  end;
+$$;
+
+comment on function public.opgave_type(text, text) is
+  'Hvilken af appens tre faner en tjans hører til: event > saeson > volleyball. Reglen står kun her.';
+
+revoke all on function public.opgave_type(text, text) from public, anon;
+grant execute on function public.opgave_type(text, text) to authenticated;
+
+
+-- -------------------------------------------------- DE BESTÅENDE RÆKKER ---
+--
+-- Mellemrummene først. Triggeren ovenfor tager kun de rækker, nogen rører
+-- fremover; de 48, der ligger nu, skal rettes her. Kun titlen trimmes — ikke
+-- noget, der har med point eller tilmeldinger at gøre.
+--
+-- on_task_changed slås fra, mens det sker, og kun til det. Den trigger sender
+-- "Opgaven har fået ny titel" til alle, der står tilmeldt, hver gang titlen
+-- ændrer sig — og flere af de tjanser, der ender på et mellemrum, har folk
+-- på. De skulle få en besked om, at en tjans havde skiftet navn, hvor det
+-- eneste, der skete, var at et usynligt mellemrum forsvandt. Det er værre end
+-- mellemrummet.
+
+alter table public.tasks disable trigger on_task_changed;
+
+update public.tasks
+   set title = btrim(title)
+ where title <> btrim(title);
+
+alter table public.tasks enable trigger on_task_changed;
+
+-- Og så cuppen. Der findes præcis én FairPlay Cup-tjans i dag:
+-- "Medlem af stævneudvalg (planlægning) FairPlayCup". Den sættes på eventet
+-- her, så Events-fanen ikke står tom fra dag ét.
+--
+-- Ingen andre tjanser markeres. "Vask af spillertøj efter stævne" kan både
+-- være en event-tjans og en almindelig vagt, og den slags gæt bliver til
+-- forkerte data, som ingen får ryddet op bagefter. Resten sætter klubben selv
+-- i admin, når cuppen planlægges.
+
+update public.tasks
+   set event_navn = 'FairPlay Cup'
+ where event_navn is null
+   and (title ilike '%fairplay%' or title ilike '%fair play%');

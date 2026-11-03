@@ -15,12 +15,13 @@ import {
   ArrowLeft, Info, Crown, Users, TrendingUp, Mail, Phone, Trash2,
   ChevronDown, Lock, Download, Save, CheckCircle2, Plus, MoreVertical,
   ShieldCheck, UserPlus, DollarSign, AlertTriangle, Activity, Pencil, Copy,
-  UserCheck, UserX, ThumbsUp, BellRing, ChevronLeft, MessageSquare, FileText
+  UserCheck, UserX, ThumbsUp, BellRing, ChevronLeft, MessageSquare, FileText,
+  Trophy, CalendarDays
 } from "lucide-react";
 import {
   logAction, theme, ScrollRow, IKON_KATALOG, ikonNavn, CategoryIcon,
   KATEGORI_IKON, foreslaaIkon, RoleBadge, parseTaskDate, CLAIM_STATE,
-  ClaimStatusPill, MemberTasksModal
+  ClaimStatusPill, MemberTasksModal, OPGAVE_TYPER, opgaveType
 } from "./shared.jsx";
 
 const AdminInput = ({ label, type = "text", placeholder, icon, textarea, value, onChange }) => (
@@ -1350,6 +1351,18 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
   const [editTask, setEditTask]     = useState(null);
   const [menuOpen, setMenuOpen]     = useState(null);
   const [sortering, setSortering]   = useState("dato");
+  // Samme tredeling som medlemmerne ser. Admin har brug for "Alle" oveni:
+  // det er stadig dér, man leder efter en enkelt tjans.
+  const [typeFilter, setTypeFilter] = useState("alle");
+
+  // Eventnavnene, der allerede er i brug, plus FairPlay Cup, som klubben har
+  // besluttet. Rullelisten i opgaveformularen bygger på den, så ingen skriver
+  // cuppens navn forskelligt to steder.
+  const kendteEvents = useMemo(() => {
+    const navne = new Set(["FairPlay Cup"]);
+    tasks.forEach((t) => { if (t.eventNavn) navne.add(t.eventNavn); });
+    return Array.from(navne).sort((a, b) => a.localeCompare(b, "da"));
+  }, [tasks]);
 
   // Listen laa foer i den raekkefoelge, opgaverne var OPRETTET i. Det siger
   // ingenting om, hvad der er naeste gang nogen skal moede op. Standarden er
@@ -1357,7 +1370,9 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
   //
   // tasks er props — kopiér foer sortering, ellers aendres foraelderens array.
   const sorterede = useMemo(() => {
-    const kopi = [...tasks];
+    const kopi = typeFilter === "alle"
+      ? [...tasks]
+      : tasks.filter((t) => opgaveType(t) === typeFilter);
     const efterDato = (a, b) => {
       const ad = parseTaskDate(a), bd = parseTaskDate(b);
       if (!ad && !bd) return 0;
@@ -1378,7 +1393,22 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
       default:
         return kopi.sort(efterDato);
     }
-  }, [tasks, sortering]);
+  }, [tasks, sortering, typeFilter]);
+
+  const antalPrType = useMemo(() => {
+    const n2 = { alle: tasks.length, volleyball: 0, saeson: 0, event: 0 };
+    tasks.forEach((t) => { n2[opgaveType(t)] = (n2[opgaveType(t)] || 0) + 1; });
+    return n2;
+  }, [tasks]);
+
+  // Tallene bag den valgte type. Når cuppen skal fyldes, er det ubesatte
+  // pladser, man kigger efter — ikke antallet af tjanser.
+  const opsummering = useMemo(() => {
+    const pladser = sorterede.reduce((n2, t) => n2 + (t.spotsTotal ?? 0), 0);
+    const ledige  = sorterede.reduce((n2, t) => n2 + (t.spotsLeft ?? 0), 0);
+    const point   = sorterede.reduce((n2, t) => n2 + (t.points ?? 0), 0);
+    return { tjanser: sorterede.length, pladser, ledige, besat: pladser - ledige, point };
+  }, [sorterede]);
   // Kommer man hertil fra bekræftelseslisten, åbnes den valgte opgave direkte.
   // Komponenten monteres på ny, hver gang man skifter til Opgaver-fanen, så
   // prop'en kan læses i en initializer — det er hverken nødvendigt eller
@@ -1407,7 +1437,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
     const { data } = await supabase.from("tasks").insert({
       title: copy.title, category: copy.category, icon: copy.icon, date: copy.date,
       date_full: copy.dateFull, date_end: copy.dateEnd || null, duration_type: copy.durationType || "single",
-      time: copy.time, location: copy.location,
+      time: copy.time, location: copy.location, event_navn: copy.eventNavn || null,
       points: copy.points, difficulty: copy.difficulty, urgent: copy.urgent,
       spots_total: copy.spotsTotal, spots_left: copy.spotsTotal,
     }).select().single();
@@ -1430,7 +1460,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
       const { error: updErr } = await supabase.from("tasks").update({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
         date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
-        time: data.time, location: data.location,
+        time: data.time, location: data.location, event_navn: data.eventNavn || null,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
         spots_total: newTotal, spots_left: newLeft,
       }).eq("id", editTask.id);
@@ -1449,7 +1479,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
       const { data: row, error: insErr } = await supabase.from("tasks").insert({
         title: data.title, category: data.category, icon: data.icon, date: data.date,
         date_full: data.dateFull, date_end: data.dateEnd || null, duration_type: data.durationType || "single",
-        time: data.time, location: data.location,
+        time: data.time, location: data.location, event_navn: data.eventNavn || null,
         points: parseInt(data.points), difficulty: data.difficulty, urgent: data.urgent,
         spots_total: parseInt(data.spots), spots_left: parseInt(data.spots),
       }).select().single();
@@ -1476,6 +1506,62 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
       <button onClick={() => setShowNew(true)} className="w-full py-2.5 rounded-xl text-[13px] font-bold text-white flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]" style={{ background: `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
         <Plus className="w-4 h-4" />Opret ny opgave
       </button>
+
+      {/* Samme tredeling som medlemmerne ser, med "Alle" oveni. Det er også
+          herfra FairPlay Cup-oversigten åbnes: vælg Events. */}
+      <ScrollRow className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
+        <span className="shrink-0 self-center text-[11px] font-semibold text-stone-400 pr-1">Vis:</span>
+        {[{ id: "alle", label: "Alle" }, ...OPGAVE_TYPER].map((v) => (
+          <button key={v.id} data-type={v.id} data-active={typeFilter === v.id} onClick={() => setTypeFilter(v.id)}
+            className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap inline-flex items-center gap-1 ${
+              typeFilter === v.id ? "text-white shadow-sm" : "bg-stone-100 text-stone-600 hover:bg-stone-200"}`}
+            style={typeFilter === v.id
+              ? { background: v.id === "event" ? `linear-gradient(135deg, #F59E0B, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }
+              : {}}>
+            {v.id === "event" && <Trophy className="w-3 h-3" />}
+            {v.id === "saeson" && <CalendarDays className="w-3 h-3" />}
+            {v.label}
+            <span className={typeFilter === v.id ? "text-white/70" : "text-stone-400"}>{antalPrType[v.id] || 0}</span>
+          </button>
+        ))}
+      </ScrollRow>
+
+      {/* Oversigten over den valgte type. Til cuppen er det tallet "ubesatte"
+          hele øvelsen går på: det er dem, der skal findes folk til. */}
+      {typeFilter !== "alle" && (
+        <div className="rounded-2xl p-4 text-white shadow-md" style={{ background: typeFilter === "event" ? `linear-gradient(135deg, #F59E0B, ${theme.pink})` : `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` }}>
+          <div className="flex items-center gap-2">
+            {typeFilter === "event" ? <Trophy className="w-4 h-4" /> : <CalendarDays className="w-4 h-4" />}
+            <div className="font-bold text-[14px]">
+              {OPGAVE_TYPER.find((f) => f.id === typeFilter)?.label}
+              {typeFilter === "event" && kendteEvents.length > 0 && sorterede.length > 0 && (
+                <span className="font-normal text-white/80"> · {Array.from(new Set(sorterede.map((t) => t.eventNavn).filter(Boolean))).join(", ")}</span>
+              )}
+            </div>
+          </div>
+          {sorterede.length === 0 ? (
+            <p className="text-[12px] text-white/90 mt-2 leading-relaxed">
+              {typeFilter === "event"
+                ? "Ingen tjanser er sat på et event endnu. Opret dem som normalt, og vælg FairPlay Cup i feltet ”Event”."
+                : "Ingen sæsonopgaver lige nu."}
+            </p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 mt-3">
+              {[
+                { tal: opsummering.tjanser, tekst: "tjanser" },
+                { tal: `${opsummering.besat}/${opsummering.pladser}`, tekst: "pladser" },
+                { tal: opsummering.ledige, tekst: "ubesatte" },
+                { tal: opsummering.point, tekst: "point" },
+              ].map((k) => (
+                <div key={k.tekst} className="bg-white/15 rounded-xl px-2 py-1.5 border border-white/10">
+                  <div className="text-[15px] font-black leading-none">{k.tal}</div>
+                  <div className="text-[10px] text-white/80 mt-1">{k.tekst}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <ScrollRow className="flex gap-1.5 overflow-x-auto -mx-5 px-5 pb-1 scrollbar-hide">
         <span className="shrink-0 self-center text-[11px] font-semibold text-stone-400 pr-1">Sortér:</span>
@@ -1507,7 +1593,17 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
                 <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white shrink-0" style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}><CategoryIcon type={t.icon} className="w-5 h-5" /></div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
-                    <div><div className="font-bold text-[14px] text-stone-900">{t.title}</div><div className="text-[11px] text-stone-500 mt-0.5">{t.date} · {t.time}</div></div>
+                    <div>
+                      <div className="font-bold text-[14px] text-stone-900">{t.title}</div>
+                      <div className="text-[11px] text-stone-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>{t.date} · {t.time}</span>
+                        {t.eventNavn && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-bold">
+                            <Trophy className="w-2.5 h-2.5" />{t.eventNavn}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <div className="relative">
                       <button onClick={() => setMenuOpen(menuOpen === t.id ? null : t.id)} className="p-1 hover:bg-stone-100 rounded-lg"><MoreVertical className="w-4 h-4 text-stone-500" /></button>
                       {menuOpen === t.id && (
@@ -1540,7 +1636,7 @@ const AdminTasks = ({ tasks, setTasks, currentUser, openSignups, onSignupsOpened
         })}
       </div>
 
-      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} currentUser={currentUser} />}
+      {(showNew || editTask) && <TaskFormModal task={editTask} onClose={() => { setShowNew(false); setEditTask(null); }} onSave={saveTask} currentUser={currentUser} events={kendteEvents} />}
     </div>
   );
 };
@@ -1722,7 +1818,7 @@ const computeDateDisplay = (startISO, durationType) => {
 // forslag" under Admin → Skabeloner henter dem tilbage; den lægger kun det
 // ind, der mangler, og rører ikke det, klubben selv har rettet.
 
-const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
+const TaskFormModal = ({ task, onClose, onSave, currentUser, events = [] }) => {
   const isNew = !task;
   const [step, setStep]             = useState(isNew ? "pick" : "form");
   const [tplCat, setTplCat]         = useState(Object.keys(KATEGORI_IKON)[0]);
@@ -1747,6 +1843,11 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
   const [difficulty, setDiff]   = useState(task?.difficulty || "Let");
   const [urgent, setUrgent]     = useState(task?.urgent || false);
   const [description, setDesc]  = useState(task?.description?.join("\n") || "");
+  // Hvilket event tjansen hører til. Tom = almindelig tjans. Navnet vælges
+  // fra en liste over dem, der allerede findes, så "FairPlay Cup" og
+  // "FairPlay Cup " ikke bliver to events, ingen kan se forskel på.
+  const [eventNavn, setEventNavn] = useState(task?.eventNavn || "");
+  const [nytEvent, setNytEvent]   = useState(false);
 
   // Ændrer en admin pointtallet på en opgave, hvor folk allerede står
   // tilmeldt, følger deres point med. Det skal man kunne se FØR man gemmer.
@@ -1811,7 +1912,7 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
 
   const handleSave = () => {
     if (!title.trim() || !dateISO) return;
-    onSave({ title, category, icon: visIkon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description });
+    onSave({ title, category, icon: visIkon, date, dateFull: dateISO, dateEnd, durationType, time, location, points: parseInt(visPoints), spots: parseInt(spots), difficulty, urgent, description, eventNavn: eventNavn.trim() });
   };
 
   // Skabelonerne. Alle ligger i databasen nu — både dem appen kom med og dem,
@@ -2061,6 +2162,36 @@ const TaskFormModal = ({ task, onClose, onSave, currentUser }) => {
               {date && <p className="text-[11px] text-emerald-700 font-semibold mt-2 px-1">{date}</p>}
             </div>
           )}
+
+          {/* Event. Står lige efter varigheden, fordi de to svarer på det
+              samme spørgsmål: hvor hører tjansen hjemme? */}
+          <div>
+            <label className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider block mb-1.5">Event (valgfrit)</label>
+            {nytEvent ? (
+              <div className="flex gap-2">
+                <input autoFocus value={eventNavn} onChange={(e) => setEventNavn(e.target.value)}
+                  placeholder="F.eks. Volleyball Camp 2027"
+                  className="flex-1 px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none" />
+                <button type="button" onClick={() => { setNytEvent(false); setEventNavn(""); }}
+                  className="px-3 py-2.5 rounded-xl bg-stone-100 text-stone-600 text-[12px] font-semibold">Fortryd</button>
+              </div>
+            ) : (
+              <select value={eventNavn} data-felt="event"
+                onChange={(e) => {
+                  if (e.target.value === "__nyt__") { setNytEvent(true); setEventNavn(""); }
+                  else setEventNavn(e.target.value);
+                }}
+                className="w-full px-3 py-2.5 text-sm bg-stone-50 rounded-xl border border-stone-200 focus:border-emerald-500 outline-none">
+                <option value="">Ingen – almindelig tjans</option>
+                {events.map((navn) => <option key={navn} value={navn}>{navn}</option>)}
+                <option value="__nyt__">+ Nyt event…</option>
+              </select>
+            )}
+            <p className="text-[11px] text-stone-500 mt-1.5 leading-relaxed">
+              Sættes der et event på, flytter tjansen til <strong className="text-stone-700">Events</strong>-fanen hos medlemmerne — også hvis den løber hele sæsonen.
+              Almindelige kampe og stævner skal <strong className="text-stone-700">ikke</strong> have et event; de hører under Volleyball.
+            </p>
+          </div>
 
           {durationType === "single" && <AdminInput label="Tidsrum" placeholder="10:00 – 12:00" value={time} onChange={(e) => setTime(e.target.value)} />}
 

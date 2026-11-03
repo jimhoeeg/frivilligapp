@@ -361,6 +361,30 @@ const parseTaskDate = (task) => {
   return d;
 };
 
+// ============ OPGAVETYPERNE ============
+//
+// Forsiden deler tjanserne i tre, som medlemmet kan klikke mellem. Reglen er
+// den samme som opgave_type() i databasen, OG RÆKKEFØLGEN ER DET HELE:
+//
+//   event        hører tjansen til et event (i dag kun FairPlay Cup)
+//   saeson       løber den over mere end én dag
+//   volleyball   alt det øvrige — kampe, stævner, kørsel, kage
+//
+// Et event vinder over varigheden. FairPlay Cups planlægningsudvalg er en
+// sæsonrolle, men den skal stå under Events, hvor man leder efter cuppen —
+// ikke blandt bestyrelsesposterne. Hver tjans får præcis én type, så der
+// ikke findes en fane, hvor man leder forgæves.
+const OPGAVE_TYPER = [
+  { id: "volleyball", label: "Volleyball"   },
+  { id: "saeson",     label: "Sæsonopgaver" },
+  { id: "event",      label: "Events"       },
+];
+
+const opgaveType = (task) =>
+  task.eventNavn                                            ? "event"
+  : task.durationType && task.durationType !== "single"     ? "saeson"
+  : "volleyball";
+
 // Sådan ser en tilmelding ud i medlemmets egne skærme.
 const CLAIM_STATE = {
   // "Afventer bekræftelse" stod her før. Medlemmerne læste det som om de
@@ -508,6 +532,8 @@ export {
   foreslaaIkon,
   RoleBadge,
   parseTaskDate,
+  OPGAVE_TYPER,
+  opgaveType,
   CLAIM_STATE,
   ClaimStatusPill,
   MemberTasksModal,
