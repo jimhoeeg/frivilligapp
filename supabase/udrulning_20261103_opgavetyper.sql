@@ -1,14 +1,13 @@
 -- ============================================================================
--- UDRULNING: OPGAVETYPER + OPRYDNING I DUBLETTERNE
+-- UDRULNING: OPGAVETYPER
 --
 -- Indsæt HELE denne fil i Supabase → SQL Editor → New query → Run.
 -- Den kan køres igen uden at lave skade, hvis noget går galt midtvejs.
 --
--- Den gør fire ting:
+-- Den gør tre ting:
 --   1. tilføjer feltet event_navn til opgaverne
 --   2. lægger reglen om de tre faner ind som opgave_type()
 --   3. trimmer mellemrum i titler — UDEN at sende besked til de tilmeldte
---   4. slår de dobbelte stævne-tjanser sammen, hvor ingen står tilmeldt
 --
 -- Til sidst skriver den et par linjer ud, du kan kopiere tilbage til mig.
 --
@@ -111,64 +110,27 @@ update public.tasks
    and (title ilike '%fairplay%' or title ilike '%fair play%');
 
 
--- ------------------------------------------------------------ 6. DUBLETTER
+-- ---------------------------------------------- 6. DER VAR INGEN DUBLETTER
 --
--- Tre steder står den samme tjans som to rækker med én plads hver i stedet
--- for én række med to pladser. De slås sammen: den ældste række beholdes og
--- får pladserne fra begge, resten slettes.
+-- Her stod et afsnit, der slog "dobbelte" stævne-tjanser sammen: U17 pokal
+-- 12. dec, U17 13. mar og U15 17. jan stod hver som to rækker med én plads.
 --
--- Betingelsen er, at INGEN af rækkerne i gruppen har tilmeldte. Derfor rører
--- den IKKE "Stævnebord - Kids stævne" den 15. november, hvor der står et
--- medlem på den ene — at flytte en tilmelding for at spare en linje på en
--- liste er ikke værd at gøre. Og den rører ikke "Teen stævne"/"Teenstævne"
--- den 3. oktober, som kun er stavet forskelligt og er to rigtige vagter.
+-- Det var en fejl, og den var min. Jeg grupperede på titel og dato og så
+-- aldrig på klokken. De to rækker er en FORMIDDAGSVAGT og en
+-- EFTERMIDDAGSVAGT:
 --
--- Den er bundet til NETOP de tre par, der er aftalt — ikke til "alt, der
--- ligner en dublet". Er der kommet et nyt dubletpar til siden, bliver det
--- stående, til nogen har set på det. Et script, der rydder op af sig selv i
--- rækker, ingen har kigget på, er ikke oprydning.
-
-do $$
-declare
-  g        record;
-  v_behold uuid;
-  v_samlet  int := 0;
-begin
-  for g in
-    select btrim(title) as titel, date as dato,
-           sum(spots_total) as pladser
-      from public.tasks
-     where (btrim(title), date) in (
-             ('Stævnebord - U17 pokal stævne', 'Lør 12. dec'),
-             ('Stævnebord - U17 stævne',       'Lør 13. mar'),
-             ('Stævnebord - U15 stævne',       'Søn 17. jan')
-           )
-     group by btrim(title), date
-    having count(*) > 1
-       and sum((select count(*) from public.task_claims c where c.task_id = tasks.id)) = 0
-  loop
-    select id into v_behold
-      from public.tasks
-     where btrim(title) = g.titel and date = g.dato
-     order by created_at nulls last, id
-     limit 1;
-
-    update public.tasks
-       set spots_total = g.pladser,
-           spots_left  = g.pladser
-     where id = v_behold;
-
-    delete from public.tasks
-     where btrim(title) = g.titel and date = g.dato
-       and id <> v_behold;
-
-    v_samlet  := v_samlet + 1;
-    raise notice 'Slog sammen: "%" (%) → 1 række med % pladser', g.titel, g.dato, g.pladser;
-  end loop;
-
-  raise notice 'Grupper slået sammen: %', v_samlet;
-end $$;
-
+--   Stævnebord - U17 pokal stævne   lør 12. dec   9:30-12:30 og 13:00-16:30
+--   Stævnebord - U17 stævne         lør 13. mar   9:30-12:30 og 12:30-16:30
+--   Stævnebord - U15 stævne         søn 17. jan   9:30-12:30 og 12:30-16:30
+--   Stævnebord - Kids stævne        søn 15. nov   9:30-12:30 og 13:00-16:30
+--
+-- Havde sammenlægningen kørt, havde den slettet en rigtig vagt og efterladt
+-- én række med to pladser — og så ville den, der havde taget formiddagen,
+-- stå tilmeldt en tjans, der sagde hele dagen. På Kids stævne den 15.
+-- november ER formiddagsvagten taget, så dér var det gået ud over et medlem.
+--
+-- Afsnittet er fjernet. Grupperer man tjanser, skal tidsrummet med — to
+-- vagter samme dag er to vagter.
 
 -- -------------------------------------------------- 7. SKRIV MIGRATIONEN IND
 --
