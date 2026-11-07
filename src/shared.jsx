@@ -361,6 +361,18 @@ const parseTaskDate = (task) => {
   return d;
 };
 
+// Månedsnavn på dansk ud fra en ISO-dato ("2026-10-01" → "oktober 2026").
+// Databasen har sin egen udgave til beskeder og mails; den her er appens.
+const DA_MAANED_LILLE = ["januar","februar","marts","april","maj","juni",
+                         "juli","august","september","oktober","november","december"];
+
+const maanedNavn = (iso) => {
+  if (!iso) return "";
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  return `${DA_MAANED_LILLE[d.getMonth()]} ${d.getFullYear()}`;
+};
+
 // ============ OPGAVETYPERNE ============
 //
 // Forsiden deler tjanserne i tre, som medlemmet kan klikke mellem. Reglen er
@@ -532,6 +544,7 @@ export {
   foreslaaIkon,
   RoleBadge,
   parseTaskDate,
+  maanedNavn,
   OPGAVE_TYPER,
   opgaveType,
   CLAIM_STATE,

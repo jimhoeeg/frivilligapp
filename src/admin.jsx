@@ -21,7 +21,7 @@ import {
 import {
   logAction, theme, ScrollRow, IKON_KATALOG, ikonNavn, CategoryIcon,
   KATEGORI_IKON, foreslaaIkon, RoleBadge, parseTaskDate, CLAIM_STATE,
-  ClaimStatusPill, MemberTasksModal, OPGAVE_TYPER, opgaveType
+  ClaimStatusPill, MemberTasksModal, OPGAVE_TYPER, opgaveType, maanedNavn
 } from "./shared.jsx";
 
 const AdminInput = ({ label, type = "text", placeholder, icon, textarea, value, onChange }) => (
@@ -228,6 +228,8 @@ const AdminOverview = ({ tasks, currentUser }) => {
         ))}
       </div>
 
+      <AdminMaanedens currentUser={currentUser} />
+
       {/* Frivillighedsbidrag */}
       <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm">
         <div className="flex items-center justify-between mb-3">
@@ -296,6 +298,196 @@ const AuditPreview = () => {
           </div>
         ))}
       </div>
+    </div>
+  );
+};
+
+// ---- MÅNEDENS FRIVILLIGE ----
+//
+// Systemet peger, bestyrelsen vælger. Listen er sorteret efter point, men det
+// er en LISTE og ikke en rangering af, hvem der fortjener det — derfor står
+// antallet af tjanser lige ved siden af. To tjanser til 10 point er to gange
+// at møde op, og det kan tallene ikke se forskel på. Mennesket kan.
+const foersteIMaaneden = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+const somISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+const AdminMaanedens = ({ currentUser }) => {
+  // Standard er måneden, der lige er slut. Man hædrer en måned, der er færdig.
+  const [maaned, setMaaned] = useState(() => {
+    const n = new Date();
+    return foersteIMaaneden(new Date(n.getFullYear(), n.getMonth() - 1, 1));
+  });
+  const [kandidater, setKandidater] = useState(null);
+  const [valgt, setValgt]           = useState(null);
+  const [vaelger, setVaelger]       = useState(null);   // kandidaten man er ved at hædre
+  const [begrundelse, setBegrundelse] = useState("");
+  const [gemmer, setGemmer]         = useState(false);
+  const [fejl, setFejl]             = useState(null);
+  const [besked, setBesked]         = useState(null);
+
+  const iso = somISO(maaned);
+  const denneMaaned = somISO(foersteIMaaneden(new Date()));
+  const kanFrem = iso < denneMaaned;
+
+  const hent = useCallback(() => {
+    setKandidater(null); setFejl(null);
+    Promise.all([
+      supabase.rpc("maanedens_kandidater", { p_maaned: iso }),
+      supabase.from("maanedens_frivillige").select("*").eq("maaned", iso).maybeSingle(),
+    ]).then(([k, v]) => {
+      if (k.error) { setFejl("Kunne ikke hente kandidaterne: " + k.error.message); setKandidater([]); }
+      else setKandidater(k.data || []);
+      setValgt(v.data || null);
+    });
+  }, [iso]);
+
+  // Skifter man måned, skal listen tømmes med det samme — ellers står den
+  // forrige måneds kandidater og ser ud som om de hører til den nye. Reglen
+  // advarer mod setState i en effect; her er det netop meningen.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { hent(); }, [hent]);
+
+  const haedre = async () => {
+    if (!vaelger) return;
+    setGemmer(true); setFejl(null);
+    const { error } = await supabase.rpc("admin_vaelg_maanedens", {
+      p_maaned: iso, p_user: vaelger.user_id, p_begrundelse: begrundelse.trim() || null,
+    });
+    setGemmer(false);
+    if (error) { setFejl("Kunne ikke gemme valget: " + error.message); return; }
+    await logAction("member", `Valgte ${vaelger.navn} som månedens frivillige for ${maanedNavn(iso)}`, currentUser);
+    setVaelger(null); setBegrundelse("");
+    setBesked(`${vaelger.navn.split(" ")[0]} har fået besked og en mail`);
+    hent();
+  };
+
+  const fjern = async () => {
+    setGemmer(true); setFejl(null);
+    const { error } = await supabase.rpc("admin_fjern_maanedens", { p_maaned: iso });
+    setGemmer(false);
+    if (error) { setFejl("Kunne ikke fjerne valget: " + error.message); return; }
+    setBesked("Hædringen er fjernet fra appen");
+    hent();
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-4 border border-stone-100 shadow-sm" data-kort="maanedens">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-widest font-bold text-stone-500">Månedens frivillige</div>
+          <div className="font-bold text-stone-900 mt-0.5 capitalize">{maanedNavn(iso)}</div>
+        </div>
+        <div className="flex gap-1">
+          <button data-maaned="forrige" onClick={() => setMaaned((m) => foersteIMaaneden(new Date(m.getFullYear(), m.getMonth() - 1, 1)))}
+            className="p-2 rounded-lg bg-stone-100 text-stone-600 hover:bg-stone-200"><ChevronLeft className="w-4 h-4" /></button>
+          <button data-maaned="naeste" disabled={!kanFrem}
+            onClick={() => kanFrem && setMaaned((m) => foersteIMaaneden(new Date(m.getFullYear(), m.getMonth() + 1, 1)))}
+            className="p-2 rounded-lg bg-stone-100 text-stone-600 hover:bg-stone-200 disabled:opacity-30"><ChevronRight className="w-4 h-4" /></button>
+        </div>
+      </div>
+
+      {besked && (
+        <div className="mb-3 rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-[12px] text-emerald-900 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />{besked}
+        </div>
+      )}
+      {fejl && (
+        <div className="mb-3 rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-[12px] text-red-900">{fejl}</div>
+      )}
+
+      {/* Er der valgt, er DET svaret. Kandidatlisten er så kun til at vælge om. */}
+      {valgt && (
+        <div className="rounded-xl p-3.5 text-white mb-3" style={{ background: `linear-gradient(135deg, #F59E0B, ${theme.pink})` }} data-valgt={valgt.user_id || ""}>
+          <div className="flex items-center gap-1.5">
+            <Trophy className="w-4 h-4" />
+            <span className="text-[10px] uppercase tracking-widest font-bold text-white/90">Hædret</span>
+          </div>
+          <div className="text-[17px] font-black mt-0.5">{valgt.navn_dengang}</div>
+          {valgt.begrundelse && <p className="text-[12px] text-white/90 mt-1 leading-snug">{valgt.begrundelse}</p>}
+          <div className="text-[10px] text-white/70 mt-2">
+            Valgt {new Date(valgt.valgt_at).toLocaleDateString("da-DK")}
+          </div>
+          <button onClick={fjern} disabled={gemmer}
+            className="mt-2.5 px-3 py-1.5 rounded-lg bg-white/20 border border-white/25 text-[11px] font-bold disabled:opacity-50">
+            Fjern hædringen
+          </button>
+        </div>
+      )}
+
+      {kandidater === null ? (
+        <div className="text-[12px] text-stone-400 py-3">Henter...</div>
+      ) : kandidater.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-stone-200 p-4 text-center">
+          <p className="text-[13px] text-stone-500">Ingen gjorde tjanser i {maanedNavn(iso)}.</p>
+          <p className="text-[11px] text-stone-400 mt-1 leading-relaxed">
+            Kun tjanser, der er gjort op, tæller. Sæsonroller holdes ude — de løber over mange måneder.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="text-[11px] text-stone-500 mb-2 leading-relaxed">
+            {valgt ? "Vælg en anden, hvis I har skiftet mening:" : "Sorteret efter point, men listen er ikke en rangering — se også antallet af tjanser."}
+          </div>
+          <div className="space-y-1.5">
+            {kandidater.map((k) => (
+              <div key={k.user_id} data-kandidat={k.user_id}
+                className="flex items-center gap-3 rounded-xl border border-stone-200 bg-stone-50 px-3 py-2.5">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-stone-900 flex items-center gap-1.5">
+                    <span className="truncate">{k.navn}</span>
+                    {k.kun_hjaelper && (
+                      <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">Hjælper</span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-stone-500 mt-0.5">
+                    {k.tjanser} {k.tjanser === 1 ? "tjans" : "tjanser"} · {k.point} point
+                    {k.team ? ` · ${k.team}` : ""}
+                    {k.sidst_valgt && (
+                      <span className="text-amber-700"> · hædret {maanedNavn(k.sidst_valgt)}</span>
+                    )}
+                  </div>
+                </div>
+                <button onClick={() => { setVaelger(k); setBegrundelse(""); setBesked(null); }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-white text-[11px] font-bold shadow-sm"
+                  style={{ background: `linear-gradient(135deg, ${theme.greenDark}, ${theme.greenMid})` }}>
+                  Vælg
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Begrundelsen. Den er ikke pynt: uden den er hædringen et navn i en
+          kasse, og med den er det klubben, der siger hvorfor. */}
+      {vaelger && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setVaelger(null)}>
+          <div className="bg-white rounded-2xl p-5 w-full max-w-sm shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="text-[15px] font-bold text-stone-900">Hædre {vaelger.navn}?</div>
+            <div className="text-[12px] text-stone-500 mt-0.5 mb-3">
+              {maanedNavn(iso)} · {vaelger.tjanser} {vaelger.tjanser === 1 ? "tjans" : "tjanser"} · {vaelger.point} point
+            </div>
+            <AdminInput label="Hvorfor? (vises for alle)" textarea value={begrundelse}
+              onChange={(e) => setBegrundelse(e.target.value)}
+              placeholder="F.eks. Tog to sekretærbordsvagter på to uger — og sprang til dagen før den ene." />
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mt-3">
+              <p className="text-[11px] text-amber-900 leading-relaxed">
+                {vaelger.navn.split(" ")[0]} får besked i appen <strong>og en mail</strong>, så snart I trykker.
+                Vælger I om bagefter, kan den mail ikke kaldes tilbage.
+              </p>
+            </div>
+            {fejl && <p className="text-[12px] text-red-700 mt-2">{fejl}</p>}
+            <div className="flex gap-2 mt-4">
+              <button onClick={() => setVaelger(null)} className="flex-1 py-3 rounded-xl bg-stone-100 text-stone-700 font-semibold text-[13px]">Fortryd</button>
+              <button onClick={haedre} disabled={gemmer}
+                className="flex-[2] py-3 rounded-xl text-white font-bold text-[13px] shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+                style={{ background: `linear-gradient(135deg, #F59E0B, ${theme.pink})` }}>
+                <Trophy className="w-4 h-4" />{gemmer ? "Gemmer..." : "Hædre"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
