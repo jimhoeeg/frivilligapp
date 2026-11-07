@@ -9,7 +9,7 @@ const AdminDashboard = lazy(() => import("./admin.jsx"));
 
 import {
   theme, ScrollRow, CategoryIcon, parseTaskDate, ClaimStatusPill,
-  MemberTasksModal, DifficultyPill
+  MemberTasksModal, DifficultyPill, OPGAVE_TYPER, opgaveType
 } from "./shared.jsx";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
@@ -428,13 +428,17 @@ export class ErrorBoundary extends Component {
 const TaskCard = ({ task, onClick }) => {
   const isFull = task.spotsLeft === 0;
   const isLong = task.durationType && task.durationType !== "single";
+  // Event-tjanser har deres egen fane, men de dukker også op i søgningen, i
+  // kalenderen og på dashboardet. Dér skal man kunne se, at tjansen hører til
+  // cuppen, uden at skulle åbne den.
+  const erEvent = !!task.eventNavn;
   return (
     <button
       onClick={() => onClick(task)}
       className="w-full text-left bg-white rounded-xl px-3 py-2.5 border border-stone-200/70 hover:border-emerald-300 active:scale-[0.99] transition-all shadow-sm hover:shadow-md group relative overflow-hidden flex items-center gap-3"
     >
       {/* Icon */}
-      <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-white shadow-sm" style={{ background: isLong ? `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
+      <div className="shrink-0 w-9 h-9 rounded-lg flex items-center justify-center text-white shadow-sm" style={{ background: erEvent ? `linear-gradient(135deg, #F59E0B, ${theme.pink})` : isLong ? `linear-gradient(135deg, ${theme.purple}, ${theme.pink})` : `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
         <CategoryIcon type={task.icon} className="w-4.5 h-4.5" />
       </div>
 
@@ -442,7 +446,8 @@ const TaskCard = ({ task, onClick }) => {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 mb-0.5">
           {task.urgent && !isLong && <Flame className="w-3 h-3 text-pink-500 shrink-0" />}
-          {isLong && <CalendarDays className="w-3 h-3 text-violet-500 shrink-0" />}
+          {erEvent && <Trophy className="w-3 h-3 text-amber-500 shrink-0" />}
+          {isLong && !erEvent && <CalendarDays className="w-3 h-3 text-violet-500 shrink-0" />}
           <span className="font-semibold text-[13px] leading-tight text-stone-900 truncate">{task.title}</span>
         </div>
         <div className="flex items-center gap-2 text-[11px] text-stone-500">
@@ -1101,12 +1106,54 @@ const GivPointVidereModal = ({ currentUser, medlemmer, maal, harEgetMaal = true,
 
 const DA_MONTH_NAMES = ["Januar","Februar","Marts","April","Maj","Juni","Juli","August","September","Oktober","November","December"];
 
+// En tom fane skal sige HVORFOR den er tom. "Ingen opgaver matcher" på
+// Events-fanen fik det til at se ud, som om noget var gået i stykker — men
+// FairPlay Cup er simpelthen ikke lagt ind endnu. Og er der noget at tage i
+// en af de andre faner, siger vi det og tilbyder vejen derhen, i stedet for
+// at lade folk selv trykke sig rundt for at finde ud af det.
+const TomFane = ({ fane, antal, harFiltre, onSkiftFane }) => {
+  const andre = OPGAVE_TYPER.filter((f) => f.id !== fane && (antal[f.id] || 0) > 0);
+
+  const tekst = harFiltre
+    ? { titel: "Ingen opgaver matcher",      under: "Prøv at rydde søgningen eller filtrene." }
+    : fane === "event"
+      ? { titel: "FairPlay Cup er ikke lagt ind endnu",
+          under: "Når klubben planlægger cuppen, står alle dens tjanser her — kiosk, sekretariat, opsætning og resten." }
+      : fane === "saeson"
+        ? { titel: "Ingen sæsonopgaver lige nu",
+            under: "Sæsonopgaver er dem, man er hen over en periode — holdleder, bestyrelse, udvalg." }
+        : { titel: "Ingen opgaver lige nu",
+            under: "Der kommer nye løbende. Prøv igen om et par dage." };
+
+  return (
+    <div className="text-center py-12 text-stone-500" data-tom={fane}>
+      {fane === "event"
+        ? <Trophy className="w-10 h-10 mx-auto mb-2 text-amber-200" />
+        : <AlertCircle className="w-10 h-10 mx-auto mb-2 text-stone-300" />}
+      <p className="text-[14px] font-semibold text-stone-700">{tekst.titel}</p>
+      <p className="text-[12px] text-stone-500 mt-1 max-w-[18rem] mx-auto leading-relaxed">{tekst.under}</p>
+      {andre.length > 0 && (
+        <div className="flex gap-2 justify-center mt-4">
+          {andre.map((f) => (
+            <button key={f.id} onClick={() => onSkiftFane(f.id)}
+              className="px-3 py-1.5 rounded-full text-[12px] font-semibold bg-stone-100 text-stone-700 hover:bg-stone-200">
+              {f.label} ({antal[f.id]})
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOpenSwaps, onOpenCalendar, unreadCount }) => {
+  // Hvilken af de tre faner man står på. Volleyball er standarden: det er
+  // der, langt de fleste tjanser er, og det er dem, der haster.
+  const [fane,          setFane]          = useState("volleyball");
   const [catFilter,     setCatFilter]     = useState("Alle");
   const [dateFilter,    setDateFilter]    = useState("Alle");
   const [sortOrder,     setSortOrder]     = useState("date");   // "date" | "points_desc" | "points_asc"
   const [query,         setQuery]         = useState("");
-  const [showLongTasks, setShowLongTasks] = useState(false);
   const [showFilters,   setShowFilters]   = useState(false);
   const [showPast,      setShowPast]      = useState(false);
 
@@ -1119,7 +1166,11 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
     { id: "points_asc",  label: "Point ↑" },
   ];
 
-  const visible = useMemo(() => {
+  // Filtrene og fanerne regnes ud i ét: listen til den fane, man står på, OG
+  // tallet på hver af de tre faner. Tallene skal tælle efter de SAMME filtre
+  // — ellers står der "4" på en fane, der viser ingenting, fordi søgningen
+  // sorterede dem væk, og så tror man, appen har tabt noget.
+  const { visible, antal } = useMemo(() => {
     const today = new Date();
     const thisMonth = today.getMonth();
     const thisYear  = today.getFullYear();
@@ -1129,37 +1180,52 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
     // Dagen i dag tæller stadig med – en tjans kl. 19 er ikke overstået kl. 08.
     const cutoff    = new Date(thisYear, thisMonth, today.getDate(), 0, 0, 0);
 
-    return tasks
-      .filter((t) => {
-        if (t.durationType && t.durationType !== "single") return false;
-        if (claimedIds.has(t.id)) return false;
-        // Overståede opgaver skal ud af feedet, ellers vokser listen bare.
-        if (!showPast) {
-          const d = parseTaskDate(t);
-          if (d && d < cutoff) return false;
-        }
-        if (catFilter === "Haster" && !t.urgent) return false;
-        if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
-        if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
-        if (dateFilter !== "Alle") {
-          const d = parseTaskDate(t);
-          if (!d) return false;
-          if (dateFilter === "Denne måned"  && !(d.getMonth() === thisMonth && d.getFullYear() === thisYear)) return false;
-          if (dateFilter === "Næste måned"  && !(d.getMonth() === nextMonth && d.getFullYear() === nextYear)) return false;
-          if (dateFilter === "Halvt sæson"  && !(d >= today && d < halfEnd)) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortOrder === "points_desc") return b.points - a.points;
-        if (sortOrder === "points_asc")  return a.points - b.points;
-        const da = parseTaskDate(a), db = parseTaskDate(b);
-        if (!da && !db) return 0;
-        if (!da) return 1;
-        if (!db) return -1;
-        return da - db;
-      });
-  }, [tasks, catFilter, dateFilter, sortOrder, query, claimedIds, showPast]);
+    const passer = (t) => {
+      if (claimedIds.has(t.id)) return false;
+
+      // Kun tjanser med én bestemt dag kan være "overstået". En sæsonrolle
+      // begyndte i juni og er stadig åben; måler man den på startdatoen,
+      // forsvinder hele fanen.
+      const enkelt = !t.durationType || t.durationType === "single";
+
+      if (!showPast && enkelt) {
+        const d = parseTaskDate(t);
+        if (d && d < cutoff) return false;
+      }
+      if (catFilter === "Haster" && !t.urgent) return false;
+      if (catFilter !== "Alle" && catFilter !== "Haster" && t.category !== catFilter) return false;
+      if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
+      if (dateFilter !== "Alle" && enkelt) {
+        const d = parseTaskDate(t);
+        if (!d) return false;
+        if (dateFilter === "Denne måned"  && !(d.getMonth() === thisMonth && d.getFullYear() === thisYear)) return false;
+        if (dateFilter === "Næste måned"  && !(d.getMonth() === nextMonth && d.getFullYear() === nextYear)) return false;
+        if (dateFilter === "Halvt sæson"  && !(d >= today && d < halfEnd)) return false;
+      }
+      return true;
+    };
+
+    const n = { volleyball: 0, saeson: 0, event: 0 };
+    const mine = [];
+    tasks.forEach((t) => {
+      if (!passer(t)) return;
+      const type = opgaveType(t);
+      n[type] = (n[type] || 0) + 1;
+      if (type === fane) mine.push(t);
+    });
+
+    mine.sort((a, b) => {
+      if (sortOrder === "points_desc") return b.points - a.points;
+      if (sortOrder === "points_asc")  return a.points - b.points;
+      const da = parseTaskDate(a), db = parseTaskDate(b);
+      if (!da && !db) return 0;
+      if (!da) return 1;
+      if (!db) return -1;
+      return da - db;
+    });
+
+    return { visible: mine, antal: n };
+  }, [tasks, fane, catFilter, dateFilter, sortOrder, query, claimedIds, showPast]);
 
   // Group by month for display
   const grouped = useMemo(() => {
@@ -1174,11 +1240,23 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
     return Array.from(map.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([,v]) => v);
   }, [visible]);
 
-  const longTasks = useMemo(() =>
-    tasks.filter((t) => t.durationType && t.durationType !== "single" && !claimedIds.has(t.id) &&
-      (catFilter === "Alle" || t.category === catFilter) &&
-      (!query || t.title.toLowerCase().includes(query.toLowerCase()))),
-  [tasks, catFilter, query, claimedIds]);
+  // Events samles under deres eget navn. I dag er der kun FairPlay Cup, men
+  // en cup er mange tjanser, og uden en overskrift ligner de en tilfældig
+  // bunke. Kortet øverst er svaret på "hvad mangler cuppen?" — antal tjanser
+  // og ledige pladser, så man kan se det uden at tælle linjer.
+  const events = useMemo(() => {
+    if (fane !== "event") return [];
+    const map = new Map();
+    visible.forEach((t) => {
+      const navn = t.eventNavn || "Event";
+      if (!map.has(navn)) map.set(navn, { navn, tasks: [], ledige: 0, point: 0 });
+      const g = map.get(navn);
+      g.tasks.push(t);
+      g.ledige += t.spotsLeft ?? 0;
+      g.point  += t.points ?? 0;
+    });
+    return Array.from(map.values()).sort((a, b) => a.navn.localeCompare(b.navn, "da"));
+  }, [visible, fane]);
 
   return (
     <div className="pb-24">
@@ -1200,6 +1278,21 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
 
           <h1 className="text-3xl font-bold leading-tight mb-1">Ledige opgaver</h1>
           <p className="text-sm text-emerald-100/90">Tag en tjans og saml point til sæsonen</p>
+
+          {/* De tre slags tjanser. Tallet er, hvad der ligger bag fanen
+              lige nu — med de filtre, man har sat. */}
+          <div className="bg-white/10 rounded-xl p-1 flex border border-white/10 mt-4">
+            {OPGAVE_TYPER.map((f) => {
+              const aktiv = fane === f.id;
+              return (
+                <button key={f.id} data-fane={f.id} data-active={aktiv} onClick={() => setFane(f.id)}
+                  className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-bold inline-flex items-center justify-center gap-1 whitespace-nowrap ${aktiv ? "bg-white text-emerald-900 shadow-sm" : "text-white/80"}`}>
+                  {f.label}
+                  <span className={aktiv ? "text-emerald-700/60" : "text-white/50"}>{antal[f.id] || 0}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -1316,52 +1409,51 @@ const TasksScreen = ({ tasks, onTaskClick, claimedIds, onOpenNotifications, onOp
       </div>
 
       <div className="px-5 mt-2">
-        {visible.length === 0 && longTasks.length === 0 ? (
-          <div className="text-center py-12 text-stone-500">
-            <AlertCircle className="w-10 h-10 mx-auto mb-2 text-stone-300" />
-            <p className="text-sm">Ingen opgaver matcher lige nu</p>
-          </div>
+        {visible.length === 0 ? (
+          <TomFane fane={fane} antal={antal} harFiltre={query !== "" || catFilter !== "Alle" || dateFilter !== "Alle"} onSkiftFane={setFane} />
+        ) : fane === "event" ? (
+          events.map((ev) => (
+            <div key={ev.navn} className="mb-4" data-event={ev.navn}>
+              <div className="rounded-2xl p-4 mb-2 text-white shadow-md" style={{ background: `linear-gradient(135deg, #F59E0B, ${theme.pink})` }}>
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5" />
+                  <h2 className="text-lg font-bold">{ev.navn}</h2>
+                </div>
+                <p className="text-[12px] text-white/90 mt-1">
+                  {ev.tasks.length} {ev.tasks.length === 1 ? "tjans" : "tjanser"} · {ev.ledige} {ev.ledige === 1 ? "ledig plads" : "ledige pladser"} · op til {ev.point} point
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {ev.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+              </div>
+            </div>
+          ))
+        ) : fane === "volleyball" && sortOrder === "date" ? (
+          grouped.map((group) => (
+            <div key={group.label} className="mb-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">{group.label}</span>
+                <div className="flex-1 h-px bg-stone-200" />
+                <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
+              </div>
+              <div className="space-y-1.5">
+                {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+              </div>
+            </div>
+          ))
         ) : (
           <>
-            {sortOrder === "date" ? (
-              grouped.map((group) => (
-                <div key={group.label} className="mb-3">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-stone-400">{group.label}</span>
-                    <div className="flex-1 h-px bg-stone-200" />
-                    <span className="text-[10px] text-stone-400">{group.tasks.length}</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {group.tasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="space-y-1.5 mb-3">
-                {visible.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
-              </div>
+            {/* Sæsonopgaver grupperes ikke efter måned. De løber hen over
+                månederne, så en overskrift med "Juni 2026" ville sige noget
+                forkert om en rolle, der varer til jul. */}
+            {fane === "saeson" && (
+              <p className="text-[12px] text-stone-500 mb-2 leading-relaxed">
+                Opgaver, man er hen over en periode — ikke én dag. De giver flere point, netop fordi de varer længere.
+              </p>
             )}
-
-            {/* Long-running / season tasks */}
-            {longTasks.length > 0 && (
-              <div className="mt-2 mb-4">
-                <button onClick={() => setShowLongTasks((v) => !v)}
-                  className="w-full flex items-center gap-2 py-2 mb-2">
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-violet-600">Sæsonopgaver & langvarige</span>
-                  <div className="flex-1 h-px bg-violet-200" />
-                  <span className="text-[10px] text-violet-500 font-semibold">{longTasks.length}</span>
-                  <ChevronDown className={`w-4 h-4 text-violet-500 transition-transform ${showLongTasks ? "rotate-180" : ""}`} />
-                </button>
-                {!showLongTasks && (
-                  <p className="text-[11px] text-stone-400 text-center pb-1">Tryk for at se sæson- og årsopgaver</p>
-                )}
-                {showLongTasks && (
-                  <div className="space-y-3">
-                    {longTasks.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="space-y-1.5 mb-3">
+              {visible.map((t) => <TaskCard key={t.id} task={t} onClick={onTaskClick} />)}
+            </div>
           </>
         )}
       </div>
@@ -2838,6 +2930,9 @@ export default function App() {
         dateFull: t.date_full || t.date,
         dateEnd: t.date_end || "",
         durationType: t.duration_type || "single",
+        // Tomt felt skal være tom streng og ikke null: opgaveType() spørger
+        // kun "er der et navn", og null og "" skal betyde det samme.
+        eventNavn: t.event_navn || "",
         time: t.time,
         location: t.location,
         points: t.points,
@@ -3404,7 +3499,7 @@ export default function App() {
             <div className="flex-1 overflow-y-auto">
               <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>
                 <button onClick={() => setSelectedTask(null)} className="inline-flex items-center gap-1.5 text-white/90 text-sm mb-5"><ArrowLeft className="w-4 h-4" />Tilbage til opgaver</button>
-                <div className="flex items-center gap-2 mb-2"><span className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">{selectedTask.category}</span>{selectedTask.urgent && <span className="inline-flex items-center gap-1 bg-pink-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><Flame className="w-3 h-3" />HASTER</span>}</div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap"><span className="text-[11px] uppercase tracking-widest font-bold text-emerald-200">{selectedTask.category}</span>{selectedTask.eventNavn && <span className="inline-flex items-center gap-1 bg-amber-400/90 text-amber-950 text-[10px] font-bold px-2 py-0.5 rounded-full"><Trophy className="w-3 h-3" />{selectedTask.eventNavn}</span>}{selectedTask.urgent && <span className="inline-flex items-center gap-1 bg-pink-500/90 text-white text-[10px] font-bold px-2 py-0.5 rounded-full"><Flame className="w-3 h-3" />HASTER</span>}</div>
                 <h1 className="text-2xl font-bold mb-4">{selectedTask.title}</h1>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-white/10 rounded-xl p-3 border border-white/10"><div className="text-[10px] uppercase tracking-wider text-emerald-200 font-semibold mb-1">Dato</div><div className="text-sm font-semibold">{selectedTask.dateFull || selectedTask.date}</div></div>
