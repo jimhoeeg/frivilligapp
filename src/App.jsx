@@ -9,7 +9,7 @@ const AdminDashboard = lazy(() => import("./admin.jsx"));
 
 import {
   theme, ScrollRow, CategoryIcon, parseTaskDate, ClaimStatusPill,
-  MemberTasksModal, DifficultyPill, OPGAVE_TYPER, opgaveType
+  MemberTasksModal, DifficultyPill, OPGAVE_TYPER, opgaveType, maanedNavn
 } from "./shared.jsx";
 import {
   Home, ListChecks, Trophy, User, MapPin, Clock, Calendar, Zap, ChevronRight,
@@ -1574,7 +1574,7 @@ const badgeDefs = (maal) => [
   { id: "fullgoal", emoji: "🏆", label: "Over målet",    desc: `${Math.round(maal * 1.5)} point`,           req: (e) => e >= maal * 1.5 },
 ];
 
-const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "", bidrag = null, mineMedlemmer = [], mineHjaelpere = [], onGivVidere }) => {
+const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingPoints = 0, claimStatus, fundneMaerker = [], bidragNote = "", bidrag = null, mineMedlemmer = [], mineHjaelpere = [], onGivVidere, maanedens = null }) => {
   // Point kommer udelukkende fra databasen. Tidligere blev opgavepointene
   // lagt til her OVENI den gemte sum, hvor de allerede indgik – derfor viste
   // dashboardet og scoreboardet forskellige tal for den samme frivillige.
@@ -1790,6 +1790,26 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
         </div>
       </div>
 
+      {/* Månedens frivillige — men kun hvis det er MIG. En hædring, man kun
+          kan se, hvis andre kigger på ranglisten, er halvt spildt. */}
+      {maanedens?.user_id && maanedens.user_id === currentUser?.id && (
+        <div className="px-5 mt-5" data-maanedens-mig="1">
+          <div className="rounded-2xl p-4 text-white shadow-lg flex items-center gap-3" style={{ background: `linear-gradient(135deg, #F59E0B 0%, ${theme.pink} 100%)` }}>
+            <div className="w-11 h-11 rounded-2xl bg-white/20 border border-white/20 flex items-center justify-center shrink-0">
+              <Crown className="w-6 h-6" fill="white" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[15px] font-bold leading-tight">
+                Du er månedens frivillige i {maanedNavn(maanedens.maaned).split(" ")[0]}
+              </div>
+              <p className="text-[12px] text-white/90 mt-0.5 leading-snug">
+                {maanedens.begrundelse || "Klubben har valgt dig. Tak for det, du lægger i den."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Badges */}
       {earnedBadges.length > 0 && (
         <div className="px-5 mt-5">
@@ -1878,7 +1898,7 @@ const Dashboard = ({ claimedTasks, currentUser, onTaskClick, pointGoal, pendingP
   );
 };
 
-const ScoreboardScreen = ({ currentUserId }) => {
+const ScoreboardScreen = ({ currentUserId, maanedens = null }) => {
   const [filter, setFilter] = useState("Alle hold");
   const [members, setMembers] = useState([]);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -1960,6 +1980,25 @@ const ScoreboardScreen = ({ currentUserId }) => {
         </ScrollRow>
       </div>
 
+      {/* Månedens frivillige. Står øverst, fordi det er klubbens eget ord om
+          en bestemt person — ikke en placering på en liste. */}
+      {maanedens && (
+        <div className="px-5 mt-5">
+          <div className="rounded-2xl p-4 text-white shadow-lg" style={{ background: `linear-gradient(135deg, #F59E0B 0%, ${theme.pink} 100%)` }} data-maanedens={maanedens.user_id || ""}>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Crown className="w-4 h-4" fill="white" />
+              <span className="text-[10px] uppercase tracking-widest font-bold text-white/90">
+                Månedens frivillige · {maanedNavn(maanedens.maaned)}
+              </span>
+            </div>
+            <div className="text-xl font-black leading-tight">{maanedens.navn_dengang}</div>
+            {maanedens.begrundelse && (
+              <p className="text-[13px] text-white/90 mt-1.5 leading-snug">{maanedens.begrundelse}</p>
+            )}
+          </div>
+        </div>
+      )}
+
       {currentUserRank > 0 && (
         <div className="px-5 mt-5">
           <div className="rounded-2xl p-4 flex items-center justify-between text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.purple} 0%, ${theme.pink} 100%)` }}>
@@ -1985,6 +2024,11 @@ const ScoreboardScreen = ({ currentUserId }) => {
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-[14px] text-stone-900 flex items-center gap-1.5">
                   <span className="truncate">{m.name}</span>
+                  {/* Kronen sidder, hvor personen står. Vi flytter ingen op
+                      på listen — så ville appen lyve om pointene. */}
+                  {maanedens?.user_id === m.id && (
+                    <Crown className="w-3.5 h-3.5 text-amber-500 shrink-0" fill="currentColor" data-krone={m.id} />
+                  )}
                   {hjaelperFor.has(m.id) && (
                     <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                       Hjælper
@@ -2754,6 +2798,10 @@ export default function App() {
   const [legalDoc, setLegalDoc] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
   const [pointGoal, setPointGoal] = useState(200);
+  // Månedens frivillige. Hentes ÉT sted og gives videre til både dashboardet
+  // og ranglisten: det er den samme hædring, og to kald kunne vise hver sit,
+  // hvis bestyrelsen valgte om imens.
+  const [maanedens, setMaanedens] = useState(null);
   // En linje fra klubben om, hvornår der gøres op. Sættes i admin-panelet og
   // står under bjælken på dashboardet. Den er tom, indtil nogen skriver noget.
   const [bidragNote, setBidragNote] = useState("");
@@ -3099,6 +3147,16 @@ export default function App() {
     loadNotifications(uid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser?.id]);
+
+  // Den seneste hædring. Én række, og den ændrer sig en gang om måneden —
+  // derfor hentes den ved opstart og ikke ved hvert skift af fane.
+  useEffect(() => {
+    supabase.from("maanedens_frivillige")
+      .select("maaned, user_id, navn_dengang, begrundelse")
+      .order("maaned", { ascending: false })
+      .limit(1)
+      .then(({ data }) => { if (data && data[0]) setMaanedens(data[0]); });
+  }, []);
 
   // Klubbens pointmål sættes i admin-panelet. Før stod 100/200 hårdt i koden,
   // så indstillingen havde ingen effekt.
@@ -3604,8 +3662,8 @@ export default function App() {
         ) : (
           <>
             {tab === "tasks" && <TasksScreen tasks={tasks} onTaskClick={setSelectedTask} claimedIds={claimedIds} onOpenNotifications={() => { setShowNotif(true); markNotifsRead(); }} onOpenSwaps={() => setShowSwaps(true)} onOpenCalendar={() => setShowCalendar(true)} unreadCount={notifications.filter((n) => !n.read).length} />}
-            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} bidrag={bidrag} mineMedlemmer={mineMedlemmer} mineHjaelpere={mineHjaelpere} onGivVidere={() => setGiverVidere(true)} />}
-            {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} />}
+            {tab === "dashboard" && <Dashboard claimedTasks={claimedTasks} currentUser={currentUser} onTaskClick={setSelectedTask} pointGoal={pointGoal} pendingPoints={pendingPoints} claimStatus={claimStatus} fundneMaerker={maerker} bidragNote={bidragNote} bidrag={bidrag} mineMedlemmer={mineMedlemmer} mineHjaelpere={mineHjaelpere} onGivVidere={() => setGiverVidere(true)} maanedens={maanedens} />}
+            {tab === "scoreboard" && <ScoreboardScreen currentUserId={currentUser?.id} maanedens={maanedens} />}
             {tab === "profile" && (
               <div className="pb-24">
                 <div className="px-5 pt-12 pb-8 text-white relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${theme.greenDark} 0%, ${theme.greenMid} 100%)` }}>

@@ -95,6 +95,17 @@ export function skriv(r, appUrl) {
         fod: "Aflysningen kommer fra en af klubbens admins.",
       });
 
+    case "maanedens_frivillige":
+      return ramme({
+        overskrift: "Månedens frivillige",
+        fortekst: "Klubben har valgt dig.",
+        broedtekst: p(hej) + p(`Bestyrelsen har valgt dig som ${staerk("månedens frivillige")}.`) +
+          (d.tekst ? p(esc(d.tekst)) : "") +
+          sidste("Det er ikke en konkurrence, du har vundet — det er en tak. Klubben kører på folk som dig."),
+        knap,
+        fod: "Du kan se hædringen på ranglisten i appen. Den står der, så længe sæsonen gør.",
+      });
+
     case "reminder":
       return ramme({
         overskrift: "Husk din tjans",
